@@ -161,9 +161,69 @@ class Test_Ping_Endpoint extends WP_UnitTestCase {
 		$headers = $this->signed();
 		$this->ping( $headers );
 
-		$name    = Ping_Endpoint::NONCE_PREFIX . hash( 'sha256', self::SITE_ID . '.' . $headers['x-showfm-nonce'] );
-		$timeout = (int) get_option( '_transient_timeout_' . $name );
-		$this->assertEqualsWithDelta( time() + 600, $timeout, 5 );
+		$row = $this->nonce_row( $headers['x-showfm-nonce'] );
+		$this->assertNotNull( $row );
+		$this->assertEqualsWithDelta( time() + 600, (int) $row->option_value, 5 );
+		$this->assertSame( 'off', $row->autoload );
+	}
+
+	public function test_a_nonce_is_claimed_once(): void {
+		$headers = $this->signed();
+		$request = new WP_REST_Request( 'POST', '/showfm/v1/ping' );
+		foreach ( $headers as $name => $value ) {
+			$request->set_header( $name, $value );
+		}
+		$endpoint = new Ping_Endpoint( $this->connection );
+
+		$this->assertTrue( $endpoint->verify( $request ) );
+		$second = $endpoint->verify( $request );
+		$this->assertWPError( $second );
+		$this->assertSame( 'showfm_ping_refused', $second->get_error_code() );
+	}
+
+	public function test_a_claim_from_a_concurrent_request_is_refused(): void {
+		global $wpdb;
+		$headers = $this->signed();
+		// Another request claimed the nonce after this one started: a row this request's
+		// object cache has never seen. The old check-then-set let both through.
+		$wpdb->insert(
+			$wpdb->options,
+			array(
+				'option_name'  => $this->nonce_name( $headers['x-showfm-nonce'] ),
+				'option_value' => (string) ( time() + 600 ),
+				'autoload'     => 'off',
+			)
+		);
+
+		$this->assert_refused( $headers );
+	}
+
+	public function test_expired_claims_are_removed_on_the_next_claim(): void {
+		global $wpdb;
+		$old = bin2hex( random_bytes( 16 ) );
+		$wpdb->insert(
+			$wpdb->options,
+			array(
+				'option_name'  => $this->nonce_name( $old ),
+				'option_value' => (string) ( time() - 1 ),
+				'autoload'     => 'off',
+			)
+		);
+
+		$this->assertSame( 202, $this->ping( $this->signed() )->get_status() );
+
+		$this->assertNull( $this->nonce_row( $old ) );
+		$this->assertSame( 202, $this->ping( $this->signed( array( 'nonce' => $old ) ) )->get_status(), 'An expired claim does not block the nonce.' );
+	}
+
+	public function test_a_failed_claim_is_refused(): void {
+		$block = static function ( $query ) {
+			return 0 === strpos( $query, 'INSERT IGNORE' ) ? '' : $query;
+		};
+		add_filter( 'query', $block );
+
+		$this->assert_refused( $this->signed() );
+		remove_filter( 'query', $block );
 	}
 
 	public function test_a_refused_ping_does_not_spend_its_nonce(): void {
@@ -228,6 +288,26 @@ class Test_Ping_Endpoint extends WP_UnitTestCase {
 	public function test_only_post_is_routed(): void {
 		$routes = rest_get_server()->get_routes();
 		$this->assertSame( array( 'POST' => true ), $routes['/showfm/v1/ping'][0]['methods'] );
+	}
+
+	/**
+	 * Option name of a nonce claim for this site.
+	 *
+	 * @param string $nonce Nonce.
+	 */
+	private function nonce_name( string $nonce ): string {
+		return Ping_Endpoint::NONCE_PREFIX . hash( 'sha256', self::SITE_ID . '.' . $nonce );
+	}
+
+	/**
+	 * The claim row for a nonce, read straight from the database.
+	 *
+	 * @param string $nonce Nonce.
+	 * @return object|null
+	 */
+	private function nonce_row( string $nonce ) {
+		global $wpdb;
+		return $wpdb->get_row( $wpdb->prepare( "SELECT option_value, autoload FROM {$wpdb->options} WHERE option_name = %s", $this->nonce_name( $nonce ) ) );
 	}
 
 	/**

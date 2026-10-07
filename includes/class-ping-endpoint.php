@@ -39,7 +39,7 @@ final class Ping_Endpoint {
 	/** How long a nonce is remembered, in seconds. */
 	const NONCE_TTL = 600;
 
-	/** Transient prefix for seen nonces. */
+	/** Option prefix for claimed nonces (autoload off). Each value is its expiry time. */
 	const NONCE_PREFIX = 'showfm_ping_nonce_';
 
 	/** Option holding the time of the last accepted ping (autoload off). */
@@ -116,13 +116,47 @@ final class Ping_Endpoint {
 		}
 
 		// Only a correctly signed ping is remembered, so nobody else can fill the store.
-		$seen = self::NONCE_PREFIX . hash( 'sha256', strtolower( $site_id ) . '.' . $nonce );
-		if ( false !== get_transient( $seen ) ) {
+		if ( ! self::claim( self::NONCE_PREFIX . hash( 'sha256', strtolower( $site_id ) . '.' . $nonce ) ) ) {
 			return self::refused();
 		}
-		set_transient( $seen, 1, self::NONCE_TTL );
 
 		return true;
+	}
+
+	/**
+	 * Claims a nonce for NONCE_TTL seconds. The INSERT IGNORE on the unique option_name
+	 * key is atomic, so when two copies of a ping arrive together only one claims it.
+	 * Expired claims are removed first, so the store holds at most 10 minutes of pings.
+	 *
+	 * Options are used rather than transients because a transient has no atomic add, and
+	 * the database stays the one store with or without a persistent object cache.
+	 *
+	 * @param string $name Option name for the nonce.
+	 * @return bool Whether this request claimed it.
+	 */
+	private static function claim( string $name ): bool {
+		global $wpdb;
+
+		$now = time();
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Expired nonce claims are never read through the options API.
+		$wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s AND CAST(option_value AS UNSIGNED) <= %d",
+				$wpdb->esc_like( self::NONCE_PREFIX ) . '%',
+				$now
+			)
+		);
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- add_option() is not atomic (it upserts), INSERT IGNORE is.
+		$inserted = $wpdb->query(
+			$wpdb->prepare(
+				"INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'off')",
+				$name,
+				(string) ( $now + self::NONCE_TTL )
+			)
+		);
+
+		return 1 === $inserted;
 	}
 
 	/**

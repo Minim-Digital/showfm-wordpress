@@ -91,7 +91,9 @@ Plan sections 5.2.2, 5.2.6 and 5.3.5 (show.fm issue #731). Every admin action ne
 6. **Ping** (`POST /wp-json/showfm/v1/ping`). The permission callback checks
    `X-Showfm-Signature: v1={hex HMAC-SHA256(ping_secret, "v1.{site_id}.{timestamp}.{nonce}")}`
    with `X-Showfm-Site`, `X-Showfm-Timestamp` (within 300 seconds) and `X-Showfm-Nonce`
-   (each accepted once in 10 minutes). The body is never read. The handler queues one
+   (each accepted once in 10 minutes). A nonce is claimed with one `INSERT IGNORE` into
+   the options table, so two copies of a ping arriving together cannot both pass; expired
+   claims are removed on the next claim. The body is never read. The handler queues one
    `showfm_pull` event, calls `spawn_cron()` and answers 202.
 7. **Health.** The daily `showfm_health` event POSTs `/v1/me/sites/{id}/health` with the
    versions, `last_sync_at` and `sync_error_count`. A 401 from any keyed call marks the

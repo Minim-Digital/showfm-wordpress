@@ -488,6 +488,26 @@ class Test_Connect extends WP_UnitTestCase {
 		$this->assertSame( self::SECRET, $this->connection->ping_secret() );
 	}
 
+	public function test_reconnect_keeps_the_old_credentials_when_storage_fails(): void {
+		$this->connection->save( 'showfm_live_OLDKEY000000000000000000001', str_repeat( 'a', 64 ), self::SITE_ID, 0 );
+		$this->returned();
+		$this->http->respond( 200, $this->exchange_body() );
+		$block = static function ( $query ) {
+			return preg_match( '/^\s*(INSERT|UPDATE)\b/i', $query ) && false !== strpos( $query, "'" . Connection::OPTION . "'" ) ? '' : $query;
+		};
+		add_filter( 'query', $block );
+
+		$this->connect->complete_pending( $this->user_id );
+
+		remove_filter( 'query', $block );
+		wp_cache_flush();
+		$this->assertSame( Connect::ERROR_STORAGE, Connect::result( $this->user_id )['error'] );
+		$this->assertSame( Connection::STATE_CONNECTED, $this->connection->state() );
+		$this->assertSame( 'showfm_live_OLDKEY000000000000000000001', $this->connection->key(), 'The working key survives.' );
+		$this->assertSame( str_repeat( 'a', 64 ), $this->connection->ping_secret() );
+		$this->assertSame( 1, $this->http->count(), 'No verify with credentials that were not stored.' );
+	}
+
 	public function test_reconnect_after_a_401_clears_reconnect_needed(): void {
 		$this->connection->save( 'showfm_live_OLDKEY000000000000000000001', str_repeat( 'a', 64 ), self::SITE_ID, 0 );
 		$this->connection->mark_reconnect_needed();
