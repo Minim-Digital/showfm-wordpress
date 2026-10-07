@@ -522,7 +522,7 @@ final class Connect {
 	 * The last outcome for the settings screen, or null.
 	 *
 	 * @param int $user_id The admin.
-	 * @return array{status:string,error:string,retry_after:int,reason:string,connection:string|null}|null
+	 * @return array{status:string,error:string,retry_after:int,reason:string,state_id:string|null}|null
 	 */
 	public static function result( int $user_id ): ?array {
 		$result = get_transient( self::RESULT_PREFIX . $user_id );
@@ -534,7 +534,7 @@ final class Connect {
 			'error'       => is_string( $result['error'] ?? null ) ? $result['error'] : '',
 			'retry_after' => (int) ( $result['retry_after'] ?? 0 ),
 			'reason'      => is_string( $result['reason'] ?? null ) ? $result['reason'] : '',
-			'connection'  => is_string( $result['connection'] ?? null ) ? $result['connection'] : null,
+			'state_id'    => is_string( $result['state_id'] ?? null ) ? $result['state_id'] : null,
 		);
 	}
 
@@ -719,7 +719,7 @@ final class Connect {
 	private function fail_unless_noted( int $user_id, string $error ): void {
 		$result  = self::result( $user_id );
 		$waiting = null !== $result
-			&& Connection::connection_id() === $result['connection']
+			&& Connection::state_id() === $result['state_id']
 			&& ( self::STATUS_CONNECTED !== $result['status'] || $this->connection->is_connected() );
 		if ( ! $waiting ) {
 			$this->fail( $user_id, $error );
@@ -733,13 +733,13 @@ final class Connect {
 	 * @param array{status:string,error:string,retry_after:int,reason:string} $outcome Outcome.
 	 */
 	private function record( int $user_id, array $outcome ): void {
-		// The connection the outcome belongs to: the id this connect wrote with its
-		// credentials, or for a failure the id stored now ('' when nothing is stored). The
+		// The state the outcome belongs to: the id this connect wrote with its credentials,
+		// or for a failure the state it leaves (see Connection::failure_state_id()). The
 		// settings screen shows the outcome only while that id is still the stored one, so
-		// any later connect, reconnect or disconnect (another tab, WP-CLI) hides it, however
-		// the requests interleave. A "Connected" with no save of its own in this request
-		// gets null, which matches nothing.
-		$outcome['connection'] = self::STATUS_CONNECTED === $outcome['status'] ? $this->connection->saved_connection_id() : Connection::connection_id();
+		// any later connect, reconnect or disconnect (another tab, another admin, WP-CLI)
+		// hides it for good, however the requests interleave. A "Connected" with no save of
+		// its own in this request gets null, which matches nothing.
+		$outcome['state_id'] = self::STATUS_CONNECTED === $outcome['status'] ? $this->connection->saved_state_id() : Connection::failure_state_id();
 		set_transient( self::RESULT_PREFIX . $user_id, $outcome, self::RESULT_TTL );
 	}
 

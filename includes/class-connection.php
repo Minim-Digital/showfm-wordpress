@@ -48,11 +48,11 @@ final class Connection {
 	 */
 	const LEGACY_GENERATION_OPTION = 'showfm_connection_generation';
 
-	/** `connection_id()` for credentials stored before connection ids existed. */
+	/** `state_id()` for credentials stored before state ids existed, or an unreadable value. */
 	const LEGACY_ID = 'legacy';
 
 	/**
-	 * The connection id this instance's last successful save() wrote, or null.
+	 * The state id this instance's last successful save() wrote, or null.
 	 *
 	 * @var string|null
 	 */
@@ -116,8 +116,8 @@ final class Connection {
 			return false;
 		}
 
-		// A random id for this connection, written with the credentials. Nothing is counted
-		// or ordered: a connect outcome matches a connection by this id only.
+		// A random id for this state, written with the credentials. Nothing is counted or
+		// ordered: a connect outcome matches a state by this id only.
 		$id     = wp_generate_uuid4();
 		$stored = array(
 			'v' => self::FORMAT_VERSION,
@@ -126,8 +126,8 @@ final class Connection {
 			'i' => $id,
 		);
 
-		// One UPDATE (or INSERT when nothing is stored) writes the credentials and their id
-		// together. If it fails, the old credentials are still there, so a failed reconnect
+		// One UPDATE (or INSERT when nothing is stored) writes the credentials and their
+		// state id together. If it fails, the old credentials are still there, so a failed reconnect
 		// never leaves the site with nothing.
 		if ( ! update_option( self::OPTION, $stored, false ) ) {
 			return false;
@@ -144,7 +144,7 @@ final class Connection {
 	 * Current state: disconnected, connected or reconnect needed.
 	 */
 	public function state(): string {
-		if ( false === get_option( self::OPTION, false ) ) {
+		if ( ! self::has_credentials() ) {
 			return self::STATE_DISCONNECTED;
 		}
 		if ( self::STATE_RECONNECT_NEEDED === get_option( self::STATE_OPTION ) ) {
@@ -167,7 +167,27 @@ final class Connection {
 	 * changed.
 	 */
 	public function is_unreadable(): bool {
-		return false !== get_option( self::OPTION, false ) && null === $this->credentials();
+		return self::has_credentials() && null === $this->credentials();
+	}
+
+	/**
+	 * Whether credentials (readable or not) are stored. Nothing stored, or only a state id
+	 * after a disconnect, means no connection.
+	 */
+	private static function has_credentials(): bool {
+		return self::stores_credentials( get_option( self::OPTION, false ) );
+	}
+
+	/**
+	 * Whether a stored value holds credentials, rather than nothing or only a state id.
+	 *
+	 * @param mixed $stored Stored option value.
+	 */
+	private static function stores_credentials( $stored ): bool {
+		if ( false === $stored ) {
+			return false;
+		}
+		return ! ( is_array( $stored ) && array( 'i' ) === array_keys( $stored ) );
 	}
 
 	/**
@@ -307,11 +327,12 @@ final class Connection {
 	}
 
 	/**
-	 * Removes the credentials and state.
+	 * Removes the credentials. The option keeps only a fresh random state id, written in the
+	 * same write that removes the credentials, so every disconnected spell is its own state:
+	 * an outcome recorded before it never matches it.
 	 */
 	public function disconnect(): void {
-		// The credentials and their connection id go in the same delete.
-		delete_option( self::OPTION );
+		update_option( self::OPTION, array( 'i' => wp_generate_uuid4() ), false );
 		delete_option( self::STATE_OPTION );
 		delete_option( self::REFUSED_AT_OPTION );
 		delete_option( self::CONNECTED_AT_OPTION );
@@ -320,24 +341,55 @@ final class Connection {
 	}
 
 	/**
-	 * The id of the connection stored now: the random id written with the credentials,
-	 * `LEGACY_ID` for credentials stored before ids existed, or '' when nothing is stored.
-	 * Only ever compared for equality.
+	 * The id of the state stored now: the random id written with the credentials, or after a
+	 * disconnect on its own; '' before anything was ever stored; `LEGACY_ID` for credentials
+	 * stored before state ids existed. Only ever compared for equality.
 	 */
-	public static function connection_id(): string {
+	public static function state_id(): string {
 		$stored = get_option( self::OPTION, false );
-		if ( ! is_array( $stored ) || ! isset( $stored['c'] ) ) {
+		if ( false === $stored ) {
 			return '';
 		}
-		return is_string( $stored['i'] ?? null ) && wp_is_uuid( $stored['i'], 4 ) ? $stored['i'] : self::LEGACY_ID;
+		return is_array( $stored ) && is_string( $stored['i'] ?? null ) && wp_is_uuid( $stored['i'], 4 ) ? $stored['i'] : self::LEGACY_ID;
 	}
 
 	/**
-	 * The connection id this instance's last successful save() wrote with the credentials, or
-	 * null. A save from another tab or WP-CLI never counts as this one.
+	 * The state id this instance's last successful save() wrote with the credentials, or null.
+	 * A save from another tab or WP-CLI never counts as this one.
 	 */
-	public function saved_connection_id(): ?string {
+	public function saved_state_id(): ?string {
 		return $this->saved_id;
+	}
+
+	/**
+	 * The state a failed connect attempt belongs to.
+	 *
+	 * - With credentials stored (a failed reconnect keeps them), the stored state id.
+	 * - With no connection, a fresh state of its own: a new random id replaces the stored
+	 *   value only if that value is still exactly what was read (one conditional UPDATE, or an
+	 *   INSERT before anything was ever stored), so it can never remove credentials another
+	 *   request has just saved. If another request got there first, null, which matches
+	 *   nothing.
+	 */
+	public static function failure_state_id(): ?string {
+		global $wpdb;
+
+		wp_cache_delete( self::OPTION, 'options' );
+		$stored = get_option( self::OPTION, false );
+		if ( self::stores_credentials( $stored ) ) {
+			return self::state_id();
+		}
+
+		$id    = wp_generate_uuid4();
+		$value = array( 'i' => $id );
+		if ( false === $stored ) {
+			$swapped = add_option( self::OPTION, $value, '', false );
+		} else {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- A compare-and-swap; the options API cannot make a write conditional.
+			$swapped = 1 === $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND option_value = %s", maybe_serialize( $value ), self::OPTION, maybe_serialize( $stored ) ) );
+			wp_cache_delete( self::OPTION, 'options' );
+		}
+		return $swapped ? $id : null;
 	}
 
 	/**

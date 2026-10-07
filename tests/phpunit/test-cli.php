@@ -368,7 +368,7 @@ class Test_Cli extends WP_UnitTestCase {
 		$this->cli->disconnect( array(), array( 'yes' => true ) );
 
 		$this->assertSame( Connection::STATE_DISCONNECTED, $this->connection->state() );
-		$this->assertFalse( get_option( Connection::OPTION ) );
+		$this->assertSame( array( 'i' ), array_keys( get_option( Connection::OPTION ) ), 'Only a fresh state id is left.' );
 		$this->assertFalse( wp_next_scheduled( Health::HOOK ) );
 		$this->assertFalse( wp_next_scheduled( Ping_Endpoint::PULL_HOOK ) );
 		$this->assertFalse( get_option( Ping_Endpoint::LAST_PING_OPTION ) );

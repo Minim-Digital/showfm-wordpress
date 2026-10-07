@@ -70,15 +70,17 @@ undo behaviour and the current server contract gaps. No Migrate tab is included 
   `wp_rest` nonce. `Admin_Status` builds the Connection tab's data from local state only: no
   request, no key (the last four characters only), no ping secret. Reading it changes nothing:
   the connect outcome stays for 15 minutes (`Connect::RESULT_TTL`) until the admin dismisses it
-  or starts again, so a reload or a second tab still shows it. The live state wins. Each connect or reconnect
-  writes a random connection id (`wp_generate_uuid4()`) as `i` in the same option value as the
-  encrypted credentials, in one write, and disconnect deletes them together. An outcome
-  records the id it belongs to (`''` for "no connection") and shows only while that id is
-  still the stored one, compared for equality only. No counter or ordering is involved, so
-  reconnects from other tabs or WP-CLI cannot interleave into a mismatch. "Connected" also
-  shows only while the stored key works, and Disconnect clears the admin's outcome. The
-  counter of earlier development builds (`showfm_connection_generation`) is deleted on
-  `admin_init` and on uninstall.
+  or starts again, so a reload or a second tab still shows it. The live state wins. Every state has its own random id
+  (`wp_generate_uuid4()`), stored as `i` in `showfm_connection`: a connect or reconnect writes
+  a new id with the encrypted credentials in one write, a disconnect replaces both with a new
+  id alone in one write, and a failed connect that leaves no connection starts a new
+  disconnected state with a conditional UPDATE (or an INSERT on a new install) that never
+  overwrites credentials another request has just saved. An outcome records the state id it
+  belongs to and shows only while that id is still the stored one, compared for equality
+  only, so it never comes back after any later connect or disconnect, from another tab,
+  another admin or WP-CLI. "Connected" also shows only while the stored key works, and
+  Disconnect clears the admin's outcome. The counter of earlier development builds
+  (`showfm_connection_generation`) is deleted on `admin_init` and on uninstall.
 - Disconnect removes the local connection only. The show.fm API has no route for a site key to
   revoke itself, so the key stays valid at show.fm until the site is disconnected there. The
   dialog and the result say so and link to the first show's Connected sites page

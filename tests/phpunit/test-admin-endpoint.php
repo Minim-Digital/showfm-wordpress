@@ -428,10 +428,10 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 
 		$this->assertSame( 'connected', $data['state'] );
 		$this->assertSame( 'expired', $data['result']['error'] );
-		$this->assertArrayNotHasKey( 'connection', $data['result'], 'The connection id never reaches the browser.' );
+		$this->assertArrayNotHasKey( 'state_id', $data['result'], 'The state id never reaches the browser.' );
 	}
 
-	public function test_an_outcome_without_a_connection_id_is_hidden(): void {
+	public function test_an_outcome_without_a_state_id_is_hidden(): void {
 		set_transient(
 			Connect::RESULT_PREFIX . $this->admin,
 			array(
@@ -441,7 +441,7 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 			Connect::RESULT_TTL
 		);
 
-		$this->assertNull( $this->view()['result'], 'An outcome stored before connection ids existed.' );
+		$this->assertNull( $this->view()['result'], 'An outcome stored before state ids existed.' );
 	}
 
 	public function test_a_failure_is_hidden_after_a_same_second_disconnect_and_reconnect(): void {
@@ -537,10 +537,10 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 	 *
 	 * @param string      $status     Outcome status.
 	 * @param string      $error      Error type.
-	 * @param string|null $connection Connection id it belongs to (the stored one by default).
+	 * @param string|null $state_id   State id it belongs to (the stored one by default).
 	 * @param int|null    $user_id    The user (the admin by default).
 	 */
-	private function result( string $status, string $error, ?string $connection = null, ?int $user_id = null ): void {
+	private function result( string $status, string $error, ?string $state_id = null, ?int $user_id = null ): void {
 		set_transient(
 			Connect::RESULT_PREFIX . ( $user_id ?? $this->admin ),
 			array(
@@ -548,7 +548,7 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 				'error'       => $error,
 				'retry_after' => 0,
 				'reason'      => '',
-				'connection'  => $connection ?? Connection::connection_id(),
+				'state_id'    => $state_id ?? Connection::state_id(),
 			),
 			Connect::RESULT_TTL
 		);

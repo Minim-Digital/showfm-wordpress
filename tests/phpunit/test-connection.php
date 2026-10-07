@@ -172,7 +172,8 @@ class Test_Connection extends WP_UnitTestCase {
 
 		$this->connection->disconnect();
 
-		$this->assertFalse( get_option( Connection::OPTION ) );
+		$this->assertSame( array( 'i' ), array_keys( get_option( Connection::OPTION ) ), 'Only a fresh state id is left.' );
+		$this->assertNull( $this->connection->key() );
 		$this->assertFalse( get_option( Connection::STATE_OPTION ) );
 		$this->assertSame( Connection::STATE_DISCONNECTED, $this->connection->state() );
 	}
