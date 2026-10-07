@@ -77,7 +77,7 @@ final class Migration_Cli {
 	public function __invoke( array $args, array $assoc_args ): void {
 		$access = $this->migrator->access();
 		if ( is_wp_error( $access ) ) {
-			\WP_CLI::error( $access->get_error_message() );
+			\WP_CLI::error( self::terminal( $access->get_error_message() ) );
 			return;
 		}
 		if ( empty( $assoc_args['dry-run'] ) && empty( $assoc_args['yes'] ) ) {
@@ -97,12 +97,24 @@ final class Migration_Cli {
 		}
 		$choices = self::choices( (string) ( $assoc_args['choose'] ?? '' ) );
 		if ( is_wp_error( $choices ) ) {
-			\WP_CLI::error( $choices->get_error_message() );
+			\WP_CLI::error( self::terminal( $choices->get_error_message() ) );
 			return;
 		}
-		$state = ! empty( $assoc_args['resume'] ) ? Migration_Store::state() : $this->migrator->start( (int) ( $assoc_args['post'] ?? 0 ) );
+		$applying = empty( $assoc_args['dry-run'] );
+		$state    = Migration_Store::state();
+		if ( $applying ) {
+			if ( empty( $state['complete'] ) || empty( $state['dry_run'] ) ) {
+				\WP_CLI::error( __( 'Complete a dry run before using --yes. Only that saved report can be applied.', 'showfm' ) );
+				return;
+			}
+		} else {
+			$pending = get_option( Migration_Catalogue::PENDING, array() );
+			if ( empty( $assoc_args['resume'] ) || $pending ) {
+				$state = $this->migrator->start( (int) ( $assoc_args['post'] ?? $pending['post_id'] ?? 0 ) );
+			}
+		}
 		if ( is_wp_error( $state ) || ! $state ) {
-			\WP_CLI::error( is_wp_error( $state ) ? $state->get_error_message() : __( 'There is no scan to resume.', 'showfm' ) );
+			\WP_CLI::error( is_wp_error( $state ) ? self::terminal( $state->get_error_message() ) : __( 'There is no scan to resume.', 'showfm' ) );
 			return;
 		}
 		if ( isset( $assoc_args['post'] ) && (int) $assoc_args['post'] !== $state['post_id'] ) {
@@ -111,9 +123,9 @@ final class Migration_Cli {
 		}
 		$limit = (int) ( $assoc_args['batches'] ?? PHP_INT_MAX );
 		for ( $batch = 0; $batch < $limit && ! $state['complete']; ++$batch ) {
-			$state = $this->migrator->batch();
+			$state = $this->migrator->batch( $state['run'] );
 			if ( is_wp_error( $state ) ) {
-				\WP_CLI::error( $state->get_error_message() );
+				\WP_CLI::error( self::terminal( $state->get_error_message() ) );
 				return;
 			}
 		}
@@ -123,7 +135,7 @@ final class Migration_Cli {
 			foreach ( $selected as $embed => $episode ) {
 				$valid = false;
 				foreach ( $report['items'] ?? array() as $item ) {
-					if ( $item['embed'] === $embed && 'ambiguous' === $item['status'] && in_array( $episode, array_column( $item['candidates'], 'id' ), true ) ) {
+					if ( ( $report['status'] ?? '' ) === 'scanned' && $item['embed'] === $embed && 'ambiguous' === $item['status'] && in_array( $episode, array_column( $item['candidates'], 'id' ), true ) ) {
 						$valid = true;
 					}
 				}
@@ -143,7 +155,7 @@ final class Migration_Cli {
 		$failed = false;
 		foreach ( Migration_Store::reports( $state['run'] ) as $report ) {
 			if ( $apply && 'scanned' === $report['status'] ) {
-				$result = $this->migrator->swap( $report['post_id'], $choices[ $report['post_id'] ] ?? array() );
+				$result = $this->migrator->swap( $report['post_id'], $choices[ $report['post_id'] ] ?? array(), $state['run'] );
 				if ( is_wp_error( $result ) ) {
 					$report['error']  = $result->get_error_message();
 					$report['status'] = 'error';
@@ -152,6 +164,7 @@ final class Migration_Cli {
 					$report = $result;
 				}
 			}
+			$failed = $failed || 'error' === $report['status'];
 			if ( 'json' === $format ) {
 				\WP_CLI::line( ( $first ? '' : ',' ) . wp_json_encode( $report ) );
 			} else {
@@ -197,10 +210,18 @@ final class Migration_Cli {
 			\WP_CLI::line( $report['post_id'] . "\t-\t-\t" . ( 'already_showfm' === $report['status'] ? __( 'Already show.fm', 'showfm' ) : $report['status'] ) );
 		}
 		foreach ( $report['items'] as $item ) {
-			\WP_CLI::line( implode( "\t", array( $report['post_id'], $item['embed'], $item['host'], $item['status'], $item['method'], implode( ',', array_column( $item['candidates'], 'id' ) ), $report['revision_id'] ) ) );
+			\WP_CLI::line( implode( "\t", array_map( array( self::class, 'terminal' ), array( $report['post_id'], $item['embed'], $item['host'], $item['status'], $item['method'], implode( ',', array_column( $item['candidates'], 'id' ) ), $report['revision_id'] ) ) ) );
 		}
 		if ( isset( $report['error'] ) ) {
-			\WP_CLI::warning( $report['error'] );
+			\WP_CLI::warning( self::terminal( $report['error'] ) );
 		}
+	}
+	/**
+	 * Strip terminal controls from diagnostic text and externally supplied identifiers.
+	 *
+	 * @param mixed $value Text.
+	 */
+	public static function terminal( $value ): string {
+		return (string) preg_replace( '/[\x00-\x1f\x7f-\x9f]/u', '', (string) $value );
 	}
 }

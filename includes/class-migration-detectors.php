@@ -17,101 +17,123 @@ final class Migration_Detectors {
 	 * Detect embeds, then metadata-only players that have no content location.
 	 *
 	 * @param \WP_Post $post Published source post.
+	 * @return array<int,array<string,mixed>>|\WP_Error
+	 */
+	public static function detect( \WP_Post $post ) {
+		try {
+			return self::read( $post );
+		} catch ( \RuntimeException $error ) {
+			return new \WP_Error( 'showfm_scan_error', __( 'The content could not be scanned safely. Review the malformed or oversized embed markup.', 'showfm' ) );
+		}
+	}
+
+	/**
+	 * Read bounded tokens without executing third-party content.
+	 *
+	 * @param \WP_Post $post Source post.
 	 * @return array<int,array<string,mixed>>
 	 */
-	public static function detect( \WP_Post $post ): array {
+	private static function read( \WP_Post $post ): array {
 		$content = $post->post_content;
+		$tokens  = Migration_Tokens::read( $content );
 		$items   = array();
-		// Ignore literal examples and ordinary comments, including escaped shortcodes.
-		$ignored = array();
-		preg_match_all( '~<(pre|code)\b[^>]*>.*?</\1\s*>|<!--(?!\s*/?wp:).*?-->|\[\[.*?\]\]~is', $content, $matches, PREG_OFFSET_CAPTURE );
-		foreach ( $matches[0] as $match ) {
-			$ignored[] = array(
-				'offset' => $match[1],
-				'length' => strlen( $match[0] ),
-			);
+		foreach ( $tokens['ranges'] as $range ) {
+			$raw  = substr( $content, $range['offset'], $range['length'] );
+			$item = Migration_Tokens::match( '~^<!--\s+wp:showfm/~', $raw ) ? array(
+				'host'    => 'showfm',
+				'already' => true,
+			) : self::identify( $raw, $post );
+			if ( null !== $item ) {
+				$items[] = $item + $range + array( 'source' => 'content' );
+			}
 		}
-		$comments = array();
-		preg_match_all( '~<!--\s*/?wp:.*?-->~s', $content, $tokens, PREG_OFFSET_CAPTURE );
-		foreach ( $tokens[0] as $token ) {
-			$comments[] = array(
-				'offset' => $token[1],
-				'length' => strlen( $token[0] ),
-			);
-		}
-		$patterns = array(
-			'~<!-- wp:(?:seriously-simple-podcasting|ssp|castos)/[a-z-]+\b.*?(?:/-->|-->.*?<!-- /wp:(?:seriously-simple-podcasting|ssp|castos)/[a-z-]+\s*-->)~is',
-			'~<div\b[^>]*\bid=["\x27]buzzsprout[^"\x27]*["\x27][^>]*>\s*</div>\s*<script\b[^>]*>.*?</script\s*>~is',
-			'~<(iframe|script)\b[^>]*>.*?</\1\s*>~is',
-			'~\[(buzzsprout|libsyn|libsyn_podcast|captivate|transistor|spotify|podbean|powerpress|ss_player|ss_podcast|podcast_episode|podcast_playlist|embed)\b[^\]]*\](?:[^\[]*\[/\1\])?~is',
-			'~^[\t ]*(?:https?:)?//[^\s<>]+[\t ]*$~im',
-		);
-		foreach ( $patterns as $kind => $pattern ) {
-			preg_match_all( $pattern, $content, $matches, PREG_OFFSET_CAPTURE );
-			foreach ( $matches[0] as $match ) {
-				$raw    = $match[0];
-				$offset = $match[1];
-				if ( self::overlaps( $offset, strlen( $raw ), array_merge( $ignored, $items, 0 === $kind ? array() : $comments ) ) ) {
-					continue;
+		foreach ( $tokens['wrappers'] as $wrapper ) {
+			$inside = array();
+			foreach ( $items as $index => $item ) {
+				if ( $item['offset'] >= $wrapper['body'] && $item['offset'] + $item['length'] <= $wrapper['body_end'] ) {
+					$inside[] = $index;
 				}
-				$item = self::identify( $raw, $post );
-				if ( null === $item ) {
-					continue;
+			}
+			if ( count( $inside ) > 1 ) {
+				foreach ( $inside as $index ) {
+					$items[ $index ]['range_ambiguous'] = true;
 				}
-				$item['offset'] = $offset;
-				$item['length'] = strlen( $raw );
-				$item['source'] = 'content';
-				// Consume a core wrapper only when it contains exactly this player.
-				$before = substr( $content, 0, $offset );
-				$after  = substr( $content, $offset + strlen( $raw ) );
-				if ( preg_match( '~<!-- wp:(html|shortcode|embed|paragraph)\b[^>]*-->\s*(?:<[^>]+>\s*)*$~', $before, $open, PREG_OFFSET_CAPTURE ) && preg_match( '~^\s*(?:</[^>]+>\s*)*<!-- /wp:' . $open[1][0] . '\s*-->~', $after, $close ) ) {
-					$item['offset'] = $open[0][1];
-					$item['length'] = $offset + strlen( $raw ) + strlen( $close[0] ) - $item['offset'];
+			} elseif ( 1 === count( $inside ) ) {
+				$index  = $inside[0];
+				$item   = $items[ $index ];
+				$before = substr( $content, $wrapper['body'], $item['offset'] - $wrapper['body'] );
+				$after  = substr( $content, $item['offset'] + $item['length'], $wrapper['body_end'] - $item['offset'] - $item['length'] );
+				if ( Migration_Tokens::match( '~\A(?:\s|<(?:div|figure|p|span)(?:\s[^<>]{0,8192})?>)*+\z~i', $before ) && Migration_Tokens::match( '~\A(?:\s|</(?:div|figure|p|span)\s*>)*+\z~i', $after ) ) {
+					$items[ $index ]['offset'] = $wrapper['offset'];
+					$items[ $index ]['length'] = $wrapper['end'] - $wrapper['offset'];
 				}
-				$items[] = $item;
 			}
 		}
 		foreach ( array(
 			'enclosure'  => 'powerpress',
 			'audio_file' => 'ssp',
 		) as $key => $host ) {
-			foreach ( get_post_meta( $post->ID, $key, false ) as $value ) {
-				$url = is_string( $value ) ? strtok( $value, "\r\n" ) : '';
-				if ( ! is_string( $url ) || '' === Migration_Url::normalise( $url ) ) {
+			$covered = Migration_Legacy::coverage( $post, $host );
+			foreach ( Migration_Scanner::meta( $post->ID, $key ) as $value ) {
+				$url    = is_string( $value ) ? (string) strtok( $value, "\r\n" ) : '';
+				$normal = Migration_Url::normalise( $url );
+				if ( null === $normal || in_array( Migration_Url::fingerprint( $normal ), $covered, true ) ) {
 					continue;
 				}
 				$duplicate = false;
 				foreach ( $items as $item ) {
-					if ( Migration_Url::normalise( $item['audio_url'] ?? '' ) === Migration_Url::normalise( $url ) || ( $host === $item['host'] && 'content' === $item['source'] ) ) {
+					if ( Migration_Url::normalise( $item['audio_url'] ?? '' ) === $normal || ( $host === $item['host'] && 'content' === $item['source'] && empty( $item['no_post_hints'] ) ) ) {
 						$duplicate = true;
 					}
 				}
 				if ( ! $duplicate ) {
-					$items[] = array_merge(
-						self::hints( $post ),
-						array(
-							'host'      => $host,
-							'source'    => $key,
-							'offset'    => strlen( $content ),
-							'length'    => 0,
-							'audio_url' => $url,
-						)
+					$items[] = self::hints( $post ) + array(
+						'host'      => $host,
+						'source'    => $key,
+						'offset'    => strlen( $content ),
+						'length'    => 0,
+						'audio_url' => $url,
 					);
 				}
 			}
 		}
+		// Explicit tie-breaks preserve metadata order on PHP 7.4 as well as newer versions.
+		foreach ( $items as $index => &$item ) {
+			$item['ordinal'] = $index;
+		}
+		unset( $item );
 		usort(
 			$items,
 			static function ( $a, $b ) {
-				return $a['offset'] <=> $b['offset'];
+				$order = $a['offset'] <=> $b['offset'];
+				return 0 !== $order ? $order : $a['ordinal'] <=> $b['ordinal'];
 			}
+		);
+		$legacy = count(
+			array_filter(
+				$items,
+				static function ( $item ) {
+					return empty( $item['already'] );
+				}
+			)
 		);
 		foreach ( $items as $index => &$item ) {
 			$item['embed'] = $index + 1;
-			if ( 1 === count( $items ) && empty( $item['show_only'] ) && empty( $item['no_post_hints'] ) ) {
+			unset( $item['ordinal'] );
+			$item['range_hash'] = hash( 'sha256', substr( $content, $item['offset'], $item['length'] ) );
+			if ( 1 === $legacy && empty( $item['already'] ) && empty( $item['show_only'] ) && empty( $item['no_post_hints'] ) ) {
 				$item += self::hints( $post );
 			}
 		}
+		unset( $item );
+		$occupied = array();
+		foreach ( $items as $index => $item ) {
+			if ( Migration_Tokens::overlap( $item, $occupied ) ) {
+				$items[ $index ]['range_ambiguous'] = true;
+			}
+			$occupied[] = $item;
+		}
+		Migration_Tokens::check();
 		return $items;
 	}
 
@@ -124,25 +146,29 @@ final class Migration_Detectors {
 	 */
 	private static function identify( string $raw, \WP_Post $post ): ?array {
 		$attrs = array();
-		if ( preg_match( '~^\[([a-z_]+)\b([^\]]*)\]~i', $raw, $shortcode ) ) {
+		if ( Migration_Tokens::match( '~^\[([a-z_]+)(?=\s|\])([^\]]*)\]~i', $raw, $shortcode ) ) {
 			$attrs = shortcode_parse_atts( $shortcode[2] );
-			$tag   = strtolower( $shortcode[1] );
-			$tag   = 'libsyn_podcast' === $tag ? 'libsyn' : $tag;
+			Migration_Tokens::check();
+			$tag = strtolower( $shortcode[1] );
+			$tag = 'libsyn_podcast' === $tag ? 'libsyn' : $tag;
 		} else {
 			$tag = '';
-			preg_match_all( '~\b([a-z_-]+)\s*=\s*(["\x27])(.*?)\2~is', $raw, $attributes, PREG_SET_ORDER );
+			Migration_Tokens::all( '~\b([a-z_-]+)\s*=\s*("[^"]*+"|\x27[^\x27]*+\x27)~is', substr( $raw, 0, Migration_Tokens::MAX_TAG ), $attributes, PREG_SET_ORDER );
 			foreach ( $attributes as $attr ) {
-				$attrs[ strtolower( $attr[1] ) ] = html_entity_decode( $attr[3], ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+				$attrs[ strtolower( $attr[1] ) ] = html_entity_decode( substr( $attr[2], 1, -1 ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 			}
 		}
-		if ( in_array( $tag, array( 'powerpress', 'ss_player', 'ss_podcast', 'podcast_episode', 'podcast_playlist' ), true ) || preg_match( '~^<!-- wp:(?:seriously-simple-podcasting|ssp|castos)/~', $raw ) ) {
+		if ( in_array( $tag, array( 'powerpress', 'ss_player', 'ss_podcast', 'podcast_episode', 'podcast_playlist' ), true ) || Migration_Tokens::match( '~^<!-- wp:(?:seriously-simple-podcasting|ssp|castos)/~', $raw ) ) {
 			$host = 'powerpress' === $tag ? 'powerpress' : 'ssp';
-			if ( preg_match( '~^<!-- wp:[^ ]+\s+(\{.*?\})\s*/?-->~s', $raw, $block ) ) {
-				$decoded = json_decode( $block[1], true );
-				$attrs   = is_array( $decoded ) ? $decoded : array();
+			if ( 0 === strpos( $raw, '<!--' ) ) {
+				$comment = strstr( $raw, '-->', true );
+				$begin   = strpos( (string) $comment, '{' );
+				$end     = strrpos( (string) $comment, '}' );
+				$decoded = false !== $begin && false !== $end ? json_decode( substr( $comment, $begin, $end - $begin + 1 ), true ) : array();
+				$attrs   = is_array( $decoded ) ? array_filter( $decoded, 'is_scalar' ) : array();
 			}
 			// Collection blocks/shortcodes cannot safely become a single episode player.
-			if ( in_array( $tag, array( 'ss_podcast', 'podcast_playlist' ), true ) || ( 'podcast_episode' === $tag && false === strpos( $attrs['content'] ?? 'title,player,details', 'player' ) ) || ( '' === $tag && ! preg_match( '~/(?:castos-player|castos-html-player|podcast-player|audio-player)\b~', $raw ) ) ) {
+			if ( in_array( $tag, array( 'ss_podcast', 'podcast_playlist' ), true ) || ( 'podcast_episode' === $tag && false === strpos( $attrs['content'] ?? 'title,player,details', 'player' ) ) || ( '' === $tag && ! Migration_Tokens::match( '~/(?:castos-player|castos-html-player|podcast-player|audio-player)\b~', $raw ) ) ) {
 				return array(
 					'host'      => $host,
 					'show_only' => true,
@@ -155,9 +181,15 @@ final class Migration_Detectors {
 					'show_id'   => $attrs['channel'] ?? $attrs['feed'],
 				);
 			}
-			$id     = (int) ( $attrs['episodeId'] ?? $attrs['episode'] ?? $attrs['episode_id'] ?? $attrs['post_id'] ?? $attrs['id'] ?? $post->ID );
-			$id     = 'ss_player' === $tag ? $post->ID : $id;
-			$source = get_post( $id );
+			$given = $attrs['episodeId'] ?? $attrs['episode'] ?? $attrs['episode_id'] ?? $attrs['post_id'] ?? $attrs['id'] ?? $post->ID;
+			if ( ! ctype_digit( (string) $given ) ) {
+				return array(
+					'host'      => $host,
+					'show_only' => true,
+				);
+			}
+			$id     = 'ss_player' === $tag || 0 === (int) $given ? $post->ID : (int) $given;
+			$source = Migration_Scanner::fresh( $id );
 			$item   = array(
 				'host'          => $host,
 				'episode_id'    => (string) $id,
@@ -165,7 +197,7 @@ final class Migration_Detectors {
 			);
 			if ( $source && 'publish' === $source->post_status && current_user_can( 'read_post', $source->ID ) ) {
 				$item             += self::hints( $source );
-				$meta              = get_post_meta( $id, 'powerpress' === $host ? 'enclosure' : 'audio_file', true );
+				$meta              = ( Migration_Scanner::meta( $id, 'powerpress' === $host ? 'enclosure' : 'audio_file' )[0] ?? '' );
 				$item['audio_url'] = is_string( $meta ) ? (string) strtok( $meta, "\r\n" ) : '';
 			}
 			foreach ( array( 'url', 'src', 'audio_file', 'audioUrl', 'file' ) as $key ) {
@@ -177,7 +209,7 @@ final class Migration_Detectors {
 			return $item;
 		}
 		$url = $attrs['src'] ?? $attrs['url'] ?? '';
-		if ( '' === $url && preg_match( '~(?:https?:)?//[^\s<>"\x27\[\]]+~i', $raw, $link ) ) {
+		if ( '' === $url && Migration_Tokens::match( '~(?:https?:)?//[^\s<>"\x27\[\]]+~i', $raw, $link ) ) {
 			$url = $link[0];
 		}
 		$url    = html_entity_decode( $url, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
@@ -186,7 +218,7 @@ final class Migration_Detectors {
 		$host   = '';
 		foreach ( array( 'buzzsprout', 'libsyn', 'captivate', 'transistor', 'spotify', 'podbean' ) as $provider ) {
 			$tld = in_array( $provider, array( 'captivate', 'transistor' ), true ) ? 'fm' : 'com';
-			if ( preg_match( '~(?:^|\.)' . $provider . '\.' . $tld . '$~', $domain ) || $tag === $provider ) {
+			if ( Migration_Tokens::match( '~(?:^|\.)' . $provider . '\.' . $tld . '$~', $domain ) || $tag === $provider ) {
 				$host = $provider;
 				break;
 			}
@@ -209,7 +241,7 @@ final class Migration_Detectors {
 			'spotify'    => '~/(?:embed(?:-podcast)?/)?episode/([a-zA-Z0-9]+)~',
 			'podbean'    => '~/(?:e|ew|media/player)/([a-zA-Z0-9-]+)~',
 		);
-		if ( preg_match( $patterns[ $host ], $path, $id ) ) {
+		if ( Migration_Tokens::match( $patterns[ $host ], $path, $id ) ) {
 			$item['episode_id'] = $id[1];
 		}
 		foreach ( array( 'episode_id', 'episode', 'i', 'data-episode-id' ) as $key ) {
@@ -230,10 +262,10 @@ final class Migration_Detectors {
 				$item['show_id'] = $attrs[ $key ];
 			}
 		}
-		if ( 'buzzsprout' === $host && preg_match( '~^/(\d+)~', $path, $show ) ) {
+		if ( 'buzzsprout' === $host && Migration_Tokens::match( '~^/(\d+)~', $path, $show ) ) {
 			$item['show_id'] = $show[1];
 		}
-		if ( preg_match( '~/(?:show|podcast|playlist)/(?:id/)?([^/]+)~', $path, $show ) ) {
+		if ( Migration_Tokens::match( '~/(?:show|podcast|playlist)/(?:id/)?([^/]+)~', $path, $show ) ) {
 			$item['show_id'] = $show[1];
 		}
 		foreach ( array(
@@ -249,7 +281,7 @@ final class Migration_Detectors {
 				$item[ $field ] = $attrs[ $key ];
 			}
 		}
-		if ( ! isset( $item['episode_id'] ) || preg_match( '~/(?:show|playlist)(?:/|$)~', $path ) ) {
+		if ( ! isset( $item['episode_id'] ) || Migration_Tokens::match( '~/(?:show|playlist)(?:/|$)~', $path ) ) {
 			$item['show_only'] = true;
 		}
 		return $item;
@@ -266,21 +298,5 @@ final class Migration_Detectors {
 			'title'        => $post->post_title,
 			'published_at' => (string) get_post_time( 'c', true, $post ),
 		);
-	}
-
-	/**
-	 * Avoid duplicate detection inside a larger player or literal example.
-	 *
-	 * @param int                            $offset Start byte.
-	 * @param int                            $length Byte length.
-	 * @param array<int,array<string,mixed>> $items  Occupied ranges.
-	 */
-	private static function overlaps( int $offset, int $length, array $items ): bool {
-		foreach ( $items as $item ) {
-			if ( $offset < $item['offset'] + $item['length'] && $offset + $length > $item['offset'] ) {
-				return true;
-			}
-		}
-		return false;
 	}
 }

@@ -58,7 +58,7 @@ final class Migrator {
 	 * @param int $post_id Single-post restriction, or zero.
 	 * @return array<string,mixed>|\WP_Error
 	 */
-	public function start( int $post_id = 0 ) {
+	private function start_locked( int $post_id = 0 ) {
 		$access = $this->access();
 		if ( is_wp_error( $access ) ) {
 			return $access;
@@ -69,12 +69,27 @@ final class Migrator {
 				return new \WP_Error( 'showfm_post_unavailable', __( 'Choose a published post or page you can edit.', 'showfm' ) );
 			}
 		}
-		Migration_Store::clear();
-		$run   = wp_generate_uuid4();
+		$pending = get_option( Migration_Catalogue::PENDING, array() );
+		$run     = $pending['run'] ?? wp_generate_uuid4();
+		if ( $pending && ( ( $pending['connection'] ?? '' ) !== $this->fingerprint() || ( $pending['post_id'] ?? 0 ) !== $post_id ) ) {
+			return new \WP_Error( 'showfm_pending_scan', __( 'Resume or clear the pending catalogue before changing the connection or post restriction.', 'showfm' ) );
+		}
+		if ( ! $pending ) {
+			update_option(
+				Migration_Catalogue::PENDING,
+				array(
+					'run'        => $run,
+					'connection' => $this->fingerprint(),
+					'post_id'    => $post_id,
+				),
+				false
+			);
+		}
 		$pages = Migration_Catalogue::fetch( $this->api, $run );
 		if ( is_wp_error( $pages ) ) {
 			return $pages;
 		}
+		Migration_Store::clear( $run );
 		$state = array(
 			'run'        => $run,
 			'connection' => $this->fingerprint(),
@@ -83,6 +98,7 @@ final class Migrator {
 			'upper'      => Migration_Scanner::upper_bound( $post_id ),
 			'post_id'    => $post_id,
 			'complete'   => false,
+			'dry_run'    => true,
 			'created_at' => time(),
 		);
 		Migration_Store::save( $state );
@@ -94,7 +110,7 @@ final class Migrator {
 	 *
 	 * @return array<string,mixed>|\WP_Error
 	 */
-	public function batch() {
+	private function batch_locked() {
 		$access = $this->access();
 		if ( is_wp_error( $access ) ) {
 			return $access;
@@ -105,15 +121,17 @@ final class Migrator {
 		}
 		$ids = Migration_Scanner::ids( $state['after'], $state['upper'], $state['post_id'] );
 		foreach ( $ids as $id ) {
-			$post = get_post( $id );
+			$post = Migration_Scanner::fresh( $id );
 			if ( $post ) {
 				$report = Migration_Scanner::scan(
 					$post,
 					static function () use ( $state ) {
-						return Migration_Catalogue::episodes( $state['run'], $state['pages'] );
+						return Migration_Catalogue::matcher( $state['run'], $state['pages'] );
 					}
 				);
-				Migration_Store::put( $state['run'], $report );
+				if ( $report['items'] || 'error' === $report['status'] ) {
+					Migration_Store::put( $state['run'], $report );
+				}
 			}
 			$state['after'] = $id;
 			Migration_Store::save( $state );
@@ -131,13 +149,13 @@ final class Migrator {
 	 * @param array<int,string> $choices Explicit ambiguous choices.
 	 * @return array<string,mixed>|\WP_Error
 	 */
-	public function swap( int $post_id, array $choices = array() ) {
+	private function swap_locked( int $post_id, array $choices = array() ) {
 		$access = $this->access();
 		if ( is_wp_error( $access ) ) {
 			return $access;
 		}
 		$state = Migration_Store::state();
-		if ( empty( $state['complete'] ) || $state['connection'] !== $this->fingerprint() ) {
+		if ( empty( $state['dry_run'] ) || empty( $state['complete'] ) || $state['connection'] !== $this->fingerprint() ) {
 			return new \WP_Error( 'showfm_scan_required', __( 'Complete a scan for this connection before swapping.', 'showfm' ) );
 		}
 		$report = Migration_Store::get( $state['run'], $post_id );
@@ -150,6 +168,50 @@ final class Migrator {
 		}
 		clean_post_cache( $post_id );
 		return $result;
+	}
+
+	/**
+	 * Start or resume catalogue acquisition without replacing the active report on failure.
+	 *
+	 * @param int $post_id Optional post restriction.
+	 * @return array<string,mixed>|\WP_Error
+	 */
+	public function start( int $post_id = 0 ) {
+		return Migration_Store::locked(
+			function () use ( $post_id ) {
+				return $this->start_locked( $post_id );
+			}
+		);
+	}
+
+	/**
+	 * Advance a bound run under the per-site lock.
+	 *
+	 * @param string $run Expected run, or empty for the current run.
+	 * @return array<string,mixed>|\WP_Error
+	 */
+	public function batch( string $run = '' ) {
+		return Migration_Store::locked(
+			function () use ( $run ) {
+				return $run && ( Migration_Store::state()['run'] ?? '' ) !== $run ? new \WP_Error( 'showfm_stale_run', __( 'The active scan changed.', 'showfm' ) ) : $this->batch_locked();
+			}
+		);
+	}
+
+	/**
+	 * Apply only the specified reviewed run under the per-site lock.
+	 *
+	 * @param int               $post_id Post ID.
+	 * @param array<int,string> $choices Explicit choices.
+	 * @param string            $run Expected run.
+	 * @return array<string,mixed>|\WP_Error
+	 */
+	public function swap( int $post_id, array $choices = array(), string $run = '' ) {
+		return Migration_Store::locked(
+			function () use ( $post_id, $choices, $run ) {
+				return $run && ( Migration_Store::state()['run'] ?? '' ) !== $run ? new \WP_Error( 'showfm_stale_run', __( 'The active scan changed.', 'showfm' ) ) : $this->swap_locked( $post_id, $choices );
+			}
+		);
 	}
 
 	/** Hash only; credentials never enter the report. */

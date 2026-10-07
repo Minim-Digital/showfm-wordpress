@@ -28,22 +28,25 @@ final class Migration_Swap {
 		if ( ! $connection->is_connected() ) {
 			return new \WP_Error( 'showfm_not_connected', __( 'Connect this site to show.fm before migrating embeds.', 'showfm' ) );
 		}
-		$post = get_post( $report['post_id'] );
+		$post = Migration_Scanner::fresh( $report['post_id'] );
 		if ( ! $post || 'publish' !== $post->post_status || ! in_array( $post->post_type, array( 'post', 'page' ), true ) ) {
 			return new \WP_Error( 'showfm_post_unavailable', __( 'The published post or page is no longer available.', 'showfm' ) );
 		}
-		if ( Migration_Scanner::already( $post->post_content ) ) {
+		if ( ! $choices && isset( $report['applied_hash'] ) && hash_equals( $report['applied_hash'], Migration_Scanner::hash( $post ) ) ) {
 			return $report;
 		}
-		if ( ! hash_equals( $report['hash'], Migration_Scanner::hash( $post ) ) ) {
-			return new \WP_Error( 'showfm_stale_report', __( 'The post changed after scanning. Start a new scan.', 'showfm' ) );
+		if ( 'scanned' !== $report['status'] || ! isset( $report['evidence'] ) ) {
+			return new \WP_Error( 'showfm_unsafe_report', __( 'This post has no safe, reviewed embed ranges. Start a new scan.', 'showfm' ) );
 		}
-		// Recheck identifiers too: a shortcode can point at a different local post's meta.
-		$detected = Migration_Detectors::detect( $post );
-		foreach ( $report['items'] as $index => $item ) {
-			if ( ! isset( $detected[ $index ] ) || array_diff_assoc( $detected[ $index ], array_intersect_key( $item, $detected[ $index ] ) ) ) {
-				return new \WP_Error( 'showfm_stale_report', __( 'The source player changed after scanning. Start a new scan.', 'showfm' ) );
+		if ( ! self::unchanged( $post, $report ) ) {
+			return new \WP_Error( 'showfm_stale_report', __( 'The post or source player changed after scanning. Start a new scan.', 'showfm' ) );
+		}
+		$occupied = array();
+		foreach ( $report['items'] as $item ) {
+			if ( $item['offset'] < 0 || $item['length'] < 0 || $item['offset'] + $item['length'] > strlen( $post->post_content ) || ! hash_equals( $item['range_hash'], hash( 'sha256', substr( $post->post_content, $item['offset'], $item['length'] ) ) ) || Migration_Tokens::overlap( $item, $occupied ) || ! empty( $item['range_ambiguous'] ) ) {
+				return new \WP_Error( 'showfm_unsafe_ranges', __( 'The embed ranges overlap or changed. This post needs manual review.', 'showfm' ) );
 			}
+			$occupied[] = $item;
 		}
 		$replacements = array();
 		foreach ( $report['items'] as $item ) {
@@ -72,10 +75,9 @@ final class Migration_Swap {
 						'podcast'  => $episode['podcast_id'],
 						'snapshot' => Attributes::snapshot(
 							array(
-								'title'       => $episode['title'],
-								'audioUrl'    => $episode['audio_url'] ?? '',
-								'legacyHost'  => $item['host'],
-								'legacyAudio' => Migration_Url::normalise( $item['audio_url'] ?? '' ),
+								'title'             => $episode['title'],
+								'legacyHost'        => $item['host'],
+								'legacyAudioSha256' => Migration_Url::fingerprint( Migration_Url::normalise( $item['audio_url'] ?? null ) ),
 							)
 						),
 					),
@@ -97,7 +99,8 @@ final class Migration_Swap {
 		usort(
 			$replacements,
 			static function ( $a, $b ) {
-				return $b['offset'] <=> $a['offset'];
+				$order = $b['offset'] <=> $a['offset'];
+				return 0 !== $order ? $order : $b['embed'] <=> $a['embed'];
 			}
 		);
 		foreach ( $replacements as $replacement ) {
@@ -120,45 +123,44 @@ final class Migration_Swap {
 		if ( is_wp_error( $revision ) || ! $revision ) {
 			return new \WP_Error( 'showfm_revision_failed', __( 'Could not save the undo revision. The post has not been changed.', 'showfm' ) );
 		}
-		$keep = static function ( $revisions ) use ( $revision ) {
-			return array_filter(
-				$revisions,
-				static function ( $saved ) use ( $revision ) {
-					return $saved->ID !== $revision;
-				}
-			);
-		};
-		// Existing content is already stored. Preserve it exactly, including scripts on multisite.
-		// Only the replacement block attributes are new, encoded by WordPress's block serialiser.
-		$preserve = static function ( $data, $postarr ) use ( $post, $content ) {
-			if ( (int) ( $postarr['ID'] ?? 0 ) === $post->ID ) {
-				$data['post_content'] = wp_slash( $content );
-			}
-			return $data;
-		};
-		add_filter( 'wp_save_post_revision_revisions_before_deletion', $keep );
-		add_filter( 'wp_insert_post_data', $preserve, PHP_INT_MAX, 2 );
-		try {
-			$result = wp_update_post(
-				wp_slash(
-					array(
-						'ID'           => $post->ID,
-						'post_content' => $content,
-					)
-				),
-				true
-			);
-		} finally {
-			remove_filter( 'wp_save_post_revision_revisions_before_deletion', $keep );
-			remove_filter( 'wp_insert_post_data', $preserve, PHP_INT_MAX );
+		$fresh = Migration_Scanner::fresh( $post->ID );
+		if ( ! $fresh || ! self::unchanged( $fresh, $report ) ) {
+			return new \WP_Error( 'showfm_stale_report', __( 'The post or source player changed during migration. Start a new scan.', 'showfm' ) );
 		}
-		if ( is_wp_error( $result ) ) {
-			return $result;
+		global $wpdb;
+		// Atomic comparison at the write, not a cached read followed by an unconditional update.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Compare-and-swap protects concurrent editor writes; caches are cleaned below.
+		$changed = $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->posts} SET post_content = %s, post_modified = %s, post_modified_gmt = %s WHERE ID = %d AND BINARY post_content = BINARY %s AND BINARY post_title = BINARY %s AND BINARY post_excerpt = BINARY %s AND post_status = %s AND post_date_gmt = %s AND post_modified_gmt = %s", $content, current_time( 'mysql' ), current_time( 'mysql', true ), $post->ID, $post->post_content, $post->post_title, $post->post_excerpt, $post->post_status, $post->post_date_gmt, $post->post_modified_gmt ) );
+		if ( 1 !== $changed ) {
+			return new \WP_Error( 'showfm_stale_report', __( 'The post changed at write time. The migration was refused.', 'showfm' ) );
+		}
+		clean_post_cache( $post->ID );
+		$updated = Migration_Scanner::fresh( $post->ID );
+		// Notify integrations after the atomic write. The pre-edit revision remains the undo.
+		if ( $updated ) {
+            // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Core post-update notifications after the atomic write.
+			do_action( 'post_updated', $post->ID, $updated, $post );
+            // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Core post-update notifications after the atomic write.
+			do_action( "save_post_{$post->post_type}", $post->ID, $updated, true );
+            // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Core post-update notifications after the atomic write.
+			do_action( 'save_post', $post->ID, $updated, true );
+            // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Core post-update notifications after the atomic write.
+			do_action( 'wp_insert_post', $post->ID, $updated, true );
+			$report['applied_hash'] = Migration_Scanner::hash( $updated );
 		}
 		$report['revision_id']  = $revision;
 		$report['revision_url'] = admin_url( 'revision.php?revision=' . $revision );
 		$report['status']       = 'swapped';
 		$report['swapped']      = array_column( $replacements, 'embed' );
 		return $report;
+	}
+	/**
+	 * Compare the complete evidence, including fields that have disappeared.
+	 *
+	 * @param \WP_Post            $post Fresh database row.
+	 * @param array<string,mixed> $report Original report.
+	 */
+	private static function unchanged( \WP_Post $post, array $report ): bool {
+		return hash_equals( $report['hash'], Migration_Scanner::hash( $post ) ) && Migration_Detectors::detect( $post ) === $report['evidence'];
 	}
 }

@@ -49,29 +49,44 @@ final class Migration_Scanner {
 	 *
 	 * @param \WP_Post $post     Source.
 	 * @param callable $episodes Lazy catalogue factory.
-	 * @phpstan-param callable(): iterable<array<string,mixed>> $episodes
+	 * @phpstan-param callable(): (iterable<array<string,mixed>>|Migration_Matcher) $episodes
 	 * @return array<string,mixed>
 	 */
 	public static function scan( \WP_Post $post, callable $episodes ): array {
 		$report = array(
 			'post_id'     => $post->ID,
-			'hash'        => self::hash( $post ),
+			'hash'        => '',
 			'items'       => array(),
 			'revision_id' => 0,
 		);
-		if ( self::already( $post->post_content ) ) {
-			$report['status'] = 'already_showfm';
-			return $report;
-		}
 		if ( ! current_user_can( 'edit_post', $post->ID ) ) {
 			$report['status'] = 'forbidden';
 			return $report;
 		}
-		foreach ( Migration_Detectors::detect( $post ) as $embed ) {
-			$match             = Migration_Matcher::match( $embed, empty( $embed['show_only'] ) ? $episodes() : array() );
-			$report['items'][] = array_merge( $embed, $match );
+		$detected = Migration_Detectors::detect( $post );
+		if ( is_wp_error( $detected ) ) {
+			$report['status'] = 'error';
+			$report['error']  = $detected->get_error_message();
+			return $report;
 		}
-		$report['status'] = 'scanned';
+		try {
+			$report['hash']     = self::hash( $post );
+			$report['evidence'] = $detected;
+			$report['status']   = 'scanned';
+			$catalogue          = $detected ? $episodes() : array();
+			$matcher            = $catalogue instanceof Migration_Matcher ? $catalogue : new Migration_Matcher( $catalogue );
+			foreach ( $detected as $embed ) {
+				$report['items'][] = array_merge( $embed, $matcher->find( $embed ) );
+				if ( ! empty( $embed['range_ambiguous'] ) ) {
+					$report['status'] = 'ambiguous';
+					$report['items'][ count( $report['items'] ) - 1 ]['status'] = 'ambiguous';
+				}
+			}
+		} catch ( \RuntimeException $error ) {
+			$report['status'] = 'error';
+			$report['items']  = array();
+			$report['error']  = __( 'Matching failed safely. Check the content encoding and PHP regular expression limits.', 'showfm' );
+		}
 		return $report;
 	}
 
@@ -81,7 +96,7 @@ final class Migration_Scanner {
 	 * @param string $content Content.
 	 */
 	public static function already( string $content ): bool {
-		return 1 === preg_match( '~<!--\s+wp:showfm/[a-z-]+(?:\s|/)~', $content );
+		return Migration_Tokens::match( '~<!--\s+wp:showfm/[a-z-]+(?:\s|/)~', $content );
 	}
 
 	/**
@@ -90,6 +105,32 @@ final class Migration_Scanner {
 	 * @param \WP_Post $post Source.
 	 */
 	public static function hash( \WP_Post $post ): string {
-		return hash( 'sha256', (string) wp_json_encode( array( $post->post_content, $post->post_title, $post->post_date_gmt, get_post_meta( $post->ID, 'enclosure', false ), get_post_meta( $post->ID, 'audio_file', false ) ) ) );
+		return hash( 'sha256', (string) wp_json_encode( array( $post->post_content, $post->post_title, $post->post_date_gmt, $post->post_status, self::meta( $post->ID, 'enclosure' ), self::meta( $post->ID, 'audio_file' ) ) ) );
+	}
+	/**
+	 * Bypass object caches for migration evidence and compare-and-swap.
+	 *
+	 * @param int $id Post ID.
+	 * @return \WP_Post|null
+	 */
+	public static function fresh( int $id ): ?\WP_Post {
+		global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Fresh evidence must bypass object caches.
+		$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->posts} WHERE ID = %d", $id ) );
+		return $row ? new \WP_Post( sanitize_post( $row, 'raw' ) ) : null;
+	}
+
+	/**
+	 * Fresh metadata in insertion order, including referenced SSP episodes.
+	 *
+	 * @param int    $id Post ID.
+	 * @param string $key Metadata key.
+	 * @return array<int,mixed>
+	 */
+	public static function meta( int $id, string $key ): array {
+		global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Revalidation cannot trust cached metadata.
+		$values = $wpdb->get_col( $wpdb->prepare( "SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_key = %s ORDER BY meta_id", $id, $key ) );
+		return array_map( 'maybe_unserialize', $values );
 	}
 }

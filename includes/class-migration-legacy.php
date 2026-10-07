@@ -22,11 +22,16 @@ final class Migration_Legacy {
 	/**
 	 * Suppress SSP's automatic content player only for its migrated audio file.
 	 *
-	 * @param bool     $show Whether SSP would show a player.
-	 * @param \WP_Post $post Content post.
+	 * @param mixed $show Whether SSP would show a player.
+	 * @param mixed $post Content post.
+	 * @return mixed
 	 */
-	public static function ssp( bool $show, \WP_Post $post ): bool {
-		return $show && ! self::replaced( $post, 'ssp', 'audio_file' );
+	public static function ssp( $show, $post ) {
+		try {
+			return $post instanceof \WP_Post && self::replaced( $post, 'ssp', 'audio_file' ) ? false : $show;
+		} catch ( \RuntimeException $error ) {
+			return $show;
+		}
 	}
 
 	/**
@@ -38,8 +43,12 @@ final class Migration_Legacy {
 	 */
 	public static function powerpress( $settings ) {
 		global $post;
-		if ( is_array( $settings ) && doing_filter( 'the_content' ) && ! is_feed() && $post instanceof \WP_Post && self::replaced( $post, 'powerpress', 'enclosure' ) ) {
-			$settings['disable_appearance'] = 1;
+		try {
+			if ( is_array( $settings ) && doing_filter( 'the_content' ) && ! is_feed() && $post instanceof \WP_Post && self::replaced( $post, 'powerpress', 'enclosure' ) ) {
+				$settings['disable_appearance'] = 1;
+			}
+		} catch ( \RuntimeException $error ) {
+			return $settings;
 		}
 		return $settings;
 	}
@@ -55,18 +64,50 @@ final class Migration_Legacy {
 		if ( ! Migration_Scanner::already( $post->post_content ) ) {
 			return false;
 		}
-		$urls = self::markers( parse_blocks( $post->post_content ), $host );
+		$urls = self::coverage( $post, $host );
 		$meta = get_post_meta( $post->ID, $key, false );
 		if ( ! $meta ) {
 			return false;
 		}
 		foreach ( $meta as $value ) {
-			$url = is_string( $value ) ? Migration_Url::normalise( (string) strtok( $value, "\r\n" ) ) : '';
-			if ( '' === $url || ! in_array( $url, $urls, true ) ) {
+			$url = is_string( $value ) ? Migration_Url::fingerprint( Migration_Url::normalise( (string) strtok( $value, "\r\n" ) ) ) : null;
+			if ( null === $url || ! in_array( $url, $urls, true ) ) {
 				return false;
 			}
 		}
 		return true;
+	}
+
+	/**
+	 * Parsed content for this request.
+	 *
+	 * @var array<string,array<string,string[]>>
+	 */
+	private static $parsed = array();
+
+	/**
+	 * Parse each post/content version once, shared by detection and both filters.
+	 *
+	 * @param \WP_Post $post Post.
+	 * @param string   $host Provider.
+	 * @return string[]
+	 */
+	public static function coverage( \WP_Post $post, string $host ): array {
+		if ( ! Migration_Scanner::already( $post->post_content ) ) {
+			return array();
+		}
+		$key = get_current_blog_id() . ':' . $post->ID . ':' . hash( 'sha256', $post->post_content );
+		if ( ! isset( self::$parsed[ $key ] ) ) {
+			if ( count( self::$parsed ) >= Migration_Scanner::BATCH_SIZE ) {
+				array_shift( self::$parsed );
+			}
+			$blocks               = parse_blocks( $post->post_content );
+			self::$parsed[ $key ] = array(
+				'powerpress' => self::markers( $blocks, 'powerpress' ),
+				'ssp'        => self::markers( $blocks, 'ssp' ),
+			);
+		}
+		return self::$parsed[ $key ][ $host ] ?? array();
 	}
 
 	/**
@@ -80,8 +121,8 @@ final class Migration_Legacy {
 		$urls = array();
 		foreach ( $blocks as $block ) {
 			$snapshot = $block['attrs']['snapshot'] ?? array();
-			if ( 'showfm/player' === $block['blockName'] && ( $snapshot['legacyHost'] ?? '' ) === $host && is_string( $snapshot['legacyAudio'] ?? null ) ) {
-				$urls[] = $snapshot['legacyAudio'];
+			if ( 'showfm/player' === $block['blockName'] && ( $snapshot['legacyHost'] ?? '' ) === $host && is_string( $snapshot['legacyAudioSha256'] ?? null ) ) {
+				$urls[] = $snapshot['legacyAudioSha256'];
 			}
 			$urls = array_merge( $urls, self::markers( $block['innerBlocks'] ?? array(), $host ) );
 		}

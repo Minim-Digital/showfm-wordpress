@@ -16,12 +16,22 @@ final class Migration_Store {
 	const STATE = 'showfm_migration_state';
 
 	/**
+	 * Prevent re-entrant operations on the same database session.
+	 *
+	 * @var array<string,bool>
+	 */
+	private static $held = array();
+
+	/**
 	 * Current job, without fetching report bodies.
 	 *
 	 * @return array<string,mixed>
 	 */
 	public static function state(): array {
-		$value = get_option( self::STATE, array() );
+		global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- A CLI process must see state changed by another request after acquiring the lock.
+		$raw   = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", self::STATE ) );
+		$value = maybe_unserialize( $raw );
 		return is_array( $value ) ? $value : array();
 	}
 
@@ -85,18 +95,44 @@ final class Migration_Store {
 	}
 
 	/**
-	 * Forget the previous run in bounded batches before starting another.
+	 * Forget old runs only after the replacement catalogue has succeeded.
+	 *
+	 * @param string $keep Run to retain, or empty to remove everything.
 	 */
-	public static function clear(): void {
+	public static function clear( string $keep = '' ): void {
 		global $wpdb;
 		do {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Bounded cleanup of this plugin's report namespace.
-			$keys = $wpdb->get_col( $wpdb->prepare( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s LIMIT 50", $wpdb->esc_like( 'showfm_migration_' ) . '%' ) );
+			$keys = $wpdb->get_col( $wpdb->prepare( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s AND option_name NOT LIKE %s LIMIT 50", $wpdb->esc_like( 'showfm_migration_' ) . '%', $keep ? $wpdb->esc_like( 'showfm_migration_' . $keep . '_' ) . '%' : '' ) );
 			foreach ( $keys as $key ) {
 				delete_option( $key );
 			}
 			$size = count( $keys );
 		} while ( 50 === $size );
+	}
+
+	/**
+	 * Serialise report state transitions on this site, including CLI requests.
+	 *
+	 * @param callable $operation Operation.
+	 * @return mixed
+	 */
+	public static function locked( callable $operation ) {
+		global $wpdb;
+		$name = 'showfm_migrate_' . hash( 'sha256', $wpdb->dbname . $wpdb->options );
+		$name = substr( $name, 0, 64 );
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Connection-owned advisory lock, released in finally.
+		if ( isset( self::$held[ $name ] ) || '1' !== (string) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 0)', $name ) ) ) {
+			return new \WP_Error( 'showfm_busy', __( 'Another migration request is active. Resume when it finishes.', 'showfm' ) );
+		}
+		self::$held[ $name ] = true;
+		try {
+			return $operation();
+		} finally {
+			unset( self::$held[ $name ] );
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Release the same connection-owned lock.
+			$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $name ) );
+		}
 	}
 
 	/**

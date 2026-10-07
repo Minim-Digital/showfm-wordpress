@@ -80,16 +80,15 @@ class Test_Migrator extends WP_UnitTestCase {
 	}
 
 	public function test_normalisation_is_conservative_and_unwraps_nested_trackers(): void {
-		$base = 'media.example/Hello.mp3?episode=12&x=3';
-		$this->assertSame( $base, Migration_Url::normalise( 'HTTP://MEDIA.EXAMPLE/Hello.mp3?episode=12&amp;x=3#play' ) );
-		$this->assertSame( $base, Migration_Url::normalise( 'https://dts.podtrac.com/redirect.mp3/chtbl.com/track/ABCD/op3.dev/e/https://MEDIA.EXAMPLE/Hello.mp3?episode=12&x=3' ) );
-		$this->assertSame( 'media.example/Hello.mp3', Migration_Url::normalise( 'https://op3.dev/e/prefix/https://media.example/Hello.mp3' ) );
+		$this->assertSame( 'http://media.example/Hello.mp3', Migration_Url::normalise( 'HTTP://MEDIA.EXAMPLE/Hello.mp3?episode=12&amp;x=3#play' ) );
+		$this->assertSame( 'https://media.example/Hello.mp3', Migration_Url::normalise( 'https://dts.podtrac.com/redirect.mp3/chtbl.com/track/ABCD/op3.dev/e/https://MEDIA.EXAMPLE/Hello.mp3?token=private' ) );
 		$this->assertNotSame( Migration_Url::normalise( 'https://media.example/A.mp3' ), Migration_Url::normalise( 'https://media.example/a.mp3' ) );
-		$this->assertNotSame( Migration_Url::normalise( 'https://media.example/a?e=1' ), Migration_Url::normalise( 'https://media.example/a?e=2' ) );
-		foreach ( array( 'javascript:alert(1)', 'file:///tmp/x', 'https://user:pass@media.example/a' ) as $url ) {
-			$this->assertSame( '', Migration_Url::normalise( $url ) );
+		$this->assertSame( Migration_Url::normalise( 'https://media.example/a?e=1' ), Migration_Url::normalise( 'https://media.example/a?e=2' ) );
+		foreach ( array( 'javascript:alert(1)', 'file:///tmp/x' ) as $url ) {
+			$this->assertNull( Migration_Url::normalise( $url ) );
 		}
-		$this->assertStringStartsWith( 'dts.podtrac.com.evil/', Migration_Url::normalise( 'https://dts.podtrac.com.evil/redirect.mp3/media.example/a' ) );
+		$this->assertSame( 'https://media.example/a', Migration_Url::normalise( 'https://user:pass@media.example/a' ) );
+		$this->assertStringStartsWith( 'https://dts.podtrac.com.evil/', Migration_Url::normalise( 'https://dts.podtrac.com.evil/redirect.mp3/media.example/a' ) );
 	}
 
 	public function test_match_order_ambiguity_and_date_boundary(): void {
@@ -99,7 +98,10 @@ class Test_Migrator extends WP_UnitTestCase {
 			array(
 				'id'        => self::SECOND,
 				'audio_url' => 'https://elsewhere.example/audio.mp3',
-				'guid'      => 'original-guid',
+				'source'    => array(
+					'enclosure_sha256' => hash( 'sha256', 'https://elsewhere.example/audio.mp3' ),
+					'guid_sha256'      => hash( 'sha256', 'original-guid' ),
+				),
 			)
 		);
 		$embed  = array_merge( $a, array( 'guid' => 'original-guid' ) );
@@ -111,7 +113,7 @@ class Test_Migrator extends WP_UnitTestCase {
 		unset( $embed['guid'] );
 		$this->assertSame( 'ambiguous', Migration_Matcher::match( $embed, array( $a, $b ) )['status'] );
 		$embed['published_at'] = '2024-01-03T12:00:00Z';
-		$this->assertSame( 'matched', Migration_Matcher::match( $embed, array( $a ) )['status'] );
+		$this->assertSame( 'ambiguous', Migration_Matcher::match( $embed, array( $a ) )['status'] );
 		$embed['published_at'] = '2024-01-03T12:00:01Z';
 		$this->assertSame( 'unmatched', Migration_Matcher::match( $embed, array( $a ) )['status'] );
 		$this->assertSame( 'unmatched', Migration_Matcher::match( array( 'episode_id' => self::EPISODE ), array( $a ) )['status'] );
@@ -170,7 +172,10 @@ class Test_Migrator extends WP_UnitTestCase {
 		Migration_Swap::apply( $this->connection, $result );
 		$this->assertSame( $saved, get_post( $post->ID )->post_content );
 		$this->assertCount( $count, wp_get_post_revisions( $post->ID ) );
-		$this->assertSame( 'already_showfm', $this->scan( get_post( $post->ID ) )['status'] );
+		$rescanned = $this->scan( get_post( $post->ID ) );
+		$this->assertCount( 2, $rescanned['items'] );
+		$this->assertSame( 'already_showfm', $rescanned['items'][0]['status'] );
+		$this->assertSame( 'ambiguous', $rescanned['items'][1]['status'] );
 		wp_restore_post_revision( $result['revision_id'] );
 		$restored = get_post( $post->ID )->post_content;
 		$this->assertStringContainsString( $embed, $restored );
@@ -258,7 +263,7 @@ class Test_Migrator extends WP_UnitTestCase {
 		$second = ( new Migrator( $this->connection, new Api_Client( $this->connection ) ) )->batch();
 		$this->assertTrue( $second['complete'] );
 		$this->assertCount( 52, iterator_to_array( Migration_Store::reports( $state['run'] ) ) );
-		$this->assertSame( 3, $this->http->count(), 'No HTTP while scanning or resuming.' );
+		$this->assertSame( 2, $this->http->count(), 'No HTTP while scanning or resuming.' );
 		global $wpdb;
 		$this->assertSame( '0', (string) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE 'showfm_migration_%' AND autoload IN ('yes','on','auto','auto-on')" ) );
 	}
@@ -268,14 +273,16 @@ class Test_Migrator extends WP_UnitTestCase {
 		$state = $this->engine->start();
 		$this->assertNotWPError( $state );
 		$episodes = iterator_to_array( Migration_Catalogue::episodes( $state['run'], $state['pages'] ) );
-		$this->assertSame( array( $this->episode() ), $episodes );
+		$expected = $this->episode();
+		unset( $expected['audio_url'] );
+		$this->assertSame( array( $expected ), $episodes );
 		$this->assertArrayNotHasKey( 'guid', $episodes[0] );
 		$this->assertSame( 'https://api.show.fm/v1/me/podcasts?limit=50', $this->http->requests[0]['url'] );
 		$this->assertStringEndsWith( '/episodes?status=published&limit=50', $this->http->requests[1]['url'] );
-		$this->assertStringEndsWith( '/v1/me/episodes/' . self::EPISODE, $this->http->requests[2]['url'] );
+		$this->assertSame( 2, $this->http->count(), 'List responses are sufficient; no detail requests.' );
 		$this->http->respond( 503 );
 		$this->assertWPError( $this->engine->start() );
-		$this->assertSame( array(), Migration_Store::state() );
+		$this->assertSame( $state, Migration_Store::state() );
 	}
 
 	public function test_not_connected_and_cli_capabilities_refuse_before_http(): void {
@@ -320,7 +327,7 @@ class Test_Migrator extends WP_UnitTestCase {
 			)
 		);
 		$this->assertStringContainsString( '<!-- wp:showfm/player', get_post( $post->ID )->post_content );
-		$this->assertSame( 3, $this->http->count() );
+		$this->assertSame( 2, $this->http->count() );
 	}
 
 	public function test_report_and_connection_are_per_blog(): void {
@@ -406,7 +413,7 @@ class Test_Migrator extends WP_UnitTestCase {
 			);
 		}
 		$this->assertWPError( $this->engine->start() );
-		$this->assertSame( array(), Migration_Store::state() );
+		$this->assertSame( $state, Migration_Store::state() );
 	}
 
 	public function test_key_refusal_and_rate_limit_stop_catalogue_reads(): void {
@@ -415,6 +422,9 @@ class Test_Migrator extends WP_UnitTestCase {
 		$this->assertWPError( $this->engine->start() );
 		$this->assertSame( 1, $this->http->count() );
 		delete_option( Api_Client::RATE_LIMIT_OPTION );
+		$pending             = get_option( Migration_Catalogue::PENDING );
+		$pending['retry_at'] = 0;
+		update_option( Migration_Catalogue::PENDING, $pending, false );
 		$this->http->respond( 401 );
 		$this->assertWPError( $this->engine->start() );
 		$this->assertWPError( $this->engine->start() );
@@ -464,6 +474,11 @@ class Test_Migrator extends WP_UnitTestCase {
 			'title'        => 'Hello',
 			'published_at' => '2024-01-02T12:00:00Z',
 			'audio_url'    => 'https://media.example/Hello.mp3',
+			'source'       => array(
+				'enclosure_sha256' => hash( 'sha256', 'https://media.example/Hello.mp3' ),
+				'guid_sha256'      => null,
+			),
+			'rss_guid'     => null,
 		);
 	}
 
@@ -480,6 +495,9 @@ class Test_Migrator extends WP_UnitTestCase {
 		global $wpdb;
 		$wpdb->update( $wpdb->posts, array( 'post_content' => $content ), array( 'ID' => $id ) );
 		clean_post_cache( $id );
+		if ( '[powerpress]' === $content ) {
+			update_post_meta( $id, 'enclosure', 'https://media.example/Hello.mp3' );
+		}
 		return get_post( $id );
 	}
 
@@ -506,14 +524,10 @@ class Test_Migrator extends WP_UnitTestCase {
 			200,
 			wp_json_encode(
 				array(
-					'data'       => array( array( 'id' => self::EPISODE ) ),
+					'data'       => array( array_diff_key( $this->episode(), array( 'audio_url' => true ) ) + array( 'status' => 'published' ) ),
 					'pagination' => array( 'next_cursor' => null ),
 				)
 			)
 		);
-		$episode           = $this->episode();
-		$episode['status'] = 'published';
-		$episode['media']  = array( 'audio' => array( 'url' => $episode['audio_url'] ) );
-		$this->http->respond( 200, wp_json_encode( array( 'data' => $episode ) ) );
 	}
 }
