@@ -81,22 +81,40 @@ final class Api_Result {
 	private $message;
 
 	/**
+	 * The API's error code (for example `invalid_request`) on an error response, else ''.
+	 *
+	 * @var string
+	 */
+	private $error_code;
+
+	/**
+	 * The API's machine-readable reason (for example `mismatch`) on an error response, else ''.
+	 *
+	 * @var string
+	 */
+	private $error_reason;
+
+	/**
 	 * Builds a result.
 	 *
-	 * @param string      $type        One of the type constants.
-	 * @param int         $status      HTTP status code, or 0.
-	 * @param mixed       $data        Decoded body on success.
-	 * @param string|null $etag        ETag header.
-	 * @param int         $retry_after Seconds to wait, for rate limiting.
-	 * @param string      $message     Diagnostic message without secrets.
+	 * @param string      $type         One of the type constants.
+	 * @param int         $status       HTTP status code, or 0.
+	 * @param mixed       $data         Decoded body on success.
+	 * @param string|null $etag         ETag header.
+	 * @param int         $retry_after  Seconds to wait, for rate limiting.
+	 * @param string      $message      Diagnostic message without secrets.
+	 * @param string      $error_code   The API's error code, or ''.
+	 * @param string      $error_reason The API's error reason, or ''.
 	 */
-	public function __construct( string $type, int $status = 0, $data = null, ?string $etag = null, int $retry_after = 0, string $message = '' ) {
-		$this->type        = $type;
-		$this->status      = $status;
-		$this->data        = $data;
-		$this->etag        = $etag;
-		$this->retry_after = $retry_after;
-		$this->message     = $message;
+	public function __construct( string $type, int $status = 0, $data = null, ?string $etag = null, int $retry_after = 0, string $message = '', string $error_code = '', string $error_reason = '' ) {
+		$this->type         = $type;
+		$this->status       = $status;
+		$this->data         = $data;
+		$this->etag         = $etag;
+		$this->retry_after  = $retry_after;
+		$this->message      = $message;
+		$this->error_code   = $error_code;
+		$this->error_reason = $error_reason;
 	}
 
 	/**
@@ -150,5 +168,19 @@ final class Api_Result {
 	 */
 	public function message(): string {
 		return $this->message;
+	}
+
+	/**
+	 * The API's error code on an error response (for example `plan_upgrade_required`), or ''.
+	 */
+	public function error_code(): string {
+		return $this->error_code;
+	}
+
+	/**
+	 * The API's reason for refusing a request (for example `mismatch`), or ''.
+	 */
+	public function error_reason(): string {
+		return $this->error_reason;
 	}
 }

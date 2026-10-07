@@ -66,6 +66,16 @@ class Test_No_Outbound_Http extends WP_UnitTestCase {
 		$this->assertSame( array(), $this->scheduled_plugin_events() );
 	}
 
+	public function test_admin_init_and_rest_init_make_no_requests_when_not_connected(): void {
+		( new ShowFM\Connection() )->disconnect();
+
+		Plugin::health()->ensure_scheduled();
+		rest_get_server();
+
+		$this->assertSame( 0, $this->http->count() );
+		$this->assertSame( array(), $this->scheduled_plugin_events() );
+	}
+
 	/**
 	 * Hooks of the plugin's scheduled events.
 	 *

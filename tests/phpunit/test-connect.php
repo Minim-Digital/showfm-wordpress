@@ -1,0 +1,620 @@
+<?php
+/**
+ * The browser connect flow: start, return, exchange and verify.
+ *
+ * @package ShowFM
+ */
+
+use ShowFM\Admin;
+use ShowFM\Api_Client;
+use ShowFM\Connect;
+use ShowFM\Connection;
+use ShowFM\Health;
+
+/**
+ * Connect flow tests.
+ */
+class Test_Connect extends WP_UnitTestCase {
+
+	const SITE_ID = '0b5d6f0e-1c2d-4e3f-8a9b-0c1d2e3f4a5b';
+	const KEY     = 'showfm_live_NEWKEYabcdefghijklmnopqrstuv';
+	const SECRET  = '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08';
+	const CODE    = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ';
+
+	/**
+	 * HTTP mock.
+	 *
+	 * @var ShowFM_Http_Mock
+	 */
+	private $http;
+
+	/**
+	 * Connection.
+	 *
+	 * @var Connection
+	 */
+	private $connection;
+
+	/**
+	 * Service under test.
+	 *
+	 * @var Connect
+	 */
+	private $connect;
+
+	/**
+	 * The admin running the flow.
+	 *
+	 * @var int
+	 */
+	private $user_id;
+
+	/**
+	 * Captured error log.
+	 *
+	 * @var string
+	 */
+	private $log_file;
+
+	/**
+	 * Previous error_log setting.
+	 *
+	 * @var string|false
+	 */
+	private $previous_log;
+
+	public function set_up(): void {
+		parent::set_up();
+		$this->http       = new ShowFM_Http_Mock();
+		$this->connection = new Connection();
+		$this->connection->disconnect();
+		$this->connect = new Connect( $this->connection, new Api_Client( $this->connection ) );
+		$this->user_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		if ( is_multisite() ) {
+			grant_super_admin( $this->user_id );
+		}
+		wp_set_current_user( $this->user_id );
+		delete_option( Api_Client::RATE_LIMIT_OPTION );
+		delete_option( Connect::VERIFY_PENDING_OPTION );
+		wp_clear_scheduled_hook( Health::HOOK );
+
+		$this->log_file     = wp_tempnam( 'showfm-log' );
+		$this->previous_log = ini_set( 'error_log', $this->log_file );
+	}
+
+	public function tear_down(): void {
+		unset( $_REQUEST['_wpnonce'], $_GET['code'], $_GET['state'] );
+		ini_set( 'error_log', (string) $this->previous_log );
+		$log = (string) file_get_contents( $this->log_file );
+		unlink( $this->log_file );
+		$this->http->detach();
+		$this->connection->disconnect();
+		wp_clear_scheduled_hook( Health::HOOK );
+		parent::tear_down();
+		foreach ( array( self::KEY, self::CODE, self::SECRET ) as $secret ) {
+			$this->assertStringNotContainsString( $secret, $log, 'Secrets must never be logged.' );
+		}
+	}
+
+
+	public function test_start_stores_the_flow_and_builds_the_redirect_without_http(): void {
+		$url = $this->connect->start( $this->user_id );
+
+		$this->assertSame( 0, $this->http->count(), 'Starting the flow makes no request.' );
+
+		$parts = wp_parse_url( $url );
+		$this->assertSame( 'https', $parts['scheme'] );
+		$this->assertSame( 'my.show.fm', $parts['host'] );
+		$this->assertSame( '/connect/wordpress', $parts['path'] );
+		parse_str( $parts['query'], $query );
+		$this->assertSame( array( 'site_url', 'rest_root', 'state', 'code_challenge', 'return' ), array_keys( $query ) );
+		$this->assertSame( home_url(), $query['site_url'] );
+		$this->assertSame( rest_url(), $query['rest_root'] );
+		$this->assertSame( admin_url( 'admin.php?page=showfm' ), $query['return'] );
+		$this->assertMatchesRegularExpression( '/^[A-Za-z0-9_-]{43}$/', $query['state'], '32 random bytes, base64url.' );
+		$this->assertMatchesRegularExpression( '/^[A-Za-z0-9_-]{43}$/', $query['code_challenge'] );
+
+		$flow = get_transient( Connect::FLOW_PREFIX . $this->user_id );
+		$this->assertSame( $query['state'], $flow['state'] );
+		$this->assertMatchesRegularExpression( '/^[A-Za-z0-9._~-]{43,128}$/', $flow['verifier'] );
+		$this->assertSame( $query['code_challenge'], Connect::s256( $flow['verifier'] ) );
+		$this->assertStringNotContainsString( $flow['verifier'], $url, 'The verifier never leaves the server.' );
+		$this->assertSame( $query['code_challenge'], Connect::challenge_for_state( $query['state'] ) );
+
+		$timeout = (int) get_option( '_transient_timeout_' . Connect::FLOW_PREFIX . $this->user_id );
+		$this->assertEqualsWithDelta( time() + 600, $timeout, 5, 'The flow lives 10 minutes.' );
+	}
+
+	public function test_s256_matches_the_rfc_7636_vector(): void {
+		$this->assertSame( 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM', Connect::s256( 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk' ) );
+	}
+
+	public function test_each_start_uses_a_new_state_and_drops_the_old_challenge(): void {
+		parse_str( (string) wp_parse_url( $this->connect->start( $this->user_id ), PHP_URL_QUERY ), $first );
+		parse_str( (string) wp_parse_url( $this->connect->start( $this->user_id ), PHP_URL_QUERY ), $second );
+
+		$this->assertNotSame( $first['state'], $second['state'] );
+		$this->assertNull( Connect::challenge_for_state( $first['state'] ) );
+		$this->assertNotNull( Connect::challenge_for_state( $second['state'] ) );
+	}
+
+	public function test_partner_is_validated(): void {
+		$this->assertNull( Connect::partner(), 'Unset by default.' );
+		$this->assertStringNotContainsString( 'partner=', $this->connect->start( $this->user_id ) );
+
+		$this->assertSame( 'acme-hosting', Connect::sanitize_partner( ' Acme-Hosting ' ) );
+		$this->assertNull( Connect::sanitize_partner( 'a' ) );
+		$this->assertNull( Connect::sanitize_partner( '-acme' ) );
+		$this->assertNull( Connect::sanitize_partner( 'acme hosting' ) );
+		$this->assertNull( Connect::sanitize_partner( str_repeat( 'a', 41 ) ) );
+		$this->assertNull( Connect::sanitize_partner( array( 'acme' ) ) );
+	}
+
+	public function test_app_url_accepts_only_show_fm_hosts(): void {
+		$this->assertSame( 'https://my.show.fm', Connect::app_url(), 'Production by default.' );
+		$this->assertSame( 'https://my.showfm.dev', Connect::sanitize_app_url( 'https://my.showfm.dev' ) );
+		$this->assertSame( 'https://my.showfm.dev', Connect::sanitize_app_url( 'https://MY.showfm.dev/' ) );
+		$this->assertSame( 'https://my.show.fm', Connect::sanitize_app_url( 'https://evil.example' ) );
+		$this->assertSame( 'https://my.show.fm', Connect::sanitize_app_url( 'http://my.showfm.dev' ) );
+		$this->assertSame( 'https://my.show.fm', Connect::sanitize_app_url( 'https://my.showfm.dev/x' ) );
+		$this->assertSame( 'https://my.show.fm', Connect::sanitize_app_url( 'https://my.showfm.dev:8443' ) );
+		$this->assertSame( 'https://my.show.fm', Connect::sanitize_app_url( 'https://user@my.showfm.dev' ) );
+		$this->assertSame( 'https://my.show.fm', Connect::sanitize_app_url( null ) );
+	}
+
+	/**
+	 * Constants cannot be undefined, so this runs in its own process.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_constants_set_the_partner_and_the_staging_app(): void {
+		define( 'SHOWFM_PARTNER', 'Acme-Hosting' );
+		define( 'SHOWFM_APP_URL', 'https://my.showfm.dev' );
+
+		$url = $this->connect->start( $this->user_id );
+
+		$this->assertStringStartsWith( 'https://my.showfm.dev/connect/wordpress?', $url );
+		parse_str( (string) wp_parse_url( $url, PHP_URL_QUERY ), $query );
+		$this->assertSame( 'acme-hosting', $query['partner'] );
+		$this->assertSame( array( 'my.showfm.dev' ), array_values( array_intersect( array( 'my.showfm.dev' ), Admin::allow_app_host( array() ) ) ) );
+	}
+
+	public function test_admin_post_needs_manage_options(): void {
+		$admin = new Admin( $this->connect, $this->connection );
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+		$_REQUEST['_wpnonce'] = wp_create_nonce( Connect::ACTION );
+
+		$this->expectException( WPDieException::class );
+		$admin->start_connect();
+	}
+
+	public function test_admin_post_needs_a_nonce(): void {
+		$admin                = new Admin( $this->connect, $this->connection );
+		$_REQUEST['_wpnonce'] = 'not-a-nonce';
+
+		try {
+			$admin->start_connect();
+			$this->fail( 'A bad nonce must stop the flow.' );
+		} catch ( WPDieException $e ) {
+			$this->assertFalse( get_transient( Connect::FLOW_PREFIX . $this->user_id ) );
+		}
+	}
+
+	public function test_admin_post_redirects_to_the_app(): void {
+		$admin                = new Admin( $this->connect, $this->connection );
+		$_REQUEST['_wpnonce'] = wp_create_nonce( Connect::ACTION );
+		$location             = $this->capture_redirect( array( $admin, 'start_connect' ) );
+
+		$this->assertStringStartsWith( 'https://my.show.fm/connect/wordpress?', $location );
+		$this->assertSame( 0, $this->http->count() );
+	}
+
+
+	public function test_no_code_or_state_is_nothing_to_do(): void {
+		$this->assertNull( $this->connect->handle_return( $this->user_id, array( 'page' => 'showfm' ) ) );
+		$this->assertNull( Connect::result( $this->user_id ) );
+	}
+
+	public function test_matching_state_keeps_the_code_server_side_and_cleans_the_url(): void {
+		$state = $this->started_state();
+
+		$clean = $this->connect->handle_return(
+			$this->user_id,
+			array(
+				'code'  => self::CODE,
+				'state' => $state,
+			)
+		);
+
+		$this->assertSame( admin_url( 'admin.php?page=showfm' ), $clean );
+		$this->assertStringNotContainsString( 'code=', $clean );
+		$this->assertStringNotContainsString( 'state=', $clean );
+		$this->assertSame( 0, $this->http->count(), 'The exchange runs on the clean page load, not here.' );
+		$flow = get_transient( Connect::FLOW_PREFIX . $this->user_id );
+		$this->assertSame( self::CODE, $flow['code'] );
+		$this->assertArrayNotHasKey( 'state', $flow, 'The state is spent.' );
+		$this->assertNull( Connect::challenge_for_state( $state ) );
+	}
+
+	public function test_state_is_single_use(): void {
+		$state = $this->started_state();
+		$query = array(
+			'code'  => self::CODE,
+			'state' => $state,
+		);
+		$this->connect->handle_return( $this->user_id, $query );
+
+		$this->connect->handle_return( $this->user_id, $query );
+
+		$this->assertSame( Connect::ERROR_EXPIRED, Connect::result( $this->user_id )['error'] );
+	}
+
+	public function test_wrong_state_is_refused_and_the_real_flow_survives(): void {
+		$state = $this->started_state();
+
+		$clean = $this->connect->handle_return(
+			$this->user_id,
+			array(
+				'code'  => self::CODE,
+				'state' => str_repeat( 'x', 43 ),
+			)
+		);
+
+		$this->assertSame( admin_url( 'admin.php?page=showfm' ), $clean );
+		$this->assertSame( Connect::ERROR_STATE_MISMATCH, Connect::result( $this->user_id )['error'] );
+		$this->assertSame( $state, get_transient( Connect::FLOW_PREFIX . $this->user_id )['state'] );
+		$this->assertFalse( $this->connect->complete_pending( $this->user_id ) );
+		$this->assertSame( 0, $this->http->count() );
+	}
+
+	public function test_another_users_state_is_refused(): void {
+		$state = $this->started_state();
+		$other = self::factory()->user->create( array( 'role' => 'administrator' ) );
+
+		$this->connect->handle_return(
+			$other,
+			array(
+				'code'  => self::CODE,
+				'state' => $state,
+			)
+		);
+
+		$this->assertSame( Connect::ERROR_EXPIRED, Connect::result( $other )['error'] );
+		$this->assertFalse( $this->connect->complete_pending( $other ) );
+	}
+
+	public function test_expired_flow_is_refused(): void {
+		$state = $this->started_state();
+		delete_transient( Connect::FLOW_PREFIX . $this->user_id );
+
+		$this->connect->handle_return(
+			$this->user_id,
+			array(
+				'code'  => self::CODE,
+				'state' => $state,
+			)
+		);
+
+		$this->assertSame( Connect::ERROR_EXPIRED, Connect::result( $this->user_id )['error'] );
+	}
+
+	public function test_malformed_code_is_refused_and_spends_the_state(): void {
+		$state = $this->started_state();
+
+		$this->connect->handle_return(
+			$this->user_id,
+			array(
+				'code'  => 'short',
+				'state' => $state,
+			)
+		);
+
+		$this->assertSame( Connect::ERROR_EXCHANGE_REFUSED, Connect::result( $this->user_id )['error'] );
+		$this->assertFalse( get_transient( Connect::FLOW_PREFIX . $this->user_id ) );
+	}
+
+	public function test_settings_load_redirects_to_the_clean_url(): void {
+		$admin         = new Admin( $this->connect, $this->connection );
+		$state         = $this->started_state();
+		$_GET['code']  = self::CODE;
+		$_GET['state'] = $state;
+
+		$location = $this->capture_redirect( array( $admin, 'load' ) );
+
+		unset( $_GET['code'], $_GET['state'] );
+		$this->assertSame( admin_url( 'admin.php?page=showfm' ), $location );
+		$this->assertSame( 0, $this->http->count() );
+	}
+
+
+	public function test_exchange_stores_the_credentials_and_verifies(): void {
+		$this->returned();
+		$verifier = get_transient( Connect::FLOW_PREFIX . $this->user_id )['verifier'];
+		$this->http->respond( 200, $this->exchange_body() );
+		$this->http->respond( 200, '{"data":{"status":"active","activated":true}}' );
+
+		$this->assertTrue( $this->connect->complete_pending( $this->user_id ) );
+
+		$this->assertSame( 2, $this->http->count() );
+		$exchange = $this->http->requests[0];
+		$this->assertSame( 'https://api.show.fm/v1/sites/exchange', $exchange['url'], 'Nothing secret in the URL.' );
+		$this->assertSame( 'POST', $exchange['args']['method'] );
+		$this->assertArrayNotHasKey( 'Authorization', $exchange['args']['headers'] );
+		$this->assertSame(
+			array(
+				'code'          => self::CODE,
+				'code_verifier' => $verifier,
+			),
+			json_decode( $exchange['args']['body'], true )
+		);
+
+		$verify = $this->http->requests[1];
+		$this->assertSame( 'https://api.show.fm/v1/me/sites/' . self::SITE_ID . '/verify', $verify['url'] );
+		$this->assertSame( 'Bearer ' . self::KEY, $verify['args']['headers']['Authorization'] );
+		$body = json_decode( $verify['args']['body'], true );
+		$this->assertSame( SHOWFM_VERSION, $body['plugin_version'] );
+		$this->assertSame( get_bloginfo( 'version' ), $body['wp_version'] );
+		$this->assertMatchesRegularExpression( '/^[0-9A-Za-z.+_ -]{1,32}$/', $body['php_version'] );
+		$this->assertSame( get_bloginfo( 'name' ), $body['site_name'] );
+
+		$fresh = new Connection();
+		$this->assertSame( Connection::STATE_CONNECTED, $fresh->state() );
+		$this->assertSame( self::KEY, $fresh->key() );
+		$this->assertSame( self::SECRET, $fresh->ping_secret() );
+		$this->assertSame( self::SITE_ID, $fresh->site_id() );
+		$this->assertSame( strtotime( '2027-10-08T09:00:00.000Z' ), $fresh->expires_at() );
+
+		$stored = maybe_serialize( get_option( Connection::OPTION ) );
+		$this->assertStringNotContainsString( self::KEY, $stored, 'Stored encrypted.' );
+		$this->assertStringNotContainsString( self::SECRET, $stored );
+
+		$this->assertSame( Connect::STATUS_CONNECTED, Connect::result( $this->user_id )['status'] );
+		$this->assertSame( '', Connect::result( $this->user_id )['error'] );
+		$this->assertFalse( Connect::verify_pending() );
+		$this->assertNotFalse( wp_next_scheduled( Health::HOOK ) );
+		$this->assertFalse( get_transient( Connect::FLOW_PREFIX . $this->user_id ), 'The code is used once.' );
+		$this->assertFalse( $this->connect->complete_pending( $this->user_id ) );
+	}
+
+	/**
+	 * @dataProvider exchange_failures
+	 *
+	 * @param int                  $status   Status, or 0 for a network error.
+	 * @param string               $body     Body.
+	 * @param array<string,string> $headers  Headers.
+	 * @param string               $expected Error type.
+	 * @param int                  $retry    Expected retry_after.
+	 */
+	public function test_exchange_failures_leave_a_typed_error( int $status, string $body, array $headers, string $expected, int $retry ): void {
+		$this->returned();
+		if ( 0 === $status ) {
+			$this->http->fail( 'cURL error 28: timed out with code ' . self::CODE );
+		} else {
+			$this->http->respond( $status, $body, $headers );
+		}
+
+		$this->assertTrue( $this->connect->complete_pending( $this->user_id ) );
+
+		$result = Connect::result( $this->user_id );
+		$this->assertSame( Connect::STATUS_FAILED, $result['status'] );
+		$this->assertSame( $expected, $result['error'] );
+		$this->assertSame( $retry, $result['retry_after'] );
+		$this->assertSame( Connection::STATE_DISCONNECTED, $this->connection->state() );
+		$this->assertSame( 1, $this->http->count(), 'No verify after a failed exchange.' );
+		$this->assertNotSame( '', Connect::message( $result['error'], $result['retry_after'] ) );
+		$this->assertStringNotContainsString( self::CODE, (string) wp_json_encode( $result ) );
+		$this->assertFalse( wp_next_scheduled( Health::HOOK ) );
+	}
+
+	/**
+	 * @return array<string,array{0:int,1:string,2:array<string,string>,3:string,4:int}>
+	 */
+	public function exchange_failures(): array {
+		$refused = '{"error":{"code":"invalid_request","message":"The code is invalid, already used or expired."}}';
+		return array(
+			'code refused'      => array( 400, $refused, array(), Connect::ERROR_EXCHANGE_REFUSED, 0 ),
+			'not found'         => array( 404, '', array(), Connect::ERROR_EXCHANGE_REFUSED, 0 ),
+			'rate limited'      => array( 429, '', array( 'Retry-After' => '120' ), Connect::ERROR_RATE_LIMITED, 120 ),
+			'server error'      => array( 503, '', array( 'Retry-After' => '30' ), Connect::ERROR_UNREACHABLE, 0 ),
+			'network error'     => array( 0, '', array(), Connect::ERROR_UNREACHABLE, 0 ),
+			'not json'          => array( 200, '<html>', array(), Connect::ERROR_BAD_RESPONSE, 0 ),
+			'no data'           => array( 200, '{"site_id":"x"}', array(), Connect::ERROR_BAD_RESPONSE, 0 ),
+			'missing key'       => array( 200, '{"data":{"site_id":"' . self::SITE_ID . '","ping_secret":"' . self::SECRET . '","expires_at":"2027-10-08T09:00:00Z"}}', array(), Connect::ERROR_BAD_RESPONSE, 0 ),
+			'bad site id'       => array( 200, '{"data":{"site_id":"../../x","api_key":"' . self::KEY . '","ping_secret":"' . self::SECRET . '","expires_at":"2027-10-08T09:00:00Z"}}', array(), Connect::ERROR_BAD_RESPONSE, 0 ),
+			'bad expiry'        => array( 200, '{"data":{"site_id":"' . self::SITE_ID . '","api_key":"' . self::KEY . '","ping_secret":"' . self::SECRET . '","expires_at":"soon"}}', array(), Connect::ERROR_BAD_RESPONSE, 0 ),
+			'short ping secret' => array( 200, '{"data":{"site_id":"' . self::SITE_ID . '","api_key":"' . self::KEY . '","ping_secret":"abc","expires_at":"2027-10-08T09:00:00Z"}}', array(), Connect::ERROR_BAD_RESPONSE, 0 ),
+		);
+	}
+
+	public function test_storage_failure_is_reported(): void {
+		$this->returned();
+		$this->http->respond( 200, $this->exchange_body() );
+		add_filter(
+			'query',
+			static function ( $query ) {
+				return 0 === strpos( $query, 'INSERT' ) && false !== strpos( $query, "'" . Connection::OPTION . "'" ) ? '' : $query;
+			}
+		);
+
+		$this->connect->complete_pending( $this->user_id );
+
+		$this->assertSame( Connect::ERROR_STORAGE, Connect::result( $this->user_id )['error'] );
+		$this->assertSame( 1, $this->http->count() );
+	}
+
+	public function test_failed_verify_keeps_the_connection_and_retries_later(): void {
+		$this->returned();
+		$this->http->respond( 200, $this->exchange_body() );
+		$this->http->respond( 503 );
+
+		$this->connect->complete_pending( $this->user_id );
+
+		$result = Connect::result( $this->user_id );
+		$this->assertSame( Connect::STATUS_CONNECTED, $result['status'] );
+		$this->assertSame( Connect::ERROR_VERIFY, $result['error'] );
+		$this->assertTrue( $this->connection->is_connected() );
+		$this->assertTrue( Connect::verify_pending() );
+		$this->assertNotFalse( wp_next_scheduled( Health::HOOK ), 'The health check retries the verify.' );
+	}
+
+	public function test_verify_401_marks_reconnect_needed(): void {
+		$this->returned();
+		$this->http->respond( 200, $this->exchange_body() );
+		$this->http->respond( 401, '{"error":{"code":"unauthorised","message":"No."}}' );
+
+		$this->connect->complete_pending( $this->user_id );
+
+		$this->assertSame( Connection::STATE_RECONNECT_NEEDED, $this->connection->state() );
+		$this->assertSame( Connect::ERROR_VERIFY, Connect::result( $this->user_id )['error'] );
+	}
+
+
+	public function test_reconnect_keeps_the_old_credentials_until_the_exchange_succeeds(): void {
+		$this->connection->save( 'showfm_live_OLDKEY000000000000000000001', str_repeat( 'a', 64 ), self::SITE_ID, 0 );
+
+		$this->returned();
+		$this->assertSame( 'showfm_live_OLDKEY000000000000000000001', $this->connection->key(), 'Starting a reconnect changes nothing.' );
+
+		$this->http->respond( 400 );
+		$this->connect->complete_pending( $this->user_id );
+		$this->assertSame( 'showfm_live_OLDKEY000000000000000000001', $this->connection->key(), 'A failed exchange keeps the old key.' );
+
+		$this->returned();
+		$this->http->respond( 200, $this->exchange_body() );
+		$this->http->respond( 200, '{"data":{}}' );
+		$this->connect->complete_pending( $this->user_id );
+		$this->assertSame( self::KEY, $this->connection->key() );
+		$this->assertSame( self::SECRET, $this->connection->ping_secret() );
+	}
+
+	public function test_reconnect_after_a_401_clears_reconnect_needed(): void {
+		$this->connection->save( 'showfm_live_OLDKEY000000000000000000001', str_repeat( 'a', 64 ), self::SITE_ID, 0 );
+		$this->connection->mark_reconnect_needed();
+
+		$this->returned();
+		$this->http->respond( 200, $this->exchange_body() );
+		$this->http->respond( 200, '{"data":{}}' );
+		$this->connect->complete_pending( $this->user_id );
+
+		$this->assertSame( Connection::STATE_CONNECTED, $this->connection->state() );
+		$this->assertSame( 'Bearer ' . self::KEY, $this->http->last()['args']['headers']['Authorization'] );
+	}
+
+
+	public function test_each_site_of_a_network_connects_separately(): void {
+		if ( ! is_multisite() ) {
+			$this->markTestSkipped( 'Multisite only.' );
+		}
+		$blog_id = self::factory()->blog->create();
+
+		$this->returned();
+		$this->http->respond( 200, $this->exchange_body() );
+		$this->http->respond( 200, '{"data":{}}' );
+		$this->connect->complete_pending( $this->user_id );
+		$this->assertTrue( $this->connection->is_connected() );
+
+		switch_to_blog( $blog_id );
+		try {
+			$this->assertSame( Connection::STATE_DISCONNECTED, $this->connection->state(), 'Site 2 is not connected by site 1.' );
+			$this->assertFalse( $this->connect->complete_pending( $this->user_id ), 'Site 1\'s flow does not exist on site 2.' );
+
+			$other_site = '1b5d6f0e-1c2d-4e3f-8a9b-0c1d2e3f4a5b';
+			$this->returned();
+			$this->http->respond( 200, $this->exchange_body( $other_site, 'showfm_live_SITE2KEYabcdefghijklmnopqrs' ) );
+			$this->http->respond( 200, '{"data":{}}' );
+			$this->connect->complete_pending( $this->user_id );
+
+			$this->assertSame( $other_site, $this->connection->site_id() );
+			$this->assertSame( 'showfm_live_SITE2KEYabcdefghijklmnopqrs', $this->connection->key() );
+			$this->assertStringContainsString( '/v1/me/sites/' . $other_site . '/verify', $this->http->last()['url'] );
+			$this->connection->disconnect();
+		} finally {
+			restore_current_blog();
+		}
+
+		$this->assertSame( self::SITE_ID, $this->connection->site_id(), 'Site 1 keeps its own connection.' );
+		$this->assertSame( self::KEY, $this->connection->key() );
+	}
+
+	public function test_start_on_a_network_site_uses_that_sites_addresses(): void {
+		if ( ! is_multisite() ) {
+			$this->markTestSkipped( 'Multisite only.' );
+		}
+		$blog_id = self::factory()->blog->create( array( 'path' => '/second/' ) );
+
+		switch_to_blog( $blog_id );
+		try {
+			parse_str( (string) wp_parse_url( $this->connect->start( $this->user_id ), PHP_URL_QUERY ), $query );
+			$this->assertSame( home_url(), $query['site_url'] );
+			$this->assertStringEndsWith( '/second', $query['site_url'], 'A subdirectory site sends its path; show.fm accepts it once #741 is merged.' );
+			$this->assertSame( admin_url( 'admin.php?page=showfm' ), $query['return'] );
+			$this->assertStringContainsString( '/second/wp-admin/', $query['return'] );
+		} finally {
+			restore_current_blog();
+		}
+		$this->assertFalse( get_transient( Connect::FLOW_PREFIX . $this->user_id ), 'The flow is stored on site 2 only.' );
+	}
+
+
+	/**
+	 * Starts a flow and returns its state.
+	 */
+	private function started_state(): string {
+		parse_str( (string) wp_parse_url( $this->connect->start( $this->user_id ), PHP_URL_QUERY ), $query );
+		return $query['state'];
+	}
+
+	/**
+	 * Starts a flow and returns to the settings page with a code, ready to exchange.
+	 */
+	private function returned(): void {
+		$this->connect->handle_return(
+			$this->user_id,
+			array(
+				'code'  => self::CODE,
+				'state' => $this->started_state(),
+			)
+		);
+	}
+
+	/**
+	 * A successful exchange response.
+	 *
+	 * @param string $site_id Site id.
+	 * @param string $key     Key.
+	 */
+	private function exchange_body( string $site_id = self::SITE_ID, string $key = self::KEY ): string {
+		return (string) wp_json_encode(
+			array(
+				'data' => array(
+					'site_id'     => $site_id,
+					'api_key'     => $key,
+					'ping_secret' => self::SECRET,
+					'expires_at'  => '2027-10-08T09:00:00.000Z',
+				),
+			)
+		);
+	}
+
+	/**
+	 * Runs a handler that redirects and returns the location.
+	 *
+	 * @param callable $handler Handler.
+	 */
+	private function capture_redirect( callable $handler ): string {
+		$throw = static function ( $location ) {
+			throw new ShowFM_Test_Redirect( $location ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Test exception, never output.
+		};
+		add_filter( 'wp_redirect', $throw );
+		try {
+			$handler();
+		} catch ( ShowFM_Test_Redirect $redirect ) {
+			return $redirect->getMessage();
+		} finally {
+			remove_filter( 'wp_redirect', $throw );
+		}
+		$this->fail( 'The handler did not redirect.' );
+		return '';
+	}
+}

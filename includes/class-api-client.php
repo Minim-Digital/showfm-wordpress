@@ -41,6 +41,9 @@ final class Api_Client {
 	/** Longest wait honoured from Retry-After (one hour). */
 	const MAX_RETRY_AFTER = 3600;
 
+	/** Option holding the time until which keyed calls wait after a 429 (autoload off). */
+	const RATE_LIMIT_OPTION = 'showfm_rate_limited_until';
+
 	/**
 	 * Connection store, the source of the site key.
 	 *
@@ -109,7 +112,7 @@ final class Api_Client {
 	 * @param string|null $etag ETag of the cached copy, sent as If-None-Match.
 	 */
 	public function get( string $path, ?string $etag = null ): Api_Result {
-		return $this->request( 'GET', $path, $this->conditional_headers( $etag ), null, '' );
+		return $this->request( 'GET', $path, $this->conditional_headers( $etag ), null );
 	}
 
 	/**
@@ -137,9 +140,61 @@ final class Api_Client {
 	}
 
 	/**
+	 * POST JSON without the site key, for the one-time code exchange. The values in
+	 * `$secrets` (the code and verifier) are scrubbed from any message.
+	 *
+	 * @param string              $path    Path starting with a slash.
+	 * @param array<string,mixed> $body    Body, sent as JSON.
+	 * @param string[]            $secrets Values that must never appear in a message.
+	 */
+	public function post( string $path, array $body, array $secrets = array() ): Api_Result {
+		$json = wp_json_encode( $body );
+		if ( false === $json ) {
+			return new Api_Result( Api_Result::FAILED, 0, null, null, 0, 'The request body could not be encoded.' );
+		}
+		return $this->request( 'POST', $path, array( 'Content-Type' => 'application/json' ), $json, $secrets );
+	}
+
+	/**
+	 * POST JSON with a key that is not stored yet: WP-CLI registration of a new site key.
+	 * A 401 here refuses that key only and leaves the stored connection alone.
+	 *
+	 * @param string              $path Path starting with a slash.
+	 * @param array<string,mixed> $body Body, sent as JSON.
+	 * @param string              $key  The new site key.
+	 */
+	public function post_with_key( string $path, array $body, string $key ): Api_Result {
+		$json = wp_json_encode( $body );
+		if ( false === $json || '' === $key ) {
+			return new Api_Result( Api_Result::FAILED, 0, null, null, 0, 'The request could not be built.' );
+		}
+		$waiting = self::rate_limit_remaining();
+		if ( $waiting > 0 ) {
+			return self::rate_limited( $waiting );
+		}
+
+		$headers = array(
+			'Content-Type'  => 'application/json',
+			'Authorization' => 'Bearer ' . $key,
+		);
+		$result  = $this->request( 'POST', $path, $headers, $json, array( $key ) );
+		self::record_rate_limit( $result );
+		return $result;
+	}
+
+	/**
+	 * Seconds left before keyed calls may be sent again after a 429, or 0.
+	 */
+	public static function rate_limit_remaining(): int {
+		$until = (int) get_option( self::RATE_LIMIT_OPTION, 0 );
+		return max( 0, $until - time() );
+	}
+
+	/**
 	 * Sends a keyed request. A 401 marks the connection as needing reconnection, after
 	 * which no keyed request is sent until the admin reconnects: retrying a revoked key
-	 * would spend the shared IP's auth-failure budget.
+	 * would spend the shared IP's auth-failure budget. A 429 holds every keyed call until
+	 * its Retry-After has passed.
 	 *
 	 * @param string               $method  HTTP method.
 	 * @param string               $path    Path starting with a slash.
@@ -151,14 +206,39 @@ final class Api_Client {
 		if ( null === $key ) {
 			return new Api_Result( Api_Result::UNAUTHORISED, 0, null, null, 0, 'This site is not connected to show.fm, or needs reconnecting.' );
 		}
+		$waiting = self::rate_limit_remaining();
+		if ( $waiting > 0 ) {
+			return self::rate_limited( $waiting );
+		}
 
 		$headers['Authorization'] = 'Bearer ' . $key;
 
-		$result = $this->request( $method, $path, $headers, $body, $key );
+		$result = $this->request( $method, $path, $headers, $body, array( $key ) );
 		if ( $result->is( Api_Result::UNAUTHORISED ) ) {
 			$this->connection->mark_reconnect_needed();
 		}
+		self::record_rate_limit( $result );
 		return $result;
+	}
+
+	/**
+	 * Holds keyed calls for the Retry-After of a 429.
+	 *
+	 * @param Api_Result $result Result of a keyed call.
+	 */
+	private static function record_rate_limit( Api_Result $result ): void {
+		if ( $result->is( Api_Result::RATE_LIMITED ) ) {
+			update_option( self::RATE_LIMIT_OPTION, time() + $result->retry_after(), false );
+		}
+	}
+
+	/**
+	 * A rate-limited result for a call that was held back and never sent.
+	 *
+	 * @param int $seconds Seconds left to wait.
+	 */
+	private static function rate_limited( int $seconds ): Api_Result {
+		return new Api_Result( Api_Result::RATE_LIMITED, 0, null, null, $seconds, 'Waiting for show.fm\'s rate limit to pass.' );
 	}
 
 	/**
@@ -181,9 +261,9 @@ final class Api_Client {
 	 * @param string               $path    Path starting with a slash.
 	 * @param array<string,string> $headers Request headers.
 	 * @param string|null          $body    Request body.
-	 * @param string               $secret  Value to scrub from any message, or ''.
+	 * @param string[]             $secrets Values to scrub from any message.
 	 */
-	private function request( string $method, string $path, array $headers, ?string $body, string $secret ): Api_Result {
+	private function request( string $method, string $path, array $headers, ?string $body, array $secrets = array() ): Api_Result {
 		if ( ! self::is_valid_path( $path ) ) {
 			return new Api_Result( Api_Result::FAILED, 0, null, null, 0, 'Invalid API path.' );
 		}
@@ -210,7 +290,7 @@ final class Api_Client {
 				null,
 				null,
 				0,
-				self::scrub( 'Network error: ' . $response->get_error_message(), $secret )
+				self::scrub( 'Network error: ' . $response->get_error_message(), $secrets )
 			);
 		}
 
@@ -234,12 +314,14 @@ final class Api_Client {
 			return new Api_Result( Api_Result::NOT_MODIFIED, $status, null, null !== $etag ? $etag : $sent );
 		}
 
+		list( $error_code, $error_reason ) = self::error_fields( (string) wp_remote_retrieve_body( $response ) );
+
 		if ( 401 === $status ) {
-			return new Api_Result( Api_Result::UNAUTHORISED, $status, null, null, 0, 'show.fm did not accept the site key.' );
+			return new Api_Result( Api_Result::UNAUTHORISED, $status, null, null, 0, 'show.fm did not accept the site key.', $error_code, $error_reason );
 		}
 
 		if ( 403 === $status || 404 === $status ) {
-			return new Api_Result( Api_Result::UNAVAILABLE, $status, null, null, 0, 'Not available from show.fm.' );
+			return new Api_Result( Api_Result::UNAVAILABLE, $status, null, null, 0, 'Not available from show.fm.', $error_code, $error_reason );
 		}
 
 		if ( 429 === $status ) {
@@ -257,7 +339,37 @@ final class Api_Client {
 			return new Api_Result( Api_Result::TRANSIENT_FAILURE, $status, null, null, 0, 'show.fm returned a server error.' );
 		}
 
-		return new Api_Result( Api_Result::FAILED, $status, null, null, 0, 'Unexpected response from show.fm.' );
+		return new Api_Result( Api_Result::FAILED, $status, null, null, 0, 'Unexpected response from show.fm.', $error_code, $error_reason );
+	}
+
+	/**
+	 * Reads `error.code` and the first `error.details[].reason` from an error body. Both are
+	 * short machine-readable tokens; anything else is dropped, and the message is never kept.
+	 *
+	 * @param string $raw Response body.
+	 * @return array{0:string,1:string}
+	 */
+	private static function error_fields( string $raw ): array {
+		$body = '' === $raw ? null : json_decode( $raw, true );
+		if ( ! is_array( $body ) || ! is_array( $body['error'] ?? null ) ) {
+			return array( '', '' );
+		}
+		$error  = $body['error'];
+		$code   = self::token( $error['code'] ?? null );
+		$reason = '';
+		if ( is_array( $error['details'] ?? null ) && is_array( $error['details'][0] ?? null ) ) {
+			$reason = self::token( $error['details'][0]['reason'] ?? null );
+		}
+		return array( $code, $reason );
+	}
+
+	/**
+	 * A machine-readable token from the API, or '' when the value is not one.
+	 *
+	 * @param mixed $value Value from the body.
+	 */
+	private static function token( $value ): string {
+		return is_string( $value ) && preg_match( '/^[a-z0-9_]{1,64}$/', $value ) ? $value : '';
 	}
 
 	/**
@@ -312,15 +424,17 @@ final class Api_Client {
 	}
 
 	/**
-	 * Removes a secret from a message.
+	 * Removes secrets from a message.
 	 *
-	 * @param string $message Message.
-	 * @param string $secret  Secret, or ''.
+	 * @param string   $message Message.
+	 * @param string[] $secrets Secrets.
 	 */
-	private static function scrub( string $message, string $secret ): string {
-		if ( '' === $secret ) {
-			return $message;
+	private static function scrub( string $message, array $secrets ): string {
+		foreach ( $secrets as $secret ) {
+			if ( '' !== $secret ) {
+				$message = str_replace( $secret, '[redacted]', $message );
+			}
 		}
-		return str_replace( $secret, '[redacted]', $message );
+		return $message;
 	}
 }

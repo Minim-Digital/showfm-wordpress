@@ -26,6 +26,8 @@ final class Plugin {
 	 */
 	const CRON_HOOKS = array(
 		Cache::REFRESH_HOOK,
+		Health::HOOK,
+		Ping_Endpoint::PULL_HOOK,
 	);
 
 	/**
@@ -50,10 +52,38 @@ final class Plugin {
 	private static $cache = null;
 
 	/**
-	 * Registers hooks. Runs on `plugins_loaded`.
+	 * Shared connect service.
+	 *
+	 * @var Connect|null
+	 */
+	private static $connect = null;
+
+	/**
+	 * Shared health reporter.
+	 *
+	 * @var Health|null
+	 */
+	private static $health = null;
+
+	/**
+	 * Registers hooks. Runs on `plugins_loaded`. Nothing here makes a request.
 	 */
 	public static function boot(): void {
 		add_action( Cache::REFRESH_HOOK, array( self::cache(), 'refresh' ) );
+		add_action( Health::HOOK, array( self::health(), 'run' ) );
+
+		add_action( 'rest_api_init', array( Challenge_Endpoint::class, 'register' ) );
+		add_action( 'rest_api_init', array( new Ping_Endpoint( self::connection() ), 'register' ) );
+
+		add_action( 'admin_init', array( Privacy::class, 'register' ) );
+		add_action( 'admin_init', array( self::health(), 'ensure_scheduled' ) );
+		if ( is_admin() ) {
+			( new Admin( self::connect(), self::connection() ) )->boot();
+		}
+
+		if ( defined( 'WP_CLI' ) && WP_CLI ) {
+			Cli::register( new Cli( self::connect(), self::connection() ) );
+		}
 	}
 
 	/**
@@ -100,7 +130,7 @@ final class Plugin {
 	/**
 	 * Removes the plugin's scheduled events on the current site.
 	 */
-	private static function unschedule_events(): void {
+	public static function unschedule_events(): void {
 		foreach ( self::CRON_HOOKS as $hook ) {
 			wp_unschedule_hook( $hook );
 		}
@@ -137,11 +167,33 @@ final class Plugin {
 	}
 
 	/**
+	 * The connect service.
+	 */
+	public static function connect(): Connect {
+		if ( null === self::$connect ) {
+			self::$connect = new Connect( self::connection(), self::api_client() );
+		}
+		return self::$connect;
+	}
+
+	/**
+	 * The health reporter.
+	 */
+	public static function health(): Health {
+		if ( null === self::$health ) {
+			self::$health = new Health( self::connection(), self::api_client(), self::connect() );
+		}
+		return self::$health;
+	}
+
+	/**
 	 * Drops the shared instances. Used by tests.
 	 */
 	public static function reset(): void {
 		self::$connection = null;
 		self::$api_client = null;
 		self::$cache      = null;
+		self::$connect    = null;
+		self::$health     = null;
 	}
 }

@@ -17,7 +17,7 @@ show.fm hosts podcasts. This plugin brings a show.fm show into WordPress:
 * A podcast player, episode lists, a play button and transcripts, as blocks and a shortcode.
 * Publish to WordPress: connect the site to show.fm and each new episode becomes a post.
 
-This version is an early development release. The blocks and the connection screen are not in it yet.
+This version is an early development release. It can connect a site to show.fm, from the show.fm menu or with WP-CLI, but the blocks and the designed settings screens are not in it yet.
 
 The plugin works for any public show.fm show without an account. Publish to WordPress needs a show.fm account and a connected site.
 
@@ -36,8 +36,17 @@ This plugin relies on show.fm, a podcast hosting service run by show.fm Ltd. It 
 **show.fm API for connected sites (api.show.fm)**
 
 * Used only after an administrator connects the site to a show.fm account.
-* When: to sync episodes into posts (every 15 minutes, and when show.fm signals that an episode changed), to report the connection's health, and to tell show.fm the address of each post created for an episode.
-* What is sent: the site key show.fm issued for this site, your site's address, the plugin version, sync status, and the post addresses and post IDs of synced posts.
+* Connecting (code exchange): once, when the administrator returns from my.show.fm after approving the connection. Sent: the one-time code from my.show.fm and the matching verifier this site created, in the body of a request to api.show.fm/v1/sites/exchange. show.fm answers with the site key and ping secret, which the plugin stores encrypted.
+* Connecting with WP-CLI: once, when someone runs `wp showfm connect --key=...`. Sent: the site key, your site's address and REST API address, and a one-time state and challenge, to api.show.fm/v1/me/sites.
+* Reporting in (verify): right after connecting. If that fails, it is retried with the next health report. Sent: the site key, the plugin, WordPress and PHP versions, and the site's name.
+* Health report: once a day while connected. Sent: the site key, the plugin, WordPress and PHP versions, the time of the last sync and the number of sync errors.
+* Sync: to sync episodes into posts (every 15 minutes, and when show.fm signals that an episode changed), and to tell show.fm the address of each post created for an episode. Sent: the site key, the plugin version, sync status, and the post addresses and post IDs of synced posts.
+* After show.fm refuses the site key, the plugin sends nothing more until an administrator reconnects. When show.fm asks it to slow down, it waits as long as show.fm says.
+
+**Requests from show.fm to your site**
+
+* Connection check: while an administrator connects the site, show.fm requests `/wp-json/showfm/v1/challenge` on your site to confirm that the request came from it. Your site answers with the one-time challenge only.
+* Wake-up pings: while connected, show.fm sends signed, empty requests to `/wp-json/showfm/v1/ping` when an episode changes. The plugin checks the signature, then starts a sync in the background. A ping carries no data.
 
 **show.fm media (m.cdn.media)**
 
@@ -47,8 +56,8 @@ This plugin relies on show.fm, a podcast hosting service run by show.fm Ltd. It 
 
 **show.fm account (my.show.fm)**
 
-* Used when an administrator clicks Connect. my.show.fm opens in the administrator's browser, where they sign in and approve the connection.
-* What is sent: your site's address and a one-time code that proves the request came from your site.
+* Used when an administrator clicks Connect to show.fm. my.show.fm opens in the administrator's browser, where they sign in and approve the connection.
+* What is sent, in the address the browser opens: your site's address, its REST API address, the address of the plugin's settings page to return to, a one-time state and challenge that prove the request came from your site, and a partner code if your host set one. No key is ever in that address.
 
 show.fm [Terms of Service](https://show.fm/terms) and [Privacy Policy](https://show.fm/privacy).
 
@@ -63,7 +72,12 @@ show.fm [Terms of Service](https://show.fm/terms) and [Privacy Policy](https://s
 
 Not for the player and episode lists of a public show. Publish to WordPress needs an account.
 
+= Can I connect from the command line? =
+
+Yes. Create a site key in show.fm under Connected sites, then Add a site with WP-CLI, and run `wp showfm connect --key=...`. `wp showfm status` shows the connection and `wp showfm disconnect` removes it. On a multisite network, add `--url=` to pick the site: each site connects separately.
+
 == Changelog ==
 
 = 0.1.0 =
 * Development release: the plugin's foundations (API client, cache and encrypted connection storage). No blocks or settings screens yet.
+* Connect a site to show.fm from the show.fm menu or with `wp showfm connect`, with a daily health report and signed wake-up pings.
