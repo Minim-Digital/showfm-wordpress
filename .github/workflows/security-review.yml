@@ -1,0 +1,110 @@
+name: Security Review
+
+# Ported from Minim-Digital/podcaster-plus-app (.github/workflows/security-review.yml at
+# 0e568357), trimmed to this repo. Read that file's header for the full history.
+#
+# HOW TO USE IT. Nothing scans until a PR has the `security-review` label. Add the label
+# when the PR is ready to merge, so the scan covers the final state. Any push while the
+# label is on rescans, so fixes made for findings are reviewed too.
+#
+# A GREEN TICK IS NOT ALWAYS A REAL REVIEW. The action caches a per-PR marker file and
+# writes it even when the run fails, and a later run that finds it exits green having
+# analysed nothing. `run-every-commit: true` below defeats the marker for new pushes,
+# not for a manual re-run of the same run id. If this job fails, fix the cause; do not
+# re-run it and trust the tick. The final step checks the verdict, not the exit status.
+#
+# To force a genuine re-scan, delete the PR's marker caches first:
+#   gh api /repos/Minim-Digital/showfm-wordpress/actions/caches --paginate \
+#     -q '.actions_caches[]|select(.key|test("pr-<N>"))|.id' \
+#     | xargs -I{} gh api -X DELETE /repos/Minim-Digital/showfm-wordpress/actions/caches/{}
+#
+# SCOPE. No paths are skipped. Every file in this repo ships in the plugin or controls how
+# it is built, tested or reviewed, including Markdown and AI instruction files.
+
+permissions:
+  pull-requests: write
+  contents: read
+
+on:
+  pull_request:
+    types: [labeled, synchronize]
+
+# Keyed on the event action as well as the ref, so a `synchronize` run can never cancel
+# the `labeled` run that a push and a label applied together both started.
+concurrency:
+  group: security-review-${{ github.ref }}-${{ github.event.action }}
+  cancel-in-progress: true
+
+jobs:
+  security:
+    if: contains(github.event.pull_request.labels.*.name, 'security-review')
+    runs-on: ubuntu-latest
+    # Caps everything outside the analysis, including a wedged apt step in the action.
+    timeout-minutes: 20
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    # CLAUDE_CODE_OAUTH_TOKEN is a repository secret from `claude setup-token`. It expires
+    # after about a year; regenerate it then and update the secret.
+    steps:
+      # The Azure apt mirror on hosted runners is intermittently unreachable and hangs apt
+      # silently. Repoint it before any step that installs packages, and fail closed if any
+      # reference survives.
+      - name: Neutralise the Azure apt mirror
+        run: |
+          set -euo pipefail
+          files=$(grep -rlF 'azure.archive.ubuntu.com' /etc/apt/ 2>/dev/null || true)
+          if [ -n "$files" ]; then
+            echo "rewriting: $files"
+            echo "$files" | xargs sudo sed -i \
+              's|https\?://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g'
+          else
+            echo "no apt source references the Azure mirror"
+          fi
+
+          if grep -rqF 'azure.archive.ubuntu.com' /etc/apt/ 2>/dev/null; then
+            echo "::error::apt still references the Azure mirror after the rewrite"
+            grep -rnF 'azure.archive.ubuntu.com' /etc/apt/ 2>/dev/null | head -20
+            exit 1
+          fi
+
+          printf 'Acquire::Retries "1";\nAcquire::http::Timeout "15";\nAcquire::https::Timeout "15";\n' \
+            | sudo tee /etc/apt/apt.conf.d/99-fail-fast >/dev/null
+
+          echo "verified: no apt source references the Azure mirror; retries capped"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Minim-Digital fork of anthropics/claude-code-security-review, pinned to the
+      # OAuth-token commit. scripts/security-review/ verifies the pin and source hashes,
+      # then applies a checked-in patch that feeds the action a complete local Git
+      # manifest and diff. See scripts/security-review/README.md.
+      - name: Checkout pinned security reviewer
+        uses: actions/checkout@v4
+        with:
+          repository: Minim-Digital/claude-code-security-review
+          ref: e1092743ad11d9d918e00cb4e740e7b121205d98
+          path: .security-review-action
+          persist-credentials: false
+      - name: Verify and prepare complete PR input adapter
+        run: |
+          python3 scripts/security-review/test_independent.py .security-review-action
+          python3 scripts/security-review/prepare_action.py .security-review-action
+          # Never accept results checked into the PR or left by an earlier run.
+          rm -f -- claudecode-results.json findings.json claudecode-error.log
+      - uses: ./.security-review-action
+        with:
+          comment-pr: true
+          claude-code-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Required: without it every scan after the first on a PR is a vacuous green.
+          run-every-commit: true
+          # Caps the analysis below the job timeout, so it aborts and reports.
+          claudecode-timeout: 10
+          # Pinned: the action's own default model is expensive and deprecated.
+          claude-model: claude-sonnet-5
+
+      - name: Require a completed security analysis
+        if: always()
+        run: python3 scripts/security-review/verify_result.py claudecode-results.json "$GITHUB_EVENT_PATH"
