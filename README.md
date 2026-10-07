@@ -82,14 +82,16 @@ undo behaviour and the current server contract gaps. No Migrate tab is included 
   Disconnect clears the admin's outcome. Each flow reads the connection once
   (`Connection::pinned()`): the browser flow keeps that snapshot (`{credentials, id}`, never the
   ciphertext) in its transient from the start to the exchange, every outcome it records is bound
-  to it, and the settings view, its notice and the Dashboard notice answer from one read. Every write made
-  on the basis of a pinned read is compare-and-set against its state id: disconnect is one
-  conditional UPDATE from the value read (the REST route also checks the `stateId` the screen
-  showed, and answers 409 with the fresh view if it changed); the "needs reconnecting" flag
-  (`showfm_connection_state`) and the plan pause (`showfm_plan_paused_at`) are written only
-  while their state is live and store that state's id, so they never apply to a connection
-  saved since; and reading the state never writes. Keyed API results carry the state id of the
-  key they sent. The
+  to it, and the settings view, its notice and the Dashboard notice answer from one read. Every change to the
+  connection state runs through `Connection::mutate()`: one per-site lock (the sync's lease on
+  its own row, `showfm_connection_lock`, with a 30-second TTL and a MySQL named lock where
+  available), a fresh read inside it, and the decision made on that read. That covers saving
+  (with the verify marker and scheduled jobs), disconnect with its whole teardown, the "needs
+  reconnecting" flag, the plan pause, verify results, account details and connect results. A
+  change that waits more than three seconds changes nothing and reports busy. The REST
+  disconnect needs the `stateId` the screen showed (400 without it, 409 if the connection
+  changed, 503 if busy). Reading the state never writes. Keyed API results carry the state id
+  of the key they sent. The
   counter of earlier development builds
   (`showfm_connection_generation`) is deleted on `admin_init` and on uninstall.
 - Disconnect removes the local connection only. The show.fm API has no route for a site key to

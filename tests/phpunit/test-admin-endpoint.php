@@ -78,7 +78,14 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 		$this->connect();
 		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
 
-		$response = $this->dispatch( $method, $route, array( 'key' => 'expiry30:1' ) );
+		$response = $this->dispatch(
+			$method,
+			$route,
+			array(
+				'key'   => 'expiry30:1',
+				'state' => Connection::state_id(),
+			)
+		);
 
 		$this->assertSame( 403, $response->get_status() );
 		$this->assertSame( Connection::STATE_CONNECTED, Plugin::connection()->state(), 'Nothing changed.' );
@@ -93,7 +100,17 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 	public function test_logged_out_requests_are_refused( string $method, string $route ): void {
 		wp_set_current_user( 0 );
 
-		$this->assertSame( 401, $this->dispatch( $method, $route, array( 'key' => 'expiry30:1' ) )->get_status() );
+		$this->assertSame(
+			401,
+			$this->dispatch(
+				$method,
+				$route,
+				array(
+					'key'   => 'expiry30:1',
+					'state' => Connection::state_id(),
+				)
+			)->get_status()
+		);
 	}
 
 	/**
@@ -116,7 +133,7 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 		$this->assertTrue( rest_cookie_check_errors( null ) );
 
 		$this->assertSame( 0, get_current_user_id() );
-		$this->assertSame( 401, $this->dispatch( 'POST', '/showfm/v1/admin/disconnect' )->get_status() );
+		$this->assertSame( 401, $this->dispatch( 'POST', '/showfm/v1/admin/disconnect', array( 'state' => Connection::state_id() ) )->get_status() );
 		$this->assertSame( Connection::STATE_CONNECTED, Plugin::connection()->state(), 'The connection is kept.' );
 	}
 
@@ -376,25 +393,61 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 		$this->assertSame( 'not_connected', $response->get_data()['state'] );
 	}
 
-	public function test_disconnect_refuses_when_a_reconnect_lands_before_the_write(): void {
+	public function test_disconnect_refuses_when_a_reconnect_lands_while_it_waits_for_the_lock(): void {
 		$this->connect();
-		$nested = false;
-		$race   = function ( string $query ) use ( &$nested ): string {
-			if ( ! $nested && 0 === strpos( $query, 'UPDATE' ) && false !== strpos( $query, "'" . Connection::OPTION . "'" ) && false !== strpos( $query, 'AND option_value' ) ) {
-				$nested = true;
-				$this->assertTrue( ( new Connection() )->save( self::KEY, self::SECRET, self::SITE_ID, time() + 300 * DAY_IN_SECONDS ) );
+		$seen = $this->view()['stateId'];
+		$held = new ShowFM\Sync_Lock( Connection::LOCK_OPTION, Connection::LOCK_TTL );
+		$this->assertTrue( $held->acquire(), 'Another request holds the connection lock.' );
+		$once = static function () use ( $held ): void {
+			static $done = false;
+			if ( ! $done ) {
+				// That request reconnects, then lets go.
+				$done = true;
+				$held->release();
+				( new Connection() )->save( self::KEY, self::SECRET, self::SITE_ID, time() + 300 * DAY_IN_SECONDS );
 			}
-			return $query;
 		};
-		add_filter( 'query', $race );
+		add_action( 'showfm_connection_lock_waiting', $once );
 		try {
-			$response = $this->dispatch( 'POST', '/showfm/v1/admin/disconnect' );
+			$response = $this->dispatch( 'POST', '/showfm/v1/admin/disconnect', array( 'state' => $seen ) );
 		} finally {
-			remove_filter( 'query', $race );
+			remove_action( 'showfm_connection_lock_waiting', $once );
+			$held->release();
 		}
 
-		$this->assertSame( 409, $response->get_status() );
+		$this->assertSame( 409, $response->get_status(), 'Decided on the fresh state inside the lock.' );
 		$this->assertSame( Connection::STATE_CONNECTED, Plugin::connection()->state() );
+	}
+
+	public function test_disconnect_needs_the_state_the_screen_showed(): void {
+		$this->connect();
+
+		foreach ( array( array(), array( 'state' => '' ) ) as $body ) {
+			$response = $this->dispatch( 'POST', '/showfm/v1/admin/disconnect', $body );
+			$this->assertSame( 400, $response->get_status() );
+		}
+		$this->assertSame( Connection::STATE_CONNECTED, Plugin::connection()->state(), 'Nothing was disconnected.' );
+	}
+
+	public function test_disconnect_reports_busy_when_the_lock_is_held_too_long(): void {
+		$this->connect();
+		$seen = $this->view()['stateId'];
+		$held = new ShowFM\Sync_Lock( Connection::LOCK_OPTION, Connection::LOCK_TTL );
+		$this->assertTrue( $held->acquire() );
+		$short = static function (): int {
+			return 100;
+		};
+		add_filter( 'showfm_connection_lock_wait_ms', $short );
+		try {
+			$response = $this->dispatch( 'POST', '/showfm/v1/admin/disconnect', array( 'state' => $seen ) );
+		} finally {
+			remove_filter( 'showfm_connection_lock_wait_ms', $short );
+			$held->release();
+		}
+
+		$this->assertSame( 503, $response->get_status() );
+		$this->assertSame( 'showfm_busy', $response->get_data()['code'] );
+		$this->assertSame( Connection::STATE_CONNECTED, Plugin::connection()->state(), 'Nothing changed.' );
 	}
 
 	public function test_disconnect_clears_the_stored_connect_result(): void {
@@ -402,7 +455,7 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 		$this->result( Connect::STATUS_CONNECTED, '' );
 		$this->assertSame( 'connected', $this->view()['result']['status'] );
 
-		$this->dispatch( 'POST', '/showfm/v1/admin/disconnect' );
+		$this->dispatch( 'POST', '/showfm/v1/admin/disconnect', array( 'state' => Connection::state_id() ) );
 
 		$this->assertNull( Connect::result( $this->admin ), 'Cleared, not just hidden.' );
 		$this->assertNull( $this->view()['result'], 'A reload after disconnecting shows no "Connected".' );
@@ -416,7 +469,7 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 		$this->connect();
 		$this->result( Connect::STATUS_CONNECTED, '', null, $other );
 
-		$this->dispatch( 'POST', '/showfm/v1/admin/disconnect' );
+		$this->dispatch( 'POST', '/showfm/v1/admin/disconnect', array( 'state' => Connection::state_id() ) );
 		wp_set_current_user( $other );
 
 		$this->assertNull( $this->view()['result'], 'The live state wins for every user.' );
@@ -510,7 +563,7 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 	public function test_disconnect_removes_the_local_connection_and_says_the_key_stays_valid(): void {
 		$this->connect();
 
-		$response = $this->dispatch( 'POST', '/showfm/v1/admin/disconnect' );
+		$response = $this->dispatch( 'POST', '/showfm/v1/admin/disconnect', array( 'state' => Connection::state_id() ) );
 		$data     = $response->get_data();
 
 		$this->assertSame( 200, $response->get_status() );

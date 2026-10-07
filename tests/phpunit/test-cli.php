@@ -345,15 +345,18 @@ class Test_Cli extends WP_UnitTestCase {
 
 	public function test_disconnect_leaves_a_reconnect_that_lands_meanwhile_alone(): void {
 		$this->connection->save( self::KEY, self::SECRET, self::SITE_ID, 0 );
-		$nested = false;
-		$race   = static function ( string $query ) use ( &$nested ): string {
-			if ( ! $nested && 0 === strpos( $query, 'UPDATE' ) && false !== strpos( $query, "'" . Connection::OPTION . "'" ) && false !== strpos( $query, 'AND option_value' ) ) {
-				$nested = true;
+		$held = new ShowFM\Sync_Lock( Connection::LOCK_OPTION, Connection::LOCK_TTL );
+		$this->assertTrue( $held->acquire(), 'Another request holds the connection lock.' );
+		$ran  = false;
+		$hook = static function () use ( $held, &$ran ): void {
+			if ( ! $ran ) {
+				// That request reconnects, then lets go.
+				$ran = true;
+				$held->release();
 				( new Connection() )->save( 'showfm_live_FRESHKEYabcdefghijklmnopq', self::SECRET, self::SITE_ID, 0 );
 			}
-			return $query;
 		};
-		add_filter( 'query', $race );
+		add_action( 'showfm_connection_lock_waiting', $hook );
 		try {
 			$this->assert_halts(
 				function () {
@@ -361,12 +364,36 @@ class Test_Cli extends WP_UnitTestCase {
 				}
 			);
 		} finally {
-			remove_filter( 'query', $race );
+			remove_action( 'showfm_connection_lock_waiting', $hook );
+			$held->release();
 		}
 
-		$this->assertTrue( $nested );
+		$this->assertTrue( $ran );
 		$this->assertSame( 'showfm_live_FRESHKEYabcdefghijklmnopq', ( new Connection() )->key(), 'The reconnect stands.' );
 		$this->assertStringContainsString( 'nothing was disconnected', end( WP_CLI::$output )[1] );
+	}
+
+	public function test_disconnect_says_busy_when_the_lock_is_held_too_long(): void {
+		$this->connection->save( self::KEY, self::SECRET, self::SITE_ID, 0 );
+		$held = new ShowFM\Sync_Lock( Connection::LOCK_OPTION, Connection::LOCK_TTL );
+		$this->assertTrue( $held->acquire() );
+		$short = static function (): int {
+			return 100;
+		};
+		add_filter( 'showfm_connection_lock_wait_ms', $short );
+		try {
+			$this->assert_halts(
+				function () {
+					$this->cli->disconnect( array(), array( 'yes' => true ) );
+				}
+			);
+		} finally {
+			remove_filter( 'showfm_connection_lock_wait_ms', $short );
+			$held->release();
+		}
+
+		$this->assertSame( Connect::message( Connect::ERROR_BUSY ), end( WP_CLI::$output )[1] );
+		$this->assertSame( Connection::STATE_CONNECTED, $this->connection->state(), 'Nothing changed.' );
 	}
 
 	public function test_disconnect_asks_first(): void {

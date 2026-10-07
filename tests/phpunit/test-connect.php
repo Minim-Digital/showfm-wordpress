@@ -631,7 +631,11 @@ class Test_Connect extends WP_UnitTestCase {
 		}
 		$reads = 0;
 		$count = static function ( $value ) use ( &$reads ) {
-			++$reads;
+			// The fresh read a change makes inside the connection lock is its own; this
+			// counts the flow's reads.
+			if ( ! Connection::in_mutation() ) {
+				++$reads;
+			}
 			return $value;
 		};
 		add_filter( 'option_' . Connection::OPTION, $count );
@@ -759,26 +763,269 @@ class Test_Connect extends WP_UnitTestCase {
 		$this->assertNotFalse( wp_next_scheduled( Health::HOOK ), 'Nothing else was torn down.' );
 	}
 
-	public function test_a_disconnect_racing_a_reconnect_at_the_write_changes_nothing(): void {
-		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
-		$nested = false;
-		$race   = function ( string $query ) use ( &$nested ): string {
-			if ( ! $nested && 0 === strpos( $query, 'UPDATE' ) && false !== strpos( $query, "'" . Connection::OPTION . "'" ) && false !== strpos( $query, 'AND option_value' ) ) {
-				$nested = true;
-				$this->assertTrue( ( new Connection() )->save( 'showfm_live_FRESHKEYabcdefghijklmnopq', self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+	/**
+	 * Runs a change while another request holds the connection lock. On the change's first
+	 * wait, that request does its own change and lets go, so the first change then decides on
+	 * what the other one left.
+	 *
+	 * @param callable $first  The change under test.
+	 * @param callable $second What the other request does while holding the lock.
+	 * @return mixed What the first change returns.
+	 */
+	private function while_another_request_holds_the_lock( callable $first, callable $second ) {
+		$held = new ShowFM\Sync_Lock( Connection::LOCK_OPTION, Connection::LOCK_TTL );
+		$this->assertTrue( $held->acquire(), 'The other request holds the lock.' );
+		$ran  = false;
+		$hook = static function () use ( $held, $second, &$ran ): void {
+			if ( ! $ran ) {
+				$ran = true;
+				$held->release();
+				$second();
 			}
-			return $query;
 		};
-		add_filter( 'query', $race );
+		add_action( 'showfm_connection_lock_waiting', $hook );
 		try {
-			$done = $this->connection->disconnect();
+			return $first();
 		} finally {
-			remove_filter( 'query', $race );
+			remove_action( 'showfm_connection_lock_waiting', $hook );
+			$held->release();
+			$this->assertTrue( $ran, 'The change waited for the lock.' );
+		}
+	}
+
+	public function test_a_stale_refusal_never_overwrites_a_newer_states_flag(): void {
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		$old = $this->connection->pinned();
+
+		$marked = $this->while_another_request_holds_the_lock(
+			static function () use ( $old ): bool {
+				return $old->mark_reconnect_needed();
+			},
+			function (): void {
+				// Meanwhile: a reconnect stores state B, and a 401 for B flags B.
+				$this->assertTrue( ( new Connection() )->save( 'showfm_live_BBBBKEYabcdefghijklmnopqr', self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+				$this->assertTrue( ( new Connection() )->pinned()->mark_reconnect_needed() );
+			}
+		);
+
+		$this->assertFalse( $marked, 'The old refusal is for a state that has gone.' );
+		$this->assertSame( Connection::state_id(), get_option( Connection::STATE_OPTION ), 'B keeps its own flag.' );
+		$this->assertSame( Connection::STATE_RECONNECT_NEEDED, ( new Connection() )->state(), 'B stays refused, so no request is sent with its refused key.' );
+	}
+
+	public function test_a_stale_success_never_clears_a_newer_states_pause(): void {
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		$a = Connection::state_id();
+
+		$noted = $this->while_another_request_holds_the_lock(
+			static function () use ( $a ): bool {
+				return Connection::note_report( ( new Api_Result( Api_Result::SUCCESS, 200 ) )->for_state( $a ) );
+			},
+			function (): void {
+				// Meanwhile: state B is saved and its report records a plan pause.
+				$this->assertTrue( ( new Connection() )->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+				$this->assertTrue( Connection::note_report( ( new Api_Result( Api_Result::UNAVAILABLE, 403, null, null, 0, '', 'plan_upgrade_required' ) )->for_state( Connection::state_id() ) ) );
+			}
+		);
+
+		$this->assertFalse( $noted, 'A\'s success is for a state that has gone.' );
+		$this->assertGreaterThan( 0, Connection::paused_at(), 'B stays paused.' );
+		$this->assertSame( Connection::state_id(), get_option( Connection::PAUSED_OPTION )['id'] );
+	}
+
+	public function test_a_reconnect_cannot_land_inside_a_disconnects_teardown(): void {
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		$pinned  = $this->connection->pinned();
+		$blocked = null;
+		$inside  = function ( string $option ) use ( &$blocked ): void {
+			if ( null !== $blocked || Connect::VERIFY_PENDING_OPTION !== $option ) {
+				return;
+			}
+			// Part way through the teardown, another request tries to reconnect.
+			add_filter( 'showfm_connection_lock_reentrant', '__return_false' );
+			add_filter( 'showfm_connection_lock_wait_ms', array( $this, 'short_wait' ) );
+			try {
+				( new Connection() )->save( 'showfm_live_BBBBKEYabcdefghijklmnopqr', self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS );
+				$blocked = false;
+			} catch ( ShowFM\Connection_Busy $busy ) {
+				$blocked = true;
+			} finally {
+				remove_filter( 'showfm_connection_lock_reentrant', '__return_false' );
+				remove_filter( 'showfm_connection_lock_wait_ms', array( $this, 'short_wait' ) );
+			}
+		};
+		update_option( Connect::VERIFY_PENDING_OPTION, 1, false );
+		add_action( 'delete_option', $inside );
+		try {
+			$this->assertTrue( $this->connect->disconnect( $pinned ) );
+		} finally {
+			remove_action( 'delete_option', $inside );
+		}
+		$this->assertTrue( $blocked, 'The reconnect had to wait: it could not interleave with the teardown.' );
+		$this->assertSame( Connection::STATE_DISCONNECTED, ( new Connection() )->state() );
+
+		// The reconnect, ordered after the disconnect, then keeps everything that is its own.
+		$this->http->respond( 201, $this->exchange_body( self::SITE_ID, 'showfm_live_BBBBKEYabcdefghijklmnopqr' ) );
+		$this->http->respond( 500, '' );
+		$this->assertSame( Connect::STATUS_CONNECTED, $this->connect->register_with_key( 'showfm_live_BBBBKEYabcdefghijklmnopqr' )['status'] );
+		$this->assertNotFalse( wp_next_scheduled( Health::HOOK ), 'Its jobs are scheduled.' );
+		$this->assertTrue( Connect::verify_pending(), 'Its verify marker stands.' );
+		$this->assertSame( Connection::STATE_CONNECTED, ( new Connection() )->state() );
+	}
+
+	public function test_a_disconnect_decides_on_the_state_another_request_left(): void {
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		$pinned = $this->connection->pinned();
+
+		$done = $this->while_another_request_holds_the_lock(
+			function () use ( $pinned ): bool {
+				return $this->connect->disconnect( $pinned );
+			},
+			function (): void {
+				$this->assertTrue( ( new Connection() )->save( 'showfm_live_BBBBKEYabcdefghijklmnopqr', self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+				wp_schedule_single_event( time() + HOUR_IN_SECONDS, Health::HOOK );
+			}
+		);
+
+		$this->assertFalse( $done );
+		$this->assertSame( 'showfm_live_BBBBKEYabcdefghijklmnopqr', ( new Connection() )->key(), 'The reconnect stands.' );
+		$this->assertNotFalse( wp_next_scheduled( Health::HOOK ), 'Its jobs are untouched.' );
+	}
+
+	public function test_a_failure_while_disconnected_decides_on_the_state_another_request_left(): void {
+		$this->connection->disconnect();
+		$snapshot = $this->connection->pinned()->snapshot();
+
+		$this->while_another_request_holds_the_lock(
+			function () use ( $snapshot ): void {
+				$this->connect->fail( $this->user_id, Connect::ERROR_CANCELLED, 0, $snapshot );
+			},
+			function (): void {
+				$this->assertTrue( ( new Connection() )->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+			}
+		);
+
+		$this->assertSame( self::KEY, ( new Connection() )->key(), 'The credentials saved meanwhile are kept.' );
+		$this->assertNull( Connect::result( $this->user_id )['state_id'], 'The failure matches nothing.' );
+	}
+
+	public function test_a_change_gives_up_as_busy_when_the_lock_is_held_too_long(): void {
+		$held = new ShowFM\Sync_Lock( Connection::LOCK_OPTION, Connection::LOCK_TTL );
+		$this->assertTrue( $held->acquire() );
+		add_filter( 'showfm_connection_lock_wait_ms', array( $this, 'short_wait' ) );
+		$started = microtime( true );
+		try {
+			Connection::mutate(
+				static function (): void {
+					throw new LogicException( 'Must not run without the lock.' );
+				}
+			);
+			$this->fail( 'Expected Connection_Busy.' );
+		} catch ( ShowFM\Connection_Busy $busy ) {
+			$this->assertLessThan( 2.0, microtime( true ) - $started, 'A short wait, then busy.' );
+		} finally {
+			remove_filter( 'showfm_connection_lock_wait_ms', array( $this, 'short_wait' ) );
+			$held->release();
 		}
 
-		$this->assertTrue( $nested );
-		$this->assertFalse( $done );
-		$this->assertSame( 'showfm_live_FRESHKEYabcdefghijklmnopq', ( new Connection() )->key() );
+		// The callers that cannot report busy change nothing and say so.
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		$this->assertTrue( $held->acquire() );
+		add_filter( 'showfm_connection_lock_wait_ms', array( $this, 'short_wait' ) );
+		try {
+			$this->assertFalse( $this->connection->pinned()->mark_reconnect_needed() );
+			$this->assertFalse( Connection::note_report( ( new Api_Result( Api_Result::SUCCESS, 200 ) )->for_state( Connection::state_id() ) ) );
+		} finally {
+			remove_filter( 'showfm_connection_lock_wait_ms', array( $this, 'short_wait' ) );
+			$held->release();
+		}
+		$this->assertSame( Connection::STATE_CONNECTED, ( new Connection() )->state() );
+	}
+
+	public function test_a_stale_lock_is_recovered(): void {
+		// A holder that died: its lease ran out a minute ago.
+		update_option( Connection::LOCK_OPTION, wp_generate_uuid4() . '|' . ( time() - 60 ) . '|options|', false );
+		add_filter( 'showfm_connection_lock_wait_ms', array( $this, 'short_wait' ) );
+		try {
+			$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		} finally {
+			remove_filter( 'showfm_connection_lock_wait_ms', array( $this, 'short_wait' ) );
+		}
+		$this->assertSame( Connection::STATE_CONNECTED, ( new Connection() )->state() );
+		$this->assertFalse( get_option( Connection::LOCK_OPTION ), 'The lock is released afterwards.' );
+	}
+
+	public function test_every_connection_state_write_happens_under_the_lock(): void {
+		$guarded = array( Connection::OPTION, Connection::STATE_OPTION, Connection::REFUSED_AT_OPTION, Connection::PAUSED_OPTION, Connection::CONNECTED_AT_OPTION, Connect::VERIFY_PENDING_OPTION, ShowFM\Account::OPTION );
+		$outside = array();
+		$inside  = 0;
+		$watch   = static function ( string $option ) use ( $guarded, &$outside, &$inside ): void {
+			if ( ! in_array( $option, $guarded, true ) ) {
+				return;
+			}
+			if ( Connection::in_mutation() ) {
+				++$inside;
+			} else {
+				$outside[] = $option;
+			}
+		};
+		$results = static function ( string $transient ) use ( &$outside ): void {
+			if ( 0 === strpos( $transient, Connect::RESULT_PREFIX ) && ! Connection::in_mutation() ) {
+				$outside[] = $transient;
+			}
+		};
+		foreach ( array( 'add_option', 'update_option', 'delete_option' ) as $action ) {
+			add_action( $action, $watch );
+		}
+		add_action( 'set_transient', $results );
+		try {
+			// Connect in the browser, report in, fetch the account, get refused, reconnect,
+			// pause, unpause, fail, disconnect.
+			$this->returned();
+			$this->http->respond( 200, $this->exchange_body() );
+			$this->http->respond( 200, '{"data":{"status":"active"}}' );
+			$this->http->respond( 200, '{"data":{"user":{"name":"Maya"}}}' );
+			$this->http->respond( 200, '{"data":[]}' );
+			$this->connect->complete_pending( $this->user_id );
+			$this->http->respond( 401, '{"error":{"code":"invalid_api_key","message":"No."}}' );
+			( new Api_Client( new Connection() ) )->get_keyed( '/v1/me' );
+			$this->http->respond( 201, $this->exchange_body() );
+			$this->http->respond( 403, '{"error":{"code":"plan_upgrade_required","message":"No."}}' );
+			$this->connect->register_with_key( self::KEY );
+			$this->http->respond( 200, '{"data":{"recorded":true}}' );
+			$this->http->respond( 500, '' );
+			( new Health( new Connection(), new Api_Client( new Connection() ), $this->connect ) )->report();
+			$this->connect->fail( $this->user_id, Connect::ERROR_EXPIRED );
+			$this->connect->disconnect( null, $this->user_id );
+			$this->connect->fail( $this->user_id, Connect::ERROR_CANCELLED );
+			( new Connection() )->disconnect();
+		} finally {
+			foreach ( array( 'add_option', 'update_option', 'delete_option' ) as $action ) {
+				remove_action( $action, $watch );
+			}
+			remove_action( 'set_transient', $results );
+		}
+
+		$this->assertGreaterThan( 10, $inside, 'The flows did write connection state.' );
+		$this->assertSame( array(), $outside, 'No connection state is written outside Connection::mutate().' );
+	}
+
+	public function test_only_the_connection_classes_write_the_connection_state(): void {
+		$allowed = array( 'class-connection.php', 'class-connect.php', 'class-account.php' );
+		$pattern = '/(?:update|add|delete)_option\(\s*(?:self|Connection|Connect|Account)::(?:OPTION|STATE_OPTION|REFUSED_AT_OPTION|PAUSED_OPTION|CONNECTED_AT_OPTION|VERIFY_PENDING_OPTION)\b/';
+		foreach ( glob( SHOWFM_DIR . '/includes/*.php' ) as $file ) {
+			if ( in_array( basename( $file ), $allowed, true ) || 'class-sync.php' === basename( $file ) || 0 === strpos( basename( $file ), 'class-sync-' ) || 0 === strpos( basename( $file ), 'class-migrat' ) || 'class-cache.php' === basename( $file ) ) {
+				continue;
+			}
+			$this->assertSame( 0, preg_match( $pattern, (string) file_get_contents( $file ) ), basename( $file ) . ' writes connection state outside Connection::mutate().' );
+		}
+	}
+
+	/**
+	 * A wait short enough for tests.
+	 */
+	public function short_wait(): int {
+		return 150;
 	}
 
 	public function test_every_state_writes_its_own_random_id(): void {
@@ -840,29 +1087,6 @@ class Test_Connect extends WP_UnitTestCase {
 		$this->assertNotSame( $first, Connect::result( $other )['state_id'] );
 		$this->assertSame( Connection::state_id(), Connect::result( $other )['state_id'], 'The newest attempt is the current state.' );
 		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'not_connected', Connection::state_id() ), 'The older one is overtaken.' );
-	}
-
-	public function test_a_failure_never_removes_credentials_saved_at_the_same_moment(): void {
-		$nested = false;
-		$race   = function ( string $query ) use ( &$nested ): string {
-			if ( ! $nested && 0 === strpos( $query, 'UPDATE' ) && false !== strpos( $query, "'" . Connection::OPTION . "'" ) && false !== strpos( $query, 'AND option_value' ) ) {
-				// Another tab saves credentials between the read and the conditional write.
-				$nested = true;
-				$this->assertTrue( ( new Connection() )->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
-			}
-			return $query;
-		};
-		add_filter( 'query', $race );
-		try {
-			$this->connect->fail( $this->user_id, Connect::ERROR_CANCELLED );
-		} finally {
-			remove_filter( 'query', $race );
-		}
-
-		$this->assertTrue( $nested );
-		$this->assertSame( self::KEY, ( new Connection() )->key(), 'The credentials saved meanwhile are kept.' );
-		$this->assertNull( Connect::result( $this->user_id )['state_id'], 'The failure matches nothing.' );
-		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected', Connection::state_id() ) );
 	}
 
 	public function test_a_failed_reconnect_keeps_the_connections_state_id(): void {

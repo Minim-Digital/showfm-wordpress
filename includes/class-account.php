@@ -55,7 +55,8 @@ final class Account {
 
 	/**
 	 * Fetches and stores the account name and shows. Keeps the stored copy when either call
-	 * fails, so a brief outage does not empty the screen.
+	 * fails, so a brief outage does not empty the screen, and when the connection changed while
+	 * the calls were in flight.
 	 */
 	public function refresh(): bool {
 		$site_id = $this->connection->site_id();
@@ -90,16 +91,31 @@ final class Account {
 			);
 		}
 
-		update_option(
-			self::OPTION,
-			array(
-				'site'  => $site_id,
-				'name'  => self::text( $user['name'] ?? null ),
-				'shows' => $shows,
-			),
-			false
+		$details = array(
+			'site'  => $site_id,
+			'name'  => self::text( $user['name'] ?? null ),
+			'shows' => $shows,
 		);
-		return true;
+		// Written under the connection lock, and only while the state whose key fetched the
+		// details is still the stored one: a refresh for a connection that was replaced or
+		// disconnected meanwhile never writes over the current one's details.
+		$state = $me->state_id();
+		if ( null === $state || $podcasts->state_id() !== $state ) {
+			return false;
+		}
+		try {
+			return (bool) Connection::mutate(
+				static function ( Connection $fresh ) use ( $state, $details ): bool {
+					if ( $fresh->snapshot()['id'] !== $state ) {
+						return false;
+					}
+					update_option( self::OPTION, $details, false );
+					return true;
+				}
+			);
+		} catch ( Connection_Busy $busy ) {
+			return false;
+		}
 	}
 
 	/**

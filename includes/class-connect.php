@@ -146,6 +146,9 @@ final class Connect {
 	/** The site's address does not use https, which show.fm requires. */
 	const ERROR_INSECURE = 'https_required';
 
+	/** Another change to the connection held the lock for too long; nothing was changed. */
+	const ERROR_BUSY = 'busy';
+
 	/** The credentials could not be stored (for example, no libsodium). */
 	const ERROR_STORAGE = 'storage_failed';
 
@@ -496,13 +499,40 @@ final class Connect {
 		}
 
 		$result = $this->api_client->post_keyed( '/v1/me/sites/' . rawurlencode( $site_id ) . '/verify', $body );
-		Connection::note_report( $result );
-		if ( $result->is( Api_Result::SUCCESS ) ) {
-			delete_option( self::VERIFY_PENDING_OPTION );
-		} else {
-			update_option( self::VERIFY_PENDING_OPTION, 1, false );
-		}
+		self::settle_verify( $result );
 		return $result;
+	}
+
+	/**
+	 * Records a verify's outcome under the connection lock, for the state whose key it used
+	 * only: the plan pause, and whether the site still has to report in. A verify for a
+	 * connection that has since been replaced or disconnected changes nothing.
+	 *
+	 * @param Api_Result $result Verify result.
+	 */
+	private static function settle_verify( Api_Result $result ): void {
+		$id = $result->state_id();
+		if ( null === $id || '' === $id ) {
+			return;
+		}
+		try {
+			Connection::mutate(
+				static function ( Connection $fresh ) use ( $id, $result ): void {
+					if ( $fresh->snapshot()['id'] !== $id ) {
+						return;
+					}
+					Connection::note_report( $result );
+					if ( $result->is( Api_Result::SUCCESS ) ) {
+						delete_option( self::VERIFY_PENDING_OPTION );
+					} else {
+						update_option( self::VERIFY_PENDING_OPTION, 1, false );
+					}
+				}
+			);
+		} catch ( Connection_Busy $busy ) {
+			// The marker stays as it was; the next sync or health run verifies again.
+			return;
+		}
 	}
 
 	/**
@@ -516,25 +546,36 @@ final class Connect {
 	 * Removes the local connection: credentials, scheduled events and connection state.
 	 * The key stays live at show.fm until it is revoked there.
 	 *
-	 * Only the state the caller read is disconnected (compare-and-set). If another request
-	 * has reconnected or disconnected since, nothing changes and the answer is false.
+	 * The swap and the whole teardown run in one change under the connection lock, on the
+	 * state read fresh inside it: only the state the caller read is disconnected, and a
+	 * reconnect by another request can only come before (then nothing changes) or after (then
+	 * its jobs, marker and account details are its own).
 	 *
-	 * @param Connection|null $pinned The caller's pinned connection; read once now when not given.
-	 * @return bool Whether that state was disconnected.
+	 * @param Connection|null $pinned  The caller's pinned connection; read once now when not given.
+	 * @param int             $user_id The admin whose connect outcome is cleared too, or 0.
+	 * @return bool Whether that state was disconnected; false when it moved on.
+	 * @throws Connection_Busy When another change holds the lock for longer than the wait.
 	 */
-	public function disconnect( ?Connection $pinned = null ): bool {
-		$pinned = $pinned ?? $this->connection->pinned();
-		if ( ! $pinned->disconnect() ) {
-			return false;
-		}
-		Plugin::unschedule_events();
-		delete_option( self::VERIFY_PENDING_OPTION );
-		delete_option( Api_Client::RATE_LIMIT_OPTION );
-		delete_option( Ping_Endpoint::LAST_PING_OPTION );
-		delete_option( Ping_Endpoint::MISSED_OPTION );
-		delete_option( Account::OPTION );
-		Ping_Endpoint::forget_nonces();
-		return true;
+	public function disconnect( ?Connection $pinned = null, int $user_id = 0 ): bool {
+		$expected = ( $pinned ?? $this->connection->pinned() )->snapshot()['id'];
+		return (bool) Connection::mutate(
+			static function ( Connection $fresh ) use ( $expected, $user_id ): bool {
+				if ( $fresh->snapshot()['id'] !== $expected || ! $fresh->disconnect() ) {
+					return false;
+				}
+				Plugin::unschedule_events();
+				delete_option( self::VERIFY_PENDING_OPTION );
+				delete_option( Api_Client::RATE_LIMIT_OPTION );
+				delete_option( Ping_Endpoint::LAST_PING_OPTION );
+				delete_option( Ping_Endpoint::MISSED_OPTION );
+				delete_option( Account::OPTION );
+				Ping_Endpoint::forget_nonces();
+				if ( $user_id > 0 ) {
+					self::clear_result( $user_id );
+				}
+				return true;
+			}
+		);
 	}
 
 	/**
@@ -600,6 +641,8 @@ final class Connect {
 				return __( 'The connection was cancelled.', 'showfm' );
 			case self::ERROR_INSECURE:
 				return __( 'This site’s address must use https.', 'showfm' );
+			case self::ERROR_BUSY:
+				return __( 'Another change to this site’s show.fm connection was in progress. Try again in a moment.', 'showfm' );
 			case self::ERROR_STORAGE:
 				return __( 'The connection could not be saved. Your server needs the PHP sodium extension, or WordPress 6.6 or later. Then try again.', 'showfm' );
 			case self::ERROR_VERIFY:
@@ -628,13 +671,27 @@ final class Connect {
 			return self::outcome( self::ERROR_BAD_RESPONSE );
 		}
 
-		if ( ! $this->connection->save( $key, $ping_secret, $site_id, $expires_at ) ) {
+		// The credentials, the verify marker and the scheduled jobs change together, under
+		// the connection lock, so a disconnect can never tear down half of a new connection.
+		try {
+			$saved = Connection::mutate(
+				function () use ( $key, $ping_secret, $site_id, $expires_at ): bool {
+					if ( ! $this->connection->save( $key, $ping_secret, $site_id, $expires_at ) ) {
+						return false;
+					}
+					delete_option( Api_Client::RATE_LIMIT_OPTION );
+					update_option( self::VERIFY_PENDING_OPTION, 1, false );
+					Health::schedule();
+					Sync::schedule();
+					return true;
+				}
+			);
+		} catch ( Connection_Busy $busy ) {
+			return self::outcome( self::ERROR_BUSY );
+		}
+		if ( ! $saved ) {
 			return self::outcome( self::ERROR_STORAGE );
 		}
-		delete_option( Api_Client::RATE_LIMIT_OPTION );
-		update_option( self::VERIFY_PENDING_OPTION, 1, false );
-		Health::schedule();
-		Sync::schedule();
 
 		$verified = $this->verify();
 		if ( ! $verified->is( Api_Result::SUCCESS ) ) {
@@ -774,13 +831,23 @@ final class Connect {
 	 */
 	private function record( int $user_id, array $outcome, array $snapshot ): void {
 		// The state the outcome belongs to: the id this connect wrote with its credentials,
-		// or for a failure the state it leaves (see Connection::failure_state_id()). The
-		// settings screen shows the outcome only while that id is still the stored one, so
-		// any later connect, reconnect or disconnect (another tab, another admin, WP-CLI)
-		// hides it for good, however the requests interleave. A "Connected" with no save of
-		// its own in this request gets null, which matches nothing.
-		$outcome['state_id'] = self::STATUS_CONNECTED === $outcome['status'] ? $this->connection->saved_state_id() : Connection::failure_state_id( $snapshot );
-		set_transient( self::RESULT_PREFIX . $user_id, $outcome, self::RESULT_TTL );
+		// or for a failure the state it leaves (see Connection::failure_state_id()). Decided
+		// and written under the connection lock, so no change to the connection can land
+		// between them. The settings screen shows the outcome only while that id is still the
+		// stored one. A "Connected" with no save of its own in this request gets null, which
+		// matches nothing.
+		$saved = $this->connection->saved_state_id();
+		try {
+			Connection::mutate(
+				static function () use ( $user_id, $outcome, $snapshot, $saved ): void {
+					$outcome['state_id'] = self::STATUS_CONNECTED === $outcome['status'] ? $saved : Connection::failure_state_id( $snapshot );
+					set_transient( self::RESULT_PREFIX . $user_id, $outcome, self::RESULT_TTL );
+				}
+			);
+		} catch ( Connection_Busy $busy ) {
+			// Nothing is recorded: an outcome with no state would match nothing anyway.
+			return;
+		}
 	}
 
 	/**

@@ -210,7 +210,13 @@ final class Cli {
 		}
 		\WP_CLI::confirm( __( 'Disconnect this site from show.fm? Posts already created stay.', 'showfm' ), $assoc_args );
 
-		if ( ! $this->connect->disconnect( $pinned ) ) {
+		try {
+			$done = $this->connect->disconnect( $pinned );
+		} catch ( Connection_Busy $busy ) {
+			\WP_CLI::error( Connect::message( Connect::ERROR_BUSY ) );
+			return;
+		}
+		if ( ! $done ) {
 			\WP_CLI::error( __( 'The connection changed while this command ran, so nothing was disconnected. Check it with wp showfm status, then run the command again.', 'showfm' ) );
 			return;
 		}

@@ -22,8 +22,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  * - `POST admin/disconnect`: removes the local connection, then answers like the GET, with
  *   `disconnected` saying where to disconnect the site at show.fm. The show.fm API has no
  *   route for a site key to revoke itself, so the key stays valid there until then. It
- *   disconnects only the state the screen showed (`state`, the view's `stateId`): if the
- *   connection changed since, nothing changes and the answer is a 409 with the fresh view.
+ *   needs the state the screen showed (`state`, the view's `stateId`) and disconnects only
+ *   that state: if the connection changed since, nothing changes and the answer is a 409
+ *   with the fresh view. A missing state is a 400; a lock held too long is a 503.
  * - `POST admin/notices/dismiss`: hides a notice instance for the current user.
  */
 final class Admin_Endpoint {
@@ -87,8 +88,9 @@ final class Admin_Endpoint {
 				'permission_callback' => array( self::class, 'can_manage' ),
 				'args'                => array(
 					'state' => array(
-						'type'     => 'string',
-						'required' => false,
+						'type'        => 'string',
+						'required'    => true,
+						'description' => __( 'The state id the screen showed (the view\'s stateId).', 'showfm' ),
 					),
 				),
 			)
@@ -145,17 +147,24 @@ final class Admin_Endpoint {
 	 * @return \WP_REST_Response|\WP_Error
 	 */
 	public function disconnect( \WP_REST_Request $request ) {
+		$seen = $request->get_param( 'state' );
+		if ( ! is_string( $seen ) || '' === $seen ) {
+			return new \WP_Error( 'showfm_state_required', __( 'Disconnect needs the connection state the screen showed. Reload the page, then try again.', 'showfm' ), array( 'status' => 400 ) );
+		}
 		$pinned = $this->status->pin();
-		$seen   = $request->get_param( 'state' );
-		if ( ( is_string( $seen ) && '' !== $seen && $seen !== $pinned->snapshot()['id'] ) ) {
+		if ( $seen !== $pinned->snapshot()['id'] ) {
 			return $this->moved_on();
 		}
 		$sites = Admin_Status::sites_url_for( $pinned );
-		if ( ! $this->connect->disconnect( $pinned ) ) {
-			return $this->moved_on();
+		try {
+			// The swap and its whole teardown, including this admin's earlier connect outcome,
+			// happen in one change under the connection lock.
+			if ( ! $this->connect->disconnect( $pinned, get_current_user_id() ) ) {
+				return $this->moved_on();
+			}
+		} catch ( Connection_Busy $busy ) {
+			return new \WP_Error( 'showfm_busy', Connect::message( Connect::ERROR_BUSY ), array( 'status' => 503 ) );
 		}
-		// An earlier "Connected" must not come back on a reload after disconnecting.
-		Connect::clear_result( get_current_user_id() );
 		$view                 = $this->status->view( get_current_user_id() );
 		$view['disconnected'] = array(
 			'keyRevoked' => false,
