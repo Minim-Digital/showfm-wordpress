@@ -43,10 +43,11 @@ final class Connection {
 	const PLAN_ERROR = 'plan_upgrade_required';
 
 	/**
-	 * Connection generation (autoload off): an integer that goes up by one on every connect,
-	 * reconnect and disconnect, from any tab or WP-CLI. A connect outcome records the
-	 * generation it belongs to, so the settings screen can tell an outcome the connection has
-	 * since moved past, even within the same second. Never deleted on disconnect.
+	 * Generation counter (autoload off): an integer that one atomic UPDATE moves on for every
+	 * connect, reconnect and disconnect, from any tab or WP-CLI, so no two requests ever get
+	 * the same value. A save takes its value first and writes it as `g` inside the same option
+	 * value as the encrypted credentials, in one write, so a stored credential and its
+	 * generation always come from the same request. Never deleted on disconnect.
 	 */
 	const GENERATION_OPTION = 'showfm_connection_generation';
 
@@ -113,14 +114,18 @@ final class Connection {
 			return false;
 		}
 
-		$stored = array(
+		// This save's own generation, taken before the write and stored with the credentials.
+		$generation = self::next_generation();
+		$stored     = array(
 			'v' => self::FORMAT_VERSION,
 			'n' => base64_encode( $nonce ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Binary ciphertext stored as text.
 			'c' => base64_encode( $cipher ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Binary ciphertext stored as text.
+			'g' => $generation,
 		);
 
-		// One UPDATE (or INSERT when nothing is stored). If it fails, the old credentials
-		// are still there, so a failed reconnect never leaves the site with nothing.
+		// One UPDATE (or INSERT when nothing is stored) writes the credentials and their
+		// generation together. If it fails, the old credentials are still there, so a failed
+		// reconnect never leaves the site with nothing.
 		if ( ! update_option( self::OPTION, $stored, false ) ) {
 			return false;
 		}
@@ -128,7 +133,7 @@ final class Connection {
 		delete_option( self::REFUSED_AT_OPTION );
 		delete_option( self::PAUSED_OPTION );
 		update_option( self::CONNECTED_AT_OPTION, time(), false );
-		$this->saved_generation = self::next_generation();
+		$this->saved_generation = $generation;
 		return true;
 	}
 
@@ -312,15 +317,22 @@ final class Connection {
 	}
 
 	/**
-	 * The current connection generation, or 0 before the first connect.
+	 * The generation of what is stored now. With credentials stored, it is the `g` written
+	 * with them in the same write (0 for credentials stored before generations existed).
+	 * With nothing stored, it is the counter negated, which no stored connection's
+	 * generation (always above 0) can equal, and which every disconnect moves on.
 	 */
 	public static function generation(): int {
-		return (int) get_option( self::GENERATION_OPTION, 0 );
+		$stored = get_option( self::OPTION, false );
+		if ( is_array( $stored ) && isset( $stored['c'] ) ) {
+			return is_int( $stored['g'] ?? null ) ? $stored['g'] : 0;
+		}
+		return - (int) get_option( self::GENERATION_OPTION, 0 );
 	}
 
 	/**
-	 * The generation this instance's last successful save() produced, or null. Taken at the
-	 * moment of saving, so a save from another tab a moment later never counts as this one.
+	 * The generation this instance's last successful save() wrote with its credentials, or
+	 * null. A save from another tab or WP-CLI never counts as this one.
 	 */
 	public function saved_generation(): ?int {
 		return $this->saved_generation;

@@ -65,9 +65,12 @@ admin notices. Blocks and the shortcode are available, together with the backgro
   request, no key (the last four characters only), no ping secret. Reading it changes nothing:
   the connect outcome stays for 15 minutes (`Connect::RESULT_TTL`) until the admin dismisses it
   or starts again, so a reload or a second tab still shows it. The live state wins: each
-  outcome records the connection generation it belongs to (`showfm_connection_generation`,
-  one atomic increment on every connect, reconnect and disconnect, from any tab or WP-CLI),
-  and shows only while that generation is current, even within the same second. "Connected"
+  outcome records the connection generation it belongs to, and shows only while the stored
+  credentials carry that generation. Each save takes a new value from a counter
+  (`showfm_connection_generation`, one atomic increment per connect, reconnect and disconnect)
+  and writes it as `g` in the same option value as the encrypted credentials, in one write, so
+  a credential and its generation always come from the same request, however reconnects from
+  other tabs or WP-CLI interleave. With nothing stored, the generation is the counter negated. "Connected"
   also shows only while the stored key works, and Disconnect clears the admin's outcome.
 - Disconnect removes the local connection only. The show.fm API has no route for a site key to
   revoke itself, so the key stays valid at show.fm until the site is disconnected there. The

@@ -522,7 +522,7 @@ final class Connect {
 	 * The last outcome for the settings screen, or null.
 	 *
 	 * @param int $user_id The admin.
-	 * @return array{status:string,error:string,retry_after:int,reason:string,generation:int}|null
+	 * @return array{status:string,error:string,retry_after:int,reason:string,generation:int|null}|null
 	 */
 	public static function result( int $user_id ): ?array {
 		$result = get_transient( self::RESULT_PREFIX . $user_id );
@@ -534,7 +534,7 @@ final class Connect {
 			'error'       => is_string( $result['error'] ?? null ) ? $result['error'] : '',
 			'retry_after' => (int) ( $result['retry_after'] ?? 0 ),
 			'reason'      => is_string( $result['reason'] ?? null ) ? $result['reason'] : '',
-			'generation'  => (int) ( $result['generation'] ?? -1 ),
+			'generation'  => is_int( $result['generation'] ?? null ) ? $result['generation'] : null,
 		);
 	}
 
@@ -727,9 +727,10 @@ final class Connect {
 	 * @param array{status:string,error:string,retry_after:int,reason:string} $outcome Outcome.
 	 */
 	private function record( int $user_id, array $outcome ): void {
-		// The connection generation the outcome belongs to: the one this connect saved, or
-		// the current one for a failure. The settings screen shows the outcome only while it
-		// is still current, so a later connect or disconnect (another tab, WP-CLI) wins.
+		// The connection generation the outcome belongs to: the one this connect wrote with
+		// its credentials, or the stored one for a failure. The settings screen shows the
+		// outcome only while the stored credentials still carry it, so a later connect or
+		// disconnect (another tab, WP-CLI) wins, however the requests interleave.
 		$saved                 = $this->connection->saved_generation();
 		$outcome['generation'] = self::STATUS_CONNECTED === $outcome['status'] && null !== $saved ? $saved : Connection::generation();
 		set_transient( self::RESULT_PREFIX . $user_id, $outcome, self::RESULT_TTL );

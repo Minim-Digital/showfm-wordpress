@@ -503,27 +503,78 @@ class Test_Connect extends WP_UnitTestCase {
 		);
 		$this->connect->complete_pending( $this->user_id );
 
-		$this->assertSame( Connection::generation() - 1, Connect::result( $this->user_id )['generation'] );
+		$this->assertLessThan( Connection::generation(), Connect::result( $this->user_id )['generation'] );
 		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected' ), 'The newer connection wins.' );
 	}
 
-	public function test_the_generation_rises_on_every_connect_reconnect_and_disconnect(): void {
-		$seen = array( Connection::generation() );
+	public function test_every_connect_reconnect_and_disconnect_gets_a_new_generation(): void {
+		$seen  = array( Connection::generation() );
+		$saves = array();
 		foreach ( array( 'save', 'save', 'disconnect', 'save', 'disconnect' ) as $step ) {
 			$connection = new Connection();
 			if ( 'save' === $step ) {
 				$this->assertTrue( $connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
-				$this->assertSame( Connection::generation(), $connection->saved_generation() );
+				$this->assertSame( Connection::generation(), $connection->saved_generation(), 'Read back from the credentials option.' );
+				$this->assertSame( $connection->saved_generation(), get_option( Connection::OPTION )['g'], 'Stored in the same option value as the credentials.' );
+				$this->assertGreaterThan( 0, Connection::generation() );
+				$saves[] = Connection::generation();
 			} else {
 				$connection->disconnect();
+				$this->assertLessThan( 0, Connection::generation(), 'Nothing stored: never equal to a stored connection.' );
 			}
 			$seen[] = Connection::generation();
 		}
 
-		$steps = count( $seen );
-		for ( $i = 1; $i < $steps; $i++ ) {
-			$this->assertSame( $seen[ $i - 1 ] + 1, $seen[ $i ], 'Strictly increasing, one step each time, all within one second.' );
-		}
+		$this->assertSame( $seen, array_unique( $seen ), 'All within one second, and never repeated.' );
+		$sorted = $saves;
+		sort( $sorted );
+		$this->assertSame( $sorted, $saves, 'Each save gets a higher generation.' );
+	}
+
+	public function test_interleaved_reconnects_keep_each_credential_with_its_own_generation(): void {
+		$this->assertTrue( ( new Connection() )->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ), 'An existing connection: both are reconnects.' );
+		$a       = new Connection();
+		$b       = new Connection();
+		$nested  = false;
+		$key_a   = 'showfm_live_AAAAKEYabcdefghijklmnopqr';
+		$key_b   = 'showfm_live_BBBBKEYabcdefghijklmnopqr';
+		$overlap = static function ( $value ) use ( $b, $key_b, &$nested ) {
+			if ( ! $nested ) {
+				// B takes the next generation and writes while A is between taking its own
+				// generation and writing: A's write then lands last.
+				$nested = true;
+				$b->save( $key_b, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS );
+			}
+			return $value;
+		};
+		add_filter( 'pre_update_option_' . Connection::OPTION, $overlap );
+
+		$this->assertTrue( $a->save( $key_a, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		remove_filter( 'pre_update_option_' . Connection::OPTION, $overlap );
+
+		$this->assertGreaterThan( $a->saved_generation(), $b->saved_generation(), 'B took its generation after A.' );
+		$stored = new Connection();
+		$this->assertSame( $key_a, $stored->key(), 'A wrote last, so A\'s credentials are stored.' );
+		$this->assertSame( $a->saved_generation(), Connection::generation(), 'With A\'s own generation, from the same write.' );
+		$this->assertNotSame( $b->saved_generation(), Connection::generation(), 'B\'s outcome can never match A\'s credentials.' );
+	}
+
+	public function test_interleaved_reconnect_hides_the_overtaken_outcome(): void {
+		// Admin A's connect is reporting in when another tab's reconnect writes.
+		$this->returned();
+		$this->http->respond( 200, $this->exchange_body() );
+		$this->http->respond_with(
+			function () {
+				( new Connection() )->save( 'showfm_live_BBBBKEYabcdefghijklmnopqr', self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS );
+				return array( 200, '{"data":{"status":"active"}}' );
+			}
+		);
+
+		$this->connect->complete_pending( $this->user_id );
+
+		$this->assertSame( 'showfm_live_BBBBKEYabcdefghijklmnopqr', ( new Connection() )->key() );
+		$this->assertNotSame( Connection::generation(), Connect::result( $this->user_id )['generation'] );
+		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected' ), 'A\'s "Connected" does not describe B\'s credentials.' );
 	}
 
 	public function test_exchange_stores_the_credentials_and_verifies(): void {
