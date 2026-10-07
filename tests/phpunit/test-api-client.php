@@ -182,7 +182,7 @@ class Test_Api_Client extends WP_UnitTestCase {
 
 		$this->assertEqualsWithDelta( 300, $dated->retry_after(), 2 );
 		$this->assertSame( Api_Client::DEFAULT_RETRY_AFTER, $missing->retry_after() );
-		$this->assertSame( Api_Client::MAX_RETRY_AFTER, Api_Client::parse_retry_after( '999999' ) );
+		$this->assertSame( 999999, Api_Client::parse_retry_after( '999999' ) );
 		$this->assertSame( 1, Api_Client::parse_retry_after( '0' ) );
 	}
 

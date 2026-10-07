@@ -565,6 +565,7 @@ final class Connect {
 		delete_option( Api_Client::RATE_LIMIT_OPTION );
 		update_option( self::VERIFY_PENDING_OPTION, 1, false );
 		Health::schedule();
+		Sync::schedule();
 
 		$verified = $this->verify();
 		if ( ! $verified->is( Api_Result::SUCCESS ) ) {

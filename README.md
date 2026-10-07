@@ -11,7 +11,7 @@ Version 0.1.0 has the foundation (the API client, the cache, encrypted connectio
 and uninstall) and the plugin side of connecting a site to show.fm: the browser flow, the
 code exchange, WP-CLI registration, the ownership challenge, the signed ping endpoint and
 the daily health report. The settings page is a placeholder until the designed admin
-screens land. Blocks, the shortcode and the sync come in later pull requests.
+screens land. Blocks and the shortcode are available, together with the background sync engine.
 
 ## Requirements
 
@@ -111,6 +111,60 @@ Plan sections 5.2.2, 5.2.6 and 5.3.5 (show.fm issue #731). Every admin action ne
 
 A WordPress install in a subdirectory sends a `site_url` with a path. show.fm accepts that
 once podcaster-plus-app PR #741 is merged.
+
+### Publishing engine
+
+`wp showfm sync [--dry-run] [--from-start]` runs the same consumer as `showfm_pull`
+and the jittered 15-minute `showfm_poll`. `wp showfm sync status` reads local state only.
+A run handles at most ten pages of twenty rows, then queues a continuation. Dry runs
+have the same bound and leave posts, reports and the local cursor unchanged, but the
+server records feed reads, including their requested `after` cursor. Authentication
+and rate-limit protection remain active during a dry run.
+
+A per-database, per-blog MySQL session lock prevents overlapping consumers, including
+across PHP workers and object caches. It is released by `finally` or by the database
+when a crashed process disconnects. It has no time lease that could expire under a
+slow live worker. Hosts must support MySQL/MariaDB named session locks on the same
+connection used by `$wpdb`; transaction-pooling database proxies are not supported.
+
+The consumer validates a complete page before applying its rows, then stores its
+cursor and pending reports together in the non-autoloaded `showfm_sync` option. The
+next GET sends the applied cursor, including an extra read after the final page, to
+acknowledge `last_pulled_seq`. A stable post GUID recovers inserts interrupted before
+meta was written. `_showfm_content_hash` skips unchanged content, while
+`_showfm_synced_revision` hashes the stored title, content and excerpt. A detected
+WordPress edit permanently sets `_showfm_edited`; only status and dates then change.
+The player is the WP-2a `showfm/player` block. Description/show notes are sanitised,
+saved block HTML, rather than a live binding that would bypass edit protection.
+
+The per-blog `showfm_publishing` option accepts `post_type` (default `post`), `author`
+(default first site administrator), `categories` (array of IDs) and `featured_image`
+(default false). WP-4b will add the Publishing tab and post panel. The default template
+is a player followed by show notes, falling back to the plain description. Transcript
+insertion and template controls are not exposed by this engine. Public artwork is
+sideloaded once with a 10 MB cap, HTTPS, no redirects, safe HTTP validation and image
+MIME checks; the attachment GUID deduplicates its source URL. Scheduled artwork is
+not exposed by the merged feed, so it waits for the public episode on publication.
+
+Scheduled/published rows become future/published posts; removed or unpublished rows
+become drafts; deleted rows go to the bin, including when automatic trash is disabled.
+Detached rows retain the post and `_showfm_sync_notice` says “No longer synced from
+show.fm”; paused rows retain the post. A restored-access upsert resumes the existing
+post and still respects the permanent edit flag. Tombstones without a local post do
+not create empty posts or send a report, since the API requires a positive post ID.
+
+The server has a per-episode report endpoint, not a bulk endpoint. Reports are drained
+in batches of twenty requests, retained until acknowledged and retried idempotently.
+HTTP 400/403/404 reports remain queued but do not block feed reads: access-removed or
+plan-paused reports can be refused by the server until access returns. Invalid local
+permalinks are also retained without being sent. A valid report URL must use HTTPS,
+the home host and a path beneath the home path. A 401 stops keyed requests and asks for
+reconnection; 429 honours the full Retry-After; other failures back off to an hour.
+A new connection ID starts its own cursor and outbox without claiming the old
+connection's posts. Uninstall removes plugin receipts, never posts or media files.
+
+Contract reviewed against podcaster-plus-app `04f2718fc344f4fdecd9a90a6cfb9b8d5685db33`:
+`connected-sites.md`, the keyed site routes and the generated OpenAPI schemas.
 
 ### Staging
 
