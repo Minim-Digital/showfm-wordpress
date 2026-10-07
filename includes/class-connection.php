@@ -43,20 +43,20 @@ final class Connection {
 	const PLAN_ERROR = 'plan_upgrade_required';
 
 	/**
-	 * Generation counter (autoload off): an integer that one atomic UPDATE moves on for every
-	 * connect, reconnect and disconnect, from any tab or WP-CLI, so no two requests ever get
-	 * the same value. A save takes its value first and writes it as `g` inside the same option
-	 * value as the encrypted credentials, in one write, so a stored credential and its
-	 * generation always come from the same request. Never deleted on disconnect.
+	 * The generation counter of earlier development builds. No longer used: `upgrade()` and
+	 * uninstall delete it.
 	 */
-	const GENERATION_OPTION = 'showfm_connection_generation';
+	const LEGACY_GENERATION_OPTION = 'showfm_connection_generation';
+
+	/** `connection_id()` for credentials stored before connection ids existed. */
+	const LEGACY_ID = 'legacy';
 
 	/**
-	 * The generation this instance's last successful save() produced, or null.
+	 * The connection id this instance's last successful save() wrote, or null.
 	 *
-	 * @var int|null
+	 * @var string|null
 	 */
-	private $saved_generation = null;
+	private $saved_id = null;
 
 	/** No connection stored. */
 	const STATE_DISCONNECTED = 'disconnected';
@@ -86,8 +86,8 @@ final class Connection {
 	 * @return bool Whether the credentials were stored.
 	 */
 	public function save( string $key, string $ping_secret, string $site_id, int $expires_at ): bool {
-		// Only a save that succeeds now may name a generation as its own.
-		$this->saved_generation = null;
+		// Only a save that succeeds now may name a connection id as its own.
+		$this->saved_id = null;
 		foreach ( array( $key, $ping_secret, $site_id ) as $value ) {
 			if ( '' === $value || strlen( $value ) > self::MAX_LENGTH || preg_match( '/[\x00-\x20\x7f]/', $value ) ) {
 				return false;
@@ -116,18 +116,19 @@ final class Connection {
 			return false;
 		}
 
-		// This save's own generation, taken before the write and stored with the credentials.
-		$generation = self::next_generation();
-		$stored     = array(
+		// A random id for this connection, written with the credentials. Nothing is counted
+		// or ordered: a connect outcome matches a connection by this id only.
+		$id     = wp_generate_uuid4();
+		$stored = array(
 			'v' => self::FORMAT_VERSION,
 			'n' => base64_encode( $nonce ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Binary ciphertext stored as text.
 			'c' => base64_encode( $cipher ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Binary ciphertext stored as text.
-			'g' => $generation,
+			'i' => $id,
 		);
 
-		// One UPDATE (or INSERT when nothing is stored) writes the credentials and their
-		// generation together. If it fails, the old credentials are still there, so a failed
-		// reconnect never leaves the site with nothing.
+		// One UPDATE (or INSERT when nothing is stored) writes the credentials and their id
+		// together. If it fails, the old credentials are still there, so a failed reconnect
+		// never leaves the site with nothing.
 		if ( ! update_option( self::OPTION, $stored, false ) ) {
 			return false;
 		}
@@ -135,7 +136,7 @@ final class Connection {
 		delete_option( self::REFUSED_AT_OPTION );
 		delete_option( self::PAUSED_OPTION );
 		update_option( self::CONNECTED_AT_OPTION, time(), false );
-		$this->saved_generation = $generation;
+		$this->saved_id = $id;
 		return true;
 	}
 
@@ -309,76 +310,44 @@ final class Connection {
 	 * Removes the credentials and state.
 	 */
 	public function disconnect(): void {
+		// The credentials and their connection id go in the same delete.
 		delete_option( self::OPTION );
 		delete_option( self::STATE_OPTION );
 		delete_option( self::REFUSED_AT_OPTION );
 		delete_option( self::CONNECTED_AT_OPTION );
 		delete_option( self::PAUSED_OPTION );
-		$this->saved_generation = null;
-		self::next_generation();
+		$this->saved_id = null;
 	}
 
 	/**
-	 * The generation of what is stored now. With credentials stored, it is the `g` written
-	 * with them in the same write (0 for credentials stored before generations existed).
-	 * With nothing stored, it is the counter negated, which no stored connection's
-	 * generation (always above 0) can equal, and which every disconnect moves on.
+	 * The id of the connection stored now: the random id written with the credentials,
+	 * `LEGACY_ID` for credentials stored before ids existed, or '' when nothing is stored.
+	 * Only ever compared for equality.
 	 */
-	public static function generation(): int {
+	public static function connection_id(): string {
 		$stored = get_option( self::OPTION, false );
-		if ( is_array( $stored ) && isset( $stored['c'] ) ) {
-			return is_int( $stored['g'] ?? null ) ? $stored['g'] : 0;
+		if ( ! is_array( $stored ) || ! isset( $stored['c'] ) ) {
+			return '';
 		}
-		return - (int) get_option( self::GENERATION_OPTION, 0 );
+		return is_string( $stored['i'] ?? null ) && wp_is_uuid( $stored['i'], 4 ) ? $stored['i'] : self::LEGACY_ID;
 	}
 
 	/**
-	 * The generation this instance's last successful save() wrote with its credentials, or
+	 * The connection id this instance's last successful save() wrote with the credentials, or
 	 * null. A save from another tab or WP-CLI never counts as this one.
 	 */
-	public function saved_generation(): ?int {
-		return $this->saved_generation;
+	public function saved_connection_id(): ?string {
+		return $this->saved_id;
 	}
 
 	/**
-	 * Moves the generation counter on by one and returns the new value. Every path reads and
-	 * writes only the counter (`GENERATION_OPTION`), never the stored credentials or the
-	 * negated value `generation()` gives while disconnected, so the counter only rises.
-	 *
-	 * - Atomic path: one UPDATE with `LAST_INSERT_ID(expr)` hands this request its own value,
-	 *   so two requests in the same second always differ. The value is trusted only if it is
-	 *   above 0 and not above the counter read back from the database.
-	 * - If the UPDATE ran but the value cannot be trusted, the counter read back is used.
-	 * - Fallback, when the UPDATE changed nothing: the counter is read and written through the
-	 *   options API. That path is not atomic, but it never goes backwards or below 1.
+	 * Removes the generation counter left by earlier development builds. Runs on
+	 * `admin_init`; one option read when there is nothing to remove.
 	 */
-	private static function next_generation(): int {
-		global $wpdb;
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- add_option() is not atomic (it upserts), INSERT IGNORE is.
-		$wpdb->query( $wpdb->prepare( "INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, '0', 'off')", self::GENERATION_OPTION ) );
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- One atomic increment; LAST_INSERT_ID(expr) hands this connection its own new value.
-		$updated = $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->options} SET option_value = LAST_INSERT_ID(CAST(option_value AS UNSIGNED) + 1) WHERE option_name = %s", self::GENERATION_OPTION ) );
-		wp_cache_delete( self::GENERATION_OPTION, 'options' );
-		wp_cache_delete( 'notoptions', 'options' );
-
-		if ( 1 === $updated ) {
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Reads this connection's value from the UPDATE above.
-			$next = (int) $wpdb->get_var( 'SELECT LAST_INSERT_ID()' );
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- The counter as stored, bypassing the cache.
-			$counter = (int) $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", self::GENERATION_OPTION ) );
-			if ( $next > 0 && $next <= $counter ) {
-				return $next;
-			}
-			if ( $counter > 0 ) {
-				return $counter;
-			}
+	public static function upgrade(): void {
+		if ( false !== get_option( self::LEGACY_GENERATION_OPTION, false ) ) {
+			delete_option( self::LEGACY_GENERATION_OPTION );
 		}
-
-		// Fallback: the counter itself, through the options API.
-		$next = max( 1, (int) get_option( self::GENERATION_OPTION, 0 ) + 1 );
-		update_option( self::GENERATION_OPTION, $next, false );
-		return $next;
 	}
 
 	/**

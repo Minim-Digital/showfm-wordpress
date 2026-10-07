@@ -137,19 +137,19 @@ final class Admin_Status {
 	 * The stored connect outcome, only while the live connection still agrees with it. The
 	 * live state always wins:
 	 *
-	 * - Every outcome belongs to a connection generation, and the stored credentials carry
-	 *   theirs in the same write. Any later connect, reconnect or disconnect, from another tab
-	 *   or WP-CLI, changes the stored generation and hides it, even in the same second and
-	 *   however the requests interleave.
+	 * - Every outcome records the connection it belongs to: the random id written with the
+	 *   credentials, or '' for "no connection". It shows only while that is still what is
+	 *   stored. Any later connect, reconnect or disconnect, from another tab or WP-CLI,
+	 *   changes or removes the stored id and hides it, however the requests interleave.
 	 * - "Connected" also shows only while the stored key works: not after an expiry, a
 	 *   refusal such as a password change, or a salt change.
 	 *
-	 * @param array{status:string,error:string,retry_after:int,reason:string,generation:int|null}|null $result Stored outcome.
-	 * @param string                                                                                   $state  Live state.
-	 * @return array{status:string,error:string,retry_after:int,reason:string,generation:int|null}|null
+	 * @param array{status:string,error:string,retry_after:int,reason:string,connection:string|null}|null $result Stored outcome.
+	 * @param string                                                                                      $state  Live state.
+	 * @return array{status:string,error:string,retry_after:int,reason:string,connection:string|null}|null
 	 */
 	public static function current_result( ?array $result, string $state ): ?array {
-		if ( null === $result || Connection::generation() !== $result['generation'] ) {
+		if ( null === $result || Connection::connection_id() !== $result['connection'] ) {
 			return null;
 		}
 		$working = in_array( $state, array( 'connected', 'expiring', 'paused', 'scheduled' ), true );
@@ -202,7 +202,7 @@ final class Admin_Status {
 	/**
 	 * The connect outcome as the screen shows it: the message and its one action.
 	 *
-	 * @param array{status:string,error:string,retry_after:int,reason:string,generation:int|null} $result Outcome.
+	 * @param array{status:string,error:string,retry_after:int,reason:string,connection:string|null} $result Outcome.
 	 * @return array{status:string,error:string,message:string,action:string}
 	 */
 	private static function result( array $result ): array {

@@ -132,7 +132,7 @@ function showfm_e2e_set_state( WP_REST_Request $request ) {
 				'error'       => 'success' === $result ? '' : $result,
 				'retry_after' => 0,
 				'reason'      => '',
-				'generation'  => Connection::generation(),
+				'connection'  => Connection::connection_id(),
 			),
 			Connect::RESULT_TTL
 		);

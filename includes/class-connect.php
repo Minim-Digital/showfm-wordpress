@@ -522,7 +522,7 @@ final class Connect {
 	 * The last outcome for the settings screen, or null.
 	 *
 	 * @param int $user_id The admin.
-	 * @return array{status:string,error:string,retry_after:int,reason:string,generation:int|null}|null
+	 * @return array{status:string,error:string,retry_after:int,reason:string,connection:string|null}|null
 	 */
 	public static function result( int $user_id ): ?array {
 		$result = get_transient( self::RESULT_PREFIX . $user_id );
@@ -534,7 +534,7 @@ final class Connect {
 			'error'       => is_string( $result['error'] ?? null ) ? $result['error'] : '',
 			'retry_after' => (int) ( $result['retry_after'] ?? 0 ),
 			'reason'      => is_string( $result['reason'] ?? null ) ? $result['reason'] : '',
-			'generation'  => is_int( $result['generation'] ?? null ) ? $result['generation'] : null,
+			'connection'  => is_string( $result['connection'] ?? null ) ? $result['connection'] : null,
 		);
 	}
 
@@ -710,7 +710,7 @@ final class Connect {
 
 	/**
 	 * Records a failure only when no outcome is waiting to be shown. An outcome the screen
-	 * would hide (another generation, or a "Connected" whose key no longer works) is not
+	 * would hide (another connection, or a "Connected" whose key no longer works) is not
 	 * waiting, so it never keeps a new failure from being seen.
 	 *
 	 * @param int    $user_id The admin.
@@ -719,7 +719,7 @@ final class Connect {
 	private function fail_unless_noted( int $user_id, string $error ): void {
 		$result  = self::result( $user_id );
 		$waiting = null !== $result
-			&& Connection::generation() === $result['generation']
+			&& Connection::connection_id() === $result['connection']
 			&& ( self::STATUS_CONNECTED !== $result['status'] || $this->connection->is_connected() );
 		if ( ! $waiting ) {
 			$this->fail( $user_id, $error );
@@ -733,13 +733,13 @@ final class Connect {
 	 * @param array{status:string,error:string,retry_after:int,reason:string} $outcome Outcome.
 	 */
 	private function record( int $user_id, array $outcome ): void {
-		// The connection generation the outcome belongs to: the one this connect wrote with
-		// its credentials, or the stored one for a failure. The settings screen shows the
-		// outcome only while the stored credentials still carry it, so a later connect or
-		// disconnect (another tab, WP-CLI) wins, however the requests interleave.
-		// A "Connected" with no save of its own in this request gets no generation, so it is
-		// never shown against another request's credentials.
-		$outcome['generation'] = self::STATUS_CONNECTED === $outcome['status'] ? $this->connection->saved_generation() : Connection::generation();
+		// The connection the outcome belongs to: the id this connect wrote with its
+		// credentials, or for a failure the id stored now ('' when nothing is stored). The
+		// settings screen shows the outcome only while that id is still the stored one, so
+		// any later connect, reconnect or disconnect (another tab, WP-CLI) hides it, however
+		// the requests interleave. A "Connected" with no save of its own in this request
+		// gets null, which matches nothing.
+		$outcome['connection'] = self::STATUS_CONNECTED === $outcome['status'] ? $this->connection->saved_connection_id() : Connection::connection_id();
 		set_transient( self::RESULT_PREFIX . $user_id, $outcome, self::RESULT_TTL );
 	}
 
