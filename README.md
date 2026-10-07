@@ -116,7 +116,15 @@ undo behaviour and the current server contract gaps. No Migrate tab is included 
   there. A 401 here never flags the stored state, since it is removed next. If the revoke
   succeeded but the local clear finds the lock busy or lost (503, `data.revoke`), the message
   says the key was revoked and that Disconnect again finishes: the retry's revoke gets a 401,
-  which counts as nothing left to revoke, and the clear goes through. Afterwards focus
+  which counts as nothing left to revoke, and the clear goes through. The teardown itself is
+  resumable: `Connect::disconnect()` writes a marker (`showfm_disconnect_teardown`, with the
+  revoke outcome) before the swap and removes it after the last step. If the lease is lost
+  after the swap, the site is disconnected and the message says the clean-up finishes on the
+  next admin page or Disconnect. `Connect::finish_teardown()` runs on `admin_init`, at the start
+  of every sync, first in the REST disconnect (without needing the old state id) and in
+  `wp showfm disconnect` (which does not stop at "not connected" while it is pending). It runs
+  the idempotent teardown only while no credentials are stored, so a connection saved since
+  keeps its jobs. Afterwards focus
   moves to the Connect card's heading and one polite message is spoken.
 - `Publishing` holds the Publishing tab's settings (`showfm_publishing`, autoload off): auto-post
   (on), post type (`post`), category, author (0 means the first user who can publish the type),
@@ -139,7 +147,9 @@ undo behaviour and the current server contract gaps. No Migrate tab is included 
 - `Sync_Activity` keeps the last 20 things the sync did (`showfm_sync_activity`, autoload off):
   posted, scheduled, updated (title, description or date), updated after an edit here (date and
   status only), moved to draft, moved to the bin, no longer synced, paused by the plan, and not
-  posted because auto-posting is off (recorded once per episode until another event for it).
+  posted because auto-posting is off (recorded once per episode until another event for it,
+  tracked in `showfm_sync_skipped`, a map of up to 1,000 episode ids kept apart from the 20
+  events, so an entry pushed out of them is not recorded again).
   It stores plugin event codes, the episode title, the show
   and post ids, never remote error text. Re-applying a row that changes nothing records nothing.
 - `Notices` shows at most one admin notice on the Dashboard and Plugins screens (the settings

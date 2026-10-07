@@ -103,6 +103,7 @@ final class Plugin {
 
 		add_action( 'admin_init', array( Privacy::class, 'register' ) );
 		add_action( 'admin_init', array( Connection::class, 'upgrade' ) );
+		add_action( 'admin_init', array( Connect::class, 'finish_teardown_quietly' ) );
 		add_action( 'admin_init', array( self::health(), 'ensure_scheduled' ) );
 		if ( is_admin() ) {
 			( new Admin( self::connect(), self::connection() ) )->boot();

@@ -83,6 +83,13 @@ final class Connect {
 	/** Option set while the site still has to report in with verify (autoload off). */
 	const VERIFY_PENDING_OPTION = 'showfm_verify_pending';
 
+	/**
+	 * A disconnect whose teardown has not finished (autoload off): `{revoke, at}`. Written
+	 * before the swap and removed after the last step, so a disconnect that loses its lease
+	 * part way is finished later by `finish_teardown()`.
+	 */
+	const TEARDOWN_OPTION = 'showfm_disconnect_teardown';
+
 	/** Exchange route (keyless; the one-time code is the credential). */
 	const EXCHANGE_PATH = '/v1/sites/exchange';
 
@@ -601,15 +608,26 @@ final class Connect {
 	}
 
 	/**
-	 * The message when the local clear could not finish (the lock was busy or lost). After a
-	 * revoke that succeeded it says so, since the stored key no longer works: running
-	 * Disconnect again gets a 401, which counts as nothing left to revoke, and finishes.
+	 * The message when the local clear could not finish (the lock was busy or lost).
+	 *
+	 * - The swap was made, then the lease was lost: the site is disconnected and only the
+	 *   clean-up is left, which `finish_teardown()` does on the next admin page or Disconnect.
+	 * - Nothing was swapped, after a revoke that succeeded: it says so, since the stored key no
+	 *   longer works. Running Disconnect again gets a 401, which counts as nothing left to
+	 *   revoke, and finishes.
 	 *
 	 * @param string $outcome One of the REVOKE_ constants.
 	 * @param string $error   `ERROR_BUSY` or `ERROR_LOST`.
 	 * @param bool   $cli     Whether the retry is the WP-CLI command.
 	 */
 	public static function unfinished_message( string $outcome, string $error, bool $cli = false ): string {
+		if ( self::teardown_pending() ) {
+			// The swap stands: the site is disconnected, and only the clean-up is left.
+			$revoked = '' === $outcome ? '' : self::revoke_message( $outcome ) . ' ';
+			return $revoked . ( $cli
+				? __( 'This site is disconnected, but another change took over before its clean-up finished. It finishes the next time an admin page loads, or run wp showfm disconnect again.', 'showfm' )
+				: __( 'This site is disconnected, but another change took over before its clean-up finished. It finishes the next time an admin page loads, or select Disconnect again.', 'showfm' ) );
+		}
 		if ( self::REVOKE_DONE !== $outcome ) {
 			return self::message( $error );
 		}
@@ -619,8 +637,19 @@ final class Connect {
 	}
 
 	/**
+	 * What Disconnect says after finishing an earlier disconnect's clean-up.
+	 *
+	 * @param string $outcome The REVOKE_ constant that disconnect recorded, or ''.
+	 */
+	public static function finished_message( string $outcome ): string {
+		$finished = __( 'This site finished disconnecting.', 'showfm' );
+		return '' === $outcome ? $finished : $finished . ' ' . self::revoke_message( $outcome );
+	}
+
+	/**
 	 * Removes the local connection: credentials, scheduled events and connection state.
-	 * Callers ask show.fm to revoke the key first (see `revoke()`).
+	 * Callers ask show.fm to revoke the key first (see `revoke()`) and pass its outcome, which
+	 * is kept with the teardown marker until the teardown finishes.
 	 *
 	 * The swap and the whole teardown run in one change under the connection lock, on the
 	 * state read fresh inside it: only the state the caller read is disconnected, and a
@@ -629,25 +658,31 @@ final class Connect {
 	 *
 	 * @param Connection|null $pinned  The caller's pinned connection; read once now when not given.
 	 * @param int             $user_id The admin whose connect outcome is cleared too, or 0.
+	 * @param string          $revoke  The outcome of the revoke made first, or ''.
 	 * @return bool Whether that state was disconnected; false when it moved on.
 	 * @throws Connection_Busy When another change holds the lock for longer than the wait.
 	 */
-	public function disconnect( ?Connection $pinned = null, int $user_id = 0 ): bool {
+	public function disconnect( ?Connection $pinned = null, int $user_id = 0, string $revoke = '' ): bool {
 		$expected = ( $pinned ?? $this->connection->pinned() )->snapshot()['id'];
 		return (bool) Connection::mutate(
-			static function ( Connection $fresh ) use ( $expected, $user_id ): bool {
-				if ( $fresh->snapshot()['id'] !== $expected || ! $fresh->disconnect() ) {
+			static function ( Connection $fresh ) use ( $expected, $user_id, $revoke ): bool {
+				if ( $fresh->snapshot()['id'] !== $expected ) {
 					return false;
 				}
-				// Short steps, each after a lease check: a change that outlived its lease stops
-				// before touching whatever a later change has set up.
-				Connection::guarded( array( Plugin::class, 'unschedule_events' ) );
-				Connection::remove( self::VERIFY_PENDING_OPTION );
-				Connection::remove( Api_Client::RATE_LIMIT_OPTION );
-				Connection::remove( Ping_Endpoint::LAST_PING_OPTION );
-				Connection::remove( Ping_Endpoint::MISSED_OPTION );
-				Connection::remove( Account::OPTION );
-				Connection::guarded( array( Ping_Endpoint::class, 'forget_nonces' ) );
+				// The marker comes before the swap: if the lease is lost anywhere after it, the
+				// next run finishes the teardown without needing this state's id.
+				Connection::write(
+					self::TEARDOWN_OPTION,
+					array(
+						'revoke' => $revoke,
+						'at'     => time(),
+					)
+				);
+				if ( ! $fresh->disconnect() ) {
+					Connection::remove( self::TEARDOWN_OPTION );
+					return false;
+				}
+				self::teardown();
 				if ( $user_id > 0 ) {
 					Connection::guarded(
 						static function () use ( $user_id ): void {
@@ -655,9 +690,78 @@ final class Connect {
 						}
 					);
 				}
+				Connection::remove( self::TEARDOWN_OPTION );
 				return true;
 			}
 		);
+	}
+
+	/**
+	 * Everything a disconnect clears after the swap. Each step is idempotent and checks the
+	 * lease first, so a change that outlived its lease stops before touching whatever a later
+	 * change has set up, and a later run can repeat the lot.
+	 */
+	private static function teardown(): void {
+		foreach ( array( Connection::STATE_OPTION, Connection::REFUSED_AT_OPTION, Connection::CONNECTED_AT_OPTION, Connection::PAUSED_OPTION ) as $option ) {
+			Connection::remove( $option );
+		}
+		Connection::guarded( array( Plugin::class, 'unschedule_events' ) );
+		Connection::remove( self::VERIFY_PENDING_OPTION );
+		Connection::remove( Api_Client::RATE_LIMIT_OPTION );
+		Connection::remove( Ping_Endpoint::LAST_PING_OPTION );
+		Connection::remove( Ping_Endpoint::MISSED_OPTION );
+		Connection::remove( Account::OPTION );
+		Connection::guarded( array( Ping_Endpoint::class, 'forget_nonces' ) );
+	}
+
+	/**
+	 * Whether a disconnect swapped the credentials out but did not finish its teardown.
+	 */
+	public static function teardown_pending(): bool {
+		return is_array( Connection::fresh_option( self::TEARDOWN_OPTION ) ) && ! ( new Connection() )->pinned()->snapshot()['credentials'];
+	}
+
+	/**
+	 * Finishes a disconnect that lost its lease part way, under the connection lock. Runs on
+	 * `admin_init`, at the start of a sync, and first in every Disconnect. It runs the
+	 * teardown only while no credentials are stored: a marker left before the swap, or by a
+	 * disconnect a reconnect has since replaced, is only removed, so a new connection's jobs
+	 * are never touched. One option read when there is nothing to do.
+	 *
+	 * @return array{revoke:string}|null What the finished disconnect recorded, or null when
+	 *                                   nothing was finished (nothing pending, or busy).
+	 */
+	public static function finish_teardown(): ?array {
+		if ( ! is_array( get_option( self::TEARDOWN_OPTION, false ) ) ) {
+			return null;
+		}
+		try {
+			$finished = Connection::mutate(
+				static function ( Connection $fresh ): ?array {
+					$marker = Connection::fresh_option( self::TEARDOWN_OPTION, false );
+					if ( ! is_array( $marker ) ) {
+						return null;
+					}
+					if ( ! $fresh->snapshot()['credentials'] ) {
+						self::teardown();
+					}
+					$done = ! $fresh->snapshot()['credentials'];
+					Connection::remove( self::TEARDOWN_OPTION );
+					return $done ? array( 'revoke' => is_string( $marker['revoke'] ?? null ) ? $marker['revoke'] : '' ) : null;
+				}
+			);
+		} catch ( Connection_Busy | Connection_Lost $later ) {
+			// The marker stays; the next run finishes.
+			return null;
+		}
+		return is_array( $finished ) ? $finished : null;
+	}
+
+	/**
+	 * Runs `finish_teardown()` from a hook, ignoring what it returns.
+	 */
+	public static function finish_teardown_quietly(): void {
+		self::finish_teardown();
 	}
 
 	/**

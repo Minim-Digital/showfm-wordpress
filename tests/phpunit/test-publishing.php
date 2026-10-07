@@ -46,6 +46,7 @@ class Test_Publishing extends WP_UnitTestCase {
 		$this->http = new ShowFM_Http_Mock();
 		delete_option( Publishing::OPTION );
 		delete_option( Sync_Activity::OPTION );
+		delete_option( Sync_Activity::SKIPPED_OPTION );
 		delete_option( Sync::OPTION );
 		delete_option( Connection::SYNC_STATUS_OPTION );
 		$this->admin = self::factory()->user->create(
@@ -662,6 +663,53 @@ class Test_Publishing extends WP_UnitTestCase {
 			array( Sync_Activity::SKIPPED, Sync_Activity::SKIPPED, Sync_Activity::PAUSED, Sync_Activity::SKIPPED ),
 			wp_list_pluck( Sync_Activity::entries(), 'event' )
 		);
+	}
+
+	public function test_not_posted_stays_recorded_once_for_a_rotating_set_larger_than_the_log(): void {
+		$this->save(
+			array(
+				'auto_post'      => false,
+				'featured_image' => false,
+			)
+		);
+		$episodes = array();
+		for ( $i = 0; $i < Sync_Activity::MAX + 5; ++$i ) {
+			$episodes[] = sprintf( '%08x-4444-4444-8444-444444444444', $i + 1 );
+		}
+		$seq = 0;
+		for ( $round = 0; $round < 3; ++$round ) {
+			foreach ( $episodes as $episode ) {
+				$row                  = $this->row( ++$seq );
+				$row['episode_id']    = $episode;
+				$row['episode']['id'] = $episode;
+				$this->assertSame( 0, ( new Sync_Posts() )->apply( self::SITE, $row ) );
+			}
+			if ( 0 === $round ) {
+				$first = Sync_Activity::entries();
+			}
+		}
+
+		$this->assertSame( $first, Sync_Activity::entries(), 'Later rounds record nothing, though the first entries were pushed out.' );
+		$this->assertCount( count( $episodes ), get_option( Sync_Activity::SKIPPED_OPTION ) );
+		$this->assertFalse( wp_load_alloptions()[ Sync_Activity::SKIPPED_OPTION ] ?? false, 'Not autoloaded.' );
+	}
+
+	public function test_the_not_posted_markers_are_bounded_and_cleared_by_another_event(): void {
+		$markers = array();
+		for ( $i = 0; $i < Sync_Activity::MAX_SKIPPED; ++$i ) {
+			$markers[ 'old-' . $i ] = $i;
+		}
+		update_option( Sync_Activity::SKIPPED_OPTION, $markers, false );
+
+		Sync_Activity::record( Sync_Activity::SKIPPED, $this->row(), 0 );
+
+		$stored = get_option( Sync_Activity::SKIPPED_OPTION );
+		$this->assertCount( Sync_Activity::MAX_SKIPPED, $stored );
+		$this->assertArrayNotHasKey( 'old-0', $stored, 'The oldest marker goes first.' );
+		$this->assertArrayHasKey( self::EPISODE, $stored );
+
+		Sync_Activity::record( Sync_Activity::PAUSED, $this->row(), 0 );
+		$this->assertArrayNotHasKey( self::EPISODE, get_option( Sync_Activity::SKIPPED_OPTION ) );
 	}
 
 	public function test_a_stored_author_who_can_no_longer_publish_shows_as_the_default(): void {

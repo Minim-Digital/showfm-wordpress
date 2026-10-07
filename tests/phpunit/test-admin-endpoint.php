@@ -490,6 +490,34 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 		$this->assertSame( Connect::message( Connect::ERROR_BUSY ), Connect::unfinished_message( Connect::REVOKE_REFUSED, Connect::ERROR_BUSY ) );
 	}
 
+	public function test_a_lease_lost_after_the_swap_says_so_and_disconnect_again_finishes_the_clean_up(): void {
+		$this->connect();
+		$seen = $this->view()['stateId'];
+		wp_schedule_single_event( time() + HOUR_IN_SECONDS, Health::HOOK );
+		$this->http->respond( 200, '{"data":{"disconnected":true}}' );
+		$expire = $this->lose_lease_after_swap();
+		try {
+			$response = $this->dispatch( 'POST', '/showfm/v1/admin/disconnect', array( 'state' => $seen ) );
+		} finally {
+			$this->keep_lease( $expire );
+		}
+
+		$this->assertSame( 503, $response->get_status() );
+		$this->assertSame( 'showfm_lock_lost', $response->get_data()['code'] );
+		$this->assertSame( 'This site’s key was revoked at show.fm. This site is disconnected, but another change took over before its clean-up finished. It finishes the next time an admin page loads, or select Disconnect again.', $response->get_data()['message'] );
+		$this->assertNotFalse( wp_next_scheduled( Health::HOOK ), 'The clean-up stopped at the loss.' );
+
+		// The screen still shows the old state; Disconnect again finishes without it.
+		$retry = $this->dispatch( 'POST', '/showfm/v1/admin/disconnect', array( 'state' => $seen ) );
+
+		$this->assertSame( 200, $retry->get_status() );
+		$this->assertSame( 'not_connected', $retry->get_data()['state'] );
+		$this->assertSame( Connect::REVOKE_DONE, $retry->get_data()['disconnected']['revoke'] );
+		$this->assertSame( 'This site finished disconnecting. This site’s key was revoked at show.fm.', $retry->get_data()['disconnected']['message'] );
+		$this->assertFalse( wp_next_scheduled( Health::HOOK ) );
+		$this->assertSame( 1, $this->http->count(), 'The finished retry sends nothing to show.fm.' );
+	}
+
 	public function test_disconnect_clears_the_stored_connect_result(): void {
 		$this->connect();
 		$this->result( Connect::STATUS_CONNECTED, '' );
@@ -826,5 +854,37 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 			$request->set_body_params( $body );
 		}
 		return rest_get_server()->dispatch( $request );
+	}
+
+	/**
+	 * Makes the next disconnect lose its lease straight after the swap, as a slow request
+	 * would. Returns the hook to remove afterwards.
+	 */
+	private function lose_lease_after_swap(): callable {
+		add_filter( 'showfm_sync_use_named_lock', '__return_false' );
+		$expire = static function ( string $option ): void {
+			if ( Connection::OPTION !== $option ) {
+				return;
+			}
+			global $wpdb;
+			$row      = (string) $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", Connection::LOCK_OPTION ) );
+			$parts    = explode( '|', $row );
+			$parts[1] = (string) ( time() - 1 );
+			$wpdb->update( $wpdb->options, array( 'option_value' => implode( '|', $parts ) ), array( 'option_name' => Connection::LOCK_OPTION ) );
+			wp_cache_delete( Connection::LOCK_OPTION, 'options' );
+		};
+		add_action( 'updated_option', $expire );
+		return $expire;
+	}
+
+	/**
+	 * Undoes `lose_lease_after_swap()`.
+	 *
+	 * @param callable $expire The hook it returned.
+	 */
+	private function keep_lease( callable $expire ): void {
+		remove_action( 'updated_option', $expire );
+		remove_filter( 'showfm_sync_use_named_lock', '__return_false' );
+		delete_option( Connection::LOCK_OPTION );
 	}
 }

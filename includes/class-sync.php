@@ -82,6 +82,8 @@ final class Sync {
 
 	/** Cron and ping wake-ups share exactly the same entry point. */
 	public static function run(): void {
+		// A disconnect that lost its lease part way leaves jobs behind; finish it first.
+		Connect::finish_teardown_quietly();
 		( new self() )->pull();
 	}
 

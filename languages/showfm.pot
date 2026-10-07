@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-07T21:17:35+00:00\n"
+"POT-Creation-Date: 2026-10-07T21:32:26+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: showfm\n"
@@ -49,11 +49,11 @@ msgstr ""
 msgid "Disconnect needs the connection state the screen showed. Reload the page, then try again."
 msgstr ""
 
-#: includes/class-admin-endpoint.php:210
+#: includes/class-admin-endpoint.php:223
 msgid "The connection changed in another tab or by another admin, so nothing was disconnected. Check it, then try again."
 msgstr ""
 
-#: includes/class-admin-endpoint.php:226
+#: includes/class-admin-endpoint.php:239
 msgid "That notice can’t be dismissed."
 msgstr ""
 
@@ -217,129 +217,141 @@ msgstr ""
 msgid "Rate limited: waiting %d more seconds"
 msgstr ""
 
-#: includes/class-cli.php:209
+#: includes/class-cli.php:215
 msgid "This site is not connected to show.fm."
 msgstr ""
 
-#: includes/class-cli.php:212
+#: includes/class-cli.php:218
 msgid "Disconnect this site from show.fm? Posts already created stay."
 msgstr ""
 
-#: includes/class-cli.php:226
+#: includes/class-cli.php:232
 msgid "The connection changed while this command ran, so nothing was disconnected. Check it with wp showfm status, then run the command again."
 msgstr ""
 
-#: includes/class-cli.php:231
+#: includes/class-cli.php:237
 msgid "Disconnected here."
 msgstr ""
 
-#: includes/class-cli.php:234
+#: includes/class-cli.php:240
 msgid "Disconnected."
 msgstr ""
 
-#: includes/class-cli.php:273
+#: includes/class-cli.php:279
 msgid "Use wp showfm sync or wp showfm sync status."
 msgstr ""
 
 #. translators: 1: sync outcome, 2: rows handled, 3: cursor.
-#: includes/class-cli.php:279
+#: includes/class-cli.php:285
 #, php-format
 msgid "Sync: %1$s; rows: %2$d; cursor: %3$d."
 msgstr ""
 
-#: includes/class-cli.php:302
+#: includes/class-cli.php:308
 msgid "A key given as --key=VALUE stays in your shell history and shows in the process list. Use SHOWFM_KEY or --key=- next time."
 msgstr ""
 
-#: includes/class-cli.php:312
+#: includes/class-cli.php:318
 msgid "Site key from show.fm (input hidden)"
 msgstr ""
 
-#: includes/class-connect.php:596
+#: includes/class-connect.php:603
 msgid "This site’s key was revoked at show.fm."
 msgstr ""
 
-#: includes/class-connect.php:598
+#: includes/class-connect.php:605
 msgid "show.fm had already stopped accepting this site’s key, so there was nothing left to revoke."
 msgstr ""
 
-#: includes/class-connect.php:600
+#: includes/class-connect.php:607
 msgid "show.fm didn’t confirm the key was revoked, so it may still work. Revoke it in show.fm under Connected sites."
 msgstr ""
 
-#: includes/class-connect.php:617
+#: includes/class-connect.php:628
+msgid "This site is disconnected, but another change took over before its clean-up finished. It finishes the next time an admin page loads, or run wp showfm disconnect again."
+msgstr ""
+
+#: includes/class-connect.php:629
+msgid "This site is disconnected, but another change took over before its clean-up finished. It finishes the next time an admin page loads, or select Disconnect again."
+msgstr ""
+
+#: includes/class-connect.php:635
 msgid "This site’s key was revoked at show.fm, but another change to the connection was in progress, so this site hasn’t finished disconnecting. Run wp showfm disconnect again to finish."
 msgstr ""
 
-#: includes/class-connect.php:618
+#: includes/class-connect.php:636
 msgid "This site’s key was revoked at show.fm, but another change to the connection was in progress, so this site hasn’t finished disconnecting. Select Disconnect again to finish."
 msgstr ""
 
-#: includes/class-connect.php:701
+#: includes/class-connect.php:645
+msgid "This site finished disconnecting."
+msgstr ""
+
+#: includes/class-connect.php:805
 msgid "This connection request did not come from this browser session. Start again with Connect to show.fm."
 msgstr ""
 
-#: includes/class-connect.php:703
+#: includes/class-connect.php:807
 msgid "The connection request expired or was already used. Start again with Connect to show.fm."
 msgstr ""
 
-#: includes/class-connect.php:705
+#: includes/class-connect.php:809
 msgid "show.fm did not accept the connection. Codes last five minutes and work once. Start again with Connect to show.fm."
 msgstr ""
 
-#: includes/class-connect.php:707
+#: includes/class-connect.php:811
 msgid "That is not a show.fm site key. Copy the key from Connected sites in show.fm."
 msgstr ""
 
-#: includes/class-connect.php:709
+#: includes/class-connect.php:813
 msgid "show.fm did not accept that key. Site keys must be registered within 24 hours. Create a new one in show.fm under Connected sites."
 msgstr ""
 
-#: includes/class-connect.php:711
+#: includes/class-connect.php:815
 msgid "show.fm could not confirm that this site belongs to you. Check that the site is public, uses https and has the show.fm plugin active, then try again."
 msgstr ""
 
 #. translators: %d: number of seconds.
-#: includes/class-connect.php:715
+#: includes/class-connect.php:819
 #, php-format
 msgid "show.fm asked this site to wait. Try again in %d second."
 msgid_plural "show.fm asked this site to wait. Try again in %d seconds."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/class-connect.php:719
+#: includes/class-connect.php:823
 msgid "show.fm could not be reached. Try again in a few minutes."
 msgstr ""
 
-#: includes/class-connect.php:721
+#: includes/class-connect.php:825
 msgid "show.fm sent an answer this plugin does not understand. Update the plugin, then try again."
 msgstr ""
 
-#: includes/class-connect.php:723
+#: includes/class-connect.php:827
 msgid "The connection was cancelled."
 msgstr ""
 
-#: includes/class-connect.php:725
+#: includes/class-connect.php:829
 msgid "This site’s address must use https."
 msgstr ""
 
-#: includes/class-connect.php:727
+#: includes/class-connect.php:831
 msgid "The change took too long and another change took over part way through. Reload to see the connection as it is now."
 msgstr ""
 
-#: includes/class-connect.php:729
+#: includes/class-connect.php:833
 msgid "Another change to this site’s show.fm connection was in progress. Try again in a moment."
 msgstr ""
 
-#: includes/class-connect.php:731
+#: includes/class-connect.php:835
 msgid "The connection could not be saved. Your server needs the PHP sodium extension, or WordPress 6.6 or later. Then try again."
 msgstr ""
 
-#: includes/class-connect.php:733
+#: includes/class-connect.php:837
 msgid "Connected, but this site could not report in to show.fm yet. It tries again automatically."
 msgstr ""
 
-#: includes/class-connect.php:735
+#: includes/class-connect.php:839
 msgid "Something went wrong. Start again with Connect to show.fm."
 msgstr ""
 
@@ -670,114 +682,114 @@ msgstr ""
 msgid "Default"
 msgstr ""
 
-#: includes/class-sync-activity.php:173
+#: includes/class-sync-activity.php:187
 msgid "Posted"
 msgstr ""
 
 #. translators: %s: date and time the post goes live, for example "14 October at 09:00".
-#: includes/class-sync-activity.php:177
+#: includes/class-sync-activity.php:191
 #, php-format
 msgid "Scheduled for %s"
 msgstr ""
 
-#: includes/class-sync-activity.php:178
+#: includes/class-sync-activity.php:192
 #: build/index.js:12
 msgid "Scheduled"
 msgstr ""
 
-#: includes/class-sync-activity.php:180
+#: includes/class-sync-activity.php:194
 msgid "Updated the date and status only. The post was edited here."
 msgstr ""
 
-#: includes/class-sync-activity.php:182
+#: includes/class-sync-activity.php:196
 msgid "Moved to draft. The episode was unpublished on show.fm."
 msgstr ""
 
-#: includes/class-sync-activity.php:184
+#: includes/class-sync-activity.php:198
 msgid "Moved to draft. The episode was taken off this site in show.fm."
 msgstr ""
 
-#: includes/class-sync-activity.php:186
+#: includes/class-sync-activity.php:200
 msgid "Moved to the bin. The episode was deleted on show.fm."
 msgstr ""
 
-#: includes/class-sync-activity.php:188
+#: includes/class-sync-activity.php:202
 msgid "No longer synced. This site lost access to the show on show.fm."
 msgstr ""
 
-#: includes/class-sync-activity.php:190
+#: includes/class-sync-activity.php:204
 msgid "Skipped. Auto-posting was paused by the show’s plan."
 msgstr ""
 
-#: includes/class-sync-activity.php:192
+#: includes/class-sync-activity.php:206
 msgid "Not posted. Auto-posting is turned off."
 msgstr ""
 
-#: includes/class-sync-activity.php:198
+#: includes/class-sync-activity.php:212
 msgid "Updated the title and description"
 msgstr ""
 
-#: includes/class-sync-activity.php:201
+#: includes/class-sync-activity.php:215
 msgid "Updated the title"
 msgstr ""
 
-#: includes/class-sync-activity.php:204
+#: includes/class-sync-activity.php:218
 msgid "Updated the description"
 msgstr ""
 
-#: includes/class-sync-activity.php:207
+#: includes/class-sync-activity.php:221
 msgid "Updated the date"
 msgstr ""
 
-#: includes/class-sync-activity.php:209
+#: includes/class-sync-activity.php:223
 msgid "Updated"
 msgstr ""
 
-#: includes/class-sync-activity.php:226
+#: includes/class-sync-activity.php:240
 msgid "View bin"
 msgstr ""
 
-#: includes/class-sync-activity.php:234
+#: includes/class-sync-activity.php:248
 msgid "Edit post"
 msgstr ""
 
-#: includes/class-sync-activity.php:240
+#: includes/class-sync-activity.php:254
 msgid "View post"
 msgstr ""
 
 #. translators: %s: time of day.
-#: includes/class-sync-activity.php:258
+#: includes/class-sync-activity.php:272
 #, php-format
 msgid "Today, %s"
 msgstr ""
 
 #. translators: %s: time of day.
-#: includes/class-sync-activity.php:262
+#: includes/class-sync-activity.php:276
 #, php-format
 msgid "Yesterday, %s"
 msgstr ""
 
 #. translators: 1: date, for example "5 Oct", 2: time of day.
-#: includes/class-sync-activity.php:265
+#: includes/class-sync-activity.php:279
 #, php-format
 msgctxt "recent activity: date, then time"
 msgid "%1$s, %2$s"
 msgstr ""
 
 #. translators: 1: date, for example "5 Oct", 2: time of day.
-#: includes/class-sync-activity.php:265
+#: includes/class-sync-activity.php:279
 msgctxt "recent activity date"
 msgid "j M"
 msgstr ""
 
 #. translators: 1: date, for example "14 October", 2: time of day.
-#: includes/class-sync-activity.php:275
+#: includes/class-sync-activity.php:289
 #, php-format
 msgid "%1$s at %2$s"
 msgstr ""
 
 #. translators: 1: date, for example "14 October", 2: time of day.
-#: includes/class-sync-activity.php:275
+#: includes/class-sync-activity.php:289
 msgctxt "scheduled post date"
 msgid "j F"
 msgstr ""

@@ -1148,6 +1148,80 @@ class Test_Connect extends WP_UnitTestCase {
 		}
 	}
 
+	public function test_a_disconnect_that_loses_its_lease_after_the_swap_is_finished_later(): void {
+		add_filter( 'showfm_sync_use_named_lock', '__return_false' );
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		update_option( Connect::VERIFY_PENDING_OPTION, 1, false );
+		foreach ( Plugin::CRON_HOOKS as $hook ) {
+			wp_schedule_single_event( time() + HOUR_IN_SECONDS, $hook );
+		}
+		$pinned   = $this->connection->pinned();
+		$takeover = function ( string $option ): void {
+			if ( Connection::OPTION === $option ) {
+				// Straight after the swap, the lease runs out.
+				$this->edit_lease(
+					static function ( array $parts ): array {
+						$parts[1] = (string) ( time() - 1 );
+						return $parts;
+					}
+				);
+			}
+		};
+		add_action( 'updated_option', $takeover );
+		try {
+			$this->connect->disconnect( $pinned, 0, Connect::REVOKE_DONE );
+			$this->fail( 'Expected Connection_Lost.' );
+		} catch ( ShowFM\Connection_Lost $lost ) {
+			$this->assertTrue( Connect::teardown_pending() );
+			$this->assertNotFalse( wp_next_scheduled( Health::HOOK ), 'The clean-up stopped at the loss.' );
+		} finally {
+			remove_action( 'updated_option', $takeover );
+			remove_filter( 'showfm_sync_use_named_lock', '__return_false' );
+			delete_option( Connection::LOCK_OPTION );
+		}
+		$this->assertStringStartsWith( 'This site’s key was revoked at show.fm. This site is disconnected, but another change took over', Connect::unfinished_message( Connect::REVOKE_DONE, Connect::ERROR_LOST ) );
+
+		// The next admin page load finishes it, without the old state id.
+		$this->assertNotFalse( has_action( 'admin_init', array( Connect::class, 'finish_teardown_quietly' ) ) );
+		$this->assertSame( array( 'revoke' => Connect::REVOKE_DONE ), Connect::finish_teardown() );
+
+		foreach ( Plugin::CRON_HOOKS as $hook ) {
+			$this->assertFalse( wp_next_scheduled( $hook ), $hook . ' is unscheduled.' );
+		}
+		$this->assertFalse( Connect::verify_pending() );
+		$this->assertFalse( get_option( Connect::TEARDOWN_OPTION ) );
+		$this->assertFalse( Connect::teardown_pending() );
+		$this->assertNull( Connect::finish_teardown(), 'Nothing is left to finish.' );
+	}
+
+	public function test_a_teardown_marker_never_touches_a_connection_saved_since(): void {
+		update_option(
+			Connect::TEARDOWN_OPTION,
+			array(
+				'revoke' => '',
+				'at'     => time(),
+			),
+			false
+		);
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		wp_schedule_single_event( time() + HOUR_IN_SECONDS, Health::HOOK );
+
+		$this->assertFalse( Connect::teardown_pending() );
+		$this->assertNull( Connect::finish_teardown() );
+
+		$this->assertNotFalse( wp_next_scheduled( Health::HOOK ), 'The new connection keeps its jobs.' );
+		$this->assertTrue( $this->connection->is_connected() );
+		$this->assertFalse( get_option( Connect::TEARDOWN_OPTION ), 'The stale marker is removed.' );
+	}
+
+	public function test_a_completed_disconnect_leaves_no_teardown_marker(): void {
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+
+		$this->assertTrue( $this->connect->disconnect( $this->connection->pinned(), 0, Connect::REVOKE_DONE ) );
+
+		$this->assertFalse( get_option( Connect::TEARDOWN_OPTION ) );
+	}
+
 	public function test_a_disconnect_that_loses_its_lease_while_unscheduling_leaves_the_other_jobs(): void {
 		add_filter( 'showfm_sync_use_named_lock', '__return_false' );
 		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );

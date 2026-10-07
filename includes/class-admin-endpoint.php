@@ -154,6 +154,19 @@ final class Admin_Endpoint {
 		if ( ! is_string( $seen ) || '' === $seen ) {
 			return new \WP_Error( 'showfm_state_required', __( 'Disconnect needs the connection state the screen showed. Reload the page, then try again.', 'showfm' ), array( 'status' => 400 ) );
 		}
+		// An earlier disconnect that lost its lease after the swap: finish its clean-up. Its
+		// state id is gone, so this does not need the one the screen showed.
+		$finished = Connect::finish_teardown();
+		if ( null !== $finished ) {
+			$view                 = $this->status->view( get_current_user_id() );
+			$view['disconnected'] = array(
+				'revoke'     => $finished['revoke'],
+				'keyRevoked' => Connect::REVOKE_FAILED !== $finished['revoke'],
+				'message'    => Connect::finished_message( $finished['revoke'] ),
+				'sitesUrl'   => $view['sitesUrl'],
+			);
+			return self::private_response( $view );
+		}
 		$pinned = $this->status->pin();
 		if ( $seen !== $pinned->snapshot()['id'] ) {
 			return $this->moved_on();
@@ -163,7 +176,7 @@ final class Admin_Endpoint {
 		try {
 			// The swap and its whole teardown, including this admin's earlier connect outcome,
 			// happen in one change under the connection lock.
-			if ( ! $this->connect->disconnect( $pinned, get_current_user_id() ) ) {
+			if ( ! $this->connect->disconnect( $pinned, get_current_user_id(), $revoke ) ) {
 				return $this->moved_on();
 			}
 		} catch ( Connection_Lost $lost ) {

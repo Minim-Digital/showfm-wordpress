@@ -28,6 +28,15 @@ final class Sync_Activity {
 	/** Longest title kept. */
 	const MAX_TITLE = 200;
 
+	/**
+	 * Episodes already recorded as not posted, as episode id => time (autoload off). Kept
+	 * apart from the 20 events, so an entry pushed out of them is never recorded again.
+	 */
+	const SKIPPED_OPTION = 'showfm_sync_skipped';
+
+	/** Most episodes remembered as not posted; the oldest go first. */
+	const MAX_SKIPPED = 1000;
+
 	/** A new post was published. */
 	const POSTED = 'posted';
 
@@ -94,30 +103,35 @@ final class Sync_Activity {
 		if ( isset( $extra['changes'] ) && is_array( $extra['changes'] ) ) {
 			$entry['changes'] = array_values( array_intersect( self::CHANGES, $extra['changes'] ) );
 		}
-		$events = self::entries();
-		if ( self::SKIPPED === $event && self::SKIPPED === self::last_for( $events, $entry['episode'] ) ) {
-			// Once per episode until something else happens to it, so repeated edits to
-			// episodes that are not posted cannot push real events out.
-			return;
+		// Once per episode until something else happens to it, so repeated edits to episodes
+		// that are not posted cannot push real events out.
+		$skipped = self::skipped();
+		if ( self::SKIPPED === $event ) {
+			if ( isset( $skipped[ $entry['episode'] ] ) ) {
+				return;
+			}
+			$skipped[ $entry['episode'] ] = $entry['at'];
+			Sync::guard();
+			update_option( self::SKIPPED_OPTION, array_slice( $skipped, -self::MAX_SKIPPED, null, true ), false );
+		} elseif ( isset( $skipped[ $entry['episode'] ] ) ) {
+			unset( $skipped[ $entry['episode'] ] );
+			Sync::guard();
+			update_option( self::SKIPPED_OPTION, $skipped, false );
 		}
+		$events   = self::entries();
 		$events[] = $entry;
 		Sync::guard();
 		update_option( self::OPTION, array_slice( $events, -self::MAX ), false );
 	}
 
 	/**
-	 * The newest stored event code for an episode, or ''.
+	 * The episodes remembered as not posted, oldest first.
 	 *
-	 * @param array<int,array<string,mixed>> $events  Events, oldest first.
-	 * @param string                         $episode Episode id.
+	 * @return array<string,int>
 	 */
-	private static function last_for( array $events, string $episode ): string {
-		foreach ( array_reverse( $events ) as $event ) {
-			if ( ( $event['episode'] ?? '' ) === $episode ) {
-				return (string) $event['event'];
-			}
-		}
-		return '';
+	private static function skipped(): array {
+		$skipped = get_option( self::SKIPPED_OPTION, array() );
+		return is_array( $skipped ) ? $skipped : array();
 	}
 
 	/**

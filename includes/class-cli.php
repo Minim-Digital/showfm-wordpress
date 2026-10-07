@@ -206,6 +206,12 @@ final class Cli {
 		// One read: the state confirmed here is the only state this command may disconnect.
 		$pinned = $this->connection->pinned();
 		if ( Connection::STATE_DISCONNECTED === $pinned->state() ) {
+			// An earlier disconnect that lost its lease after the swap: finish its clean-up.
+			$finished = Connect::finish_teardown();
+			if ( null !== $finished ) {
+				\WP_CLI::success( Connect::finished_message( $finished['revoke'] ) );
+				return;
+			}
 			\WP_CLI::success( __( 'This site is not connected to show.fm.', 'showfm' ) );
 			return;
 		}
@@ -214,7 +220,7 @@ final class Cli {
 		$sites  = Admin_Status::sites_url_for( $pinned );
 		$revoke = $this->connect->revoke( $pinned );
 		try {
-			$done = $this->connect->disconnect( $pinned );
+			$done = $this->connect->disconnect( $pinned, 0, $revoke );
 		} catch ( Connection_Lost $lost ) {
 			\WP_CLI::error( Connect::unfinished_message( $revoke, Connect::ERROR_LOST, true ) );
 			return;
