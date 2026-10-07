@@ -221,7 +221,7 @@ final class Cli {
 	 * : Use status to inspect sync without HTTP.
 	 *
 	 * [--dry-run]
-	 * : Read up to 200 changes without applying or acknowledging them locally.
+	 * : Preview one page (up to 20 changes) without applying or acknowledging those rows.
 	 *
 	 * [--from-start]
 	 * : Replay the feed from zero, keeping existing posts and edit protection.

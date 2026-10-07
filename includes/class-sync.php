@@ -72,7 +72,7 @@ final class Sync {
 
 	/**
 	 * Pull a bounded run; continue through cron if the feed is larger than the budget.
-	 * Dry runs read the feed but never write posts, cursor, reports or scheduling state.
+	 * Dry runs preview one page and never request a cursor beyond locally applied rows.
 	 * Authentication/rate-limit state still follows the API client safety rules.
 	 *
 	 * @param bool $dry_run Preview changes.
@@ -167,27 +167,29 @@ final class Sync {
 					// Reports and cursor share one durable write: never acknowledge without the outbox.
 					self::save( $state );
 				}
+				if ( $dry_run ) {
+					// The server records each requested after as applied. Previewing another
+					// page would falsely acknowledge the rows we deliberately did not apply.
+					$result['status'] = $data['cursor']['has_more'] ? 'dry_run_limit' : 'dry_run';
+					return $result;
+				}
 				// Always GET once more at the applied cursor, even on the last non-empty page.
 				// That acknowledges last_pulled_seq to show.fm after all local applies.
 				if ( empty( $data['data'] ) ) {
-					if ( ! $dry_run && $state['reports'] ) {
+					if ( $state['reports'] ) {
 						return $this->failure( $state, $result, 'reports_pending' );
 					}
-					$result['status'] = $dry_run ? 'dry_run' : 'caught_up';
-					if ( ! $dry_run ) {
-						$state['failures'] = 0;
-						$state['retry_at'] = 0;
-						$state['error']    = '';
-						self::save( $state );
-						update_option( Health::LAST_SYNC_OPTION, time(), false );
-					}
+					$result['status']  = 'caught_up';
+					$state['failures'] = 0;
+					$state['retry_at'] = 0;
+					$state['error']    = '';
+					self::save( $state );
+					update_option( Health::LAST_SYNC_OPTION, time(), false );
 					return $result;
 				}
 			}
-			$result['status'] = $dry_run ? 'dry_run_limit' : 'continuing';
-			if ( ! $dry_run ) {
-				self::wake( time() + 10 );
-			}
+			$result['status'] = 'continuing';
+			self::wake( time() + 10 );
 			return $result;
 		} catch ( \Throwable $error ) {
 			if ( ! $lock->owned() ) {

@@ -580,4 +580,11 @@ class Test_Sync extends WP_UnitTestCase {
 		$this->assertSame( 'caught_up', $this->sync->pull()['status'] );
 		$this->assertSame( '1', get_post_meta( $id, '_showfm_artwork_done', true ) );
 	}
+	public function test_dry_run_does_not_acknowledge_previewed_rows_to_the_server(): void {
+		$this->page( array( $this->row() ), 0, true );
+		$this->assertSame( 'dry_run_limit', $this->sync->pull( true )['status'] );
+		$this->assertSame( 1, $this->http->count() );
+		$this->assertStringContainsString( 'after=0', $this->http->last()['url'] );
+		$this->assertSame( 0, Sync::state()['cursor'] );
+	}
 }

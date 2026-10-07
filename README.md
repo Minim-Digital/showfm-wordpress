@@ -117,9 +117,10 @@ once podcaster-plus-app PR #741 is merged.
 `wp showfm sync [--dry-run] [--from-start]` runs the same consumer as `showfm_pull`
 and the jittered 15-minute `showfm_poll`. `wp showfm sync status` reads local state only.
 A run handles at most ten pages of twenty rows, then queues a continuation. Dry runs
-have the same bound and leave posts, reports and the local cursor unchanged, but the
-server records feed reads, including their requested `after` cursor. Authentication
-and rate-limit protection remain active during a dry run.
+preview one page only and leave posts, reports and the cursor unchanged. The server
+records contact and the requested `after` cursor, so a dry run never requests the next
+page at a cursor it has not applied. `dry_run_limit` means more rows remain beyond the
+preview. Authentication and rate-limit protection remain active during a dry run.
 
 A per-database, per-blog MySQL session lock prevents overlapping consumers, including
 across PHP workers and object caches. It is released by `finally` or by the database
