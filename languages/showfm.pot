@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-07T20:10:53+00:00\n"
+"POT-Creation-Date: 2026-10-07T20:42:00+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: showfm\n"
@@ -17,11 +17,11 @@ msgstr ""
 #. Plugin Name of the plugin
 #. Author of the plugin
 #: showfm.php
-#: includes/class-admin.php:85
 #: includes/class-admin.php:86
-#: includes/class-admin.php:214
+#: includes/class-admin.php:87
+#: includes/class-admin.php:215
 #: includes/class-privacy.php:27
-#: build/admin.js:14
+#: build/admin.js:17
 msgid "show.fm"
 msgstr ""
 
@@ -40,19 +40,19 @@ msgstr ""
 msgid "https://show.fm"
 msgstr ""
 
-#: includes/class-admin-endpoint.php:93
+#: includes/class-admin-endpoint.php:95
 msgid "The state id the screen showed (the view's stateId)."
 msgstr ""
 
-#: includes/class-admin-endpoint.php:152
+#: includes/class-admin-endpoint.php:155
 msgid "Disconnect needs the connection state the screen showed. Reload the page, then try again."
 msgstr ""
 
-#: includes/class-admin-endpoint.php:185
+#: includes/class-admin-endpoint.php:191
 msgid "The connection changed in another tab or by another admin, so nothing was disconnected. Check it, then try again."
 msgstr ""
 
-#: includes/class-admin-endpoint.php:201
+#: includes/class-admin-endpoint.php:207
 msgid "That notice can’t be dismissed."
 msgstr ""
 
@@ -100,15 +100,15 @@ msgid_plural "%d days ago"
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/class-admin.php:125
+#: includes/class-admin.php:126
 msgid "Settings"
 msgstr ""
 
-#: includes/class-admin.php:136
+#: includes/class-admin.php:137
 msgid "Sorry, you are not allowed to connect this site to show.fm."
 msgstr ""
 
-#: includes/class-admin.php:214
+#: includes/class-admin.php:215
 msgid "The show.fm settings need JavaScript."
 msgstr ""
 
@@ -216,125 +216,141 @@ msgstr ""
 msgid "Rate limited: waiting %d more seconds"
 msgstr ""
 
-#: includes/class-cli.php:208
+#: includes/class-cli.php:209
 msgid "This site is not connected to show.fm."
 msgstr ""
 
-#: includes/class-cli.php:211
+#: includes/class-cli.php:212
 msgid "Disconnect this site from show.fm? Posts already created stay."
 msgstr ""
 
-#: includes/class-cli.php:223
+#: includes/class-cli.php:226
 msgid "The connection changed while this command ran, so nothing was disconnected. Check it with wp showfm status, then run the command again."
 msgstr ""
 
-#: includes/class-cli.php:226
-msgid "Disconnected. Revoke the key in show.fm under Connected sites if you no longer need it."
+#: includes/class-cli.php:231
+msgid "Disconnected here."
 msgstr ""
 
-#: includes/class-cli.php:265
+#: includes/class-cli.php:234
+msgid "Disconnected."
+msgstr ""
+
+#: includes/class-cli.php:273
 msgid "Use wp showfm sync or wp showfm sync status."
 msgstr ""
 
 #. translators: 1: sync outcome, 2: rows handled, 3: cursor.
-#: includes/class-cli.php:271
+#: includes/class-cli.php:279
 #, php-format
 msgid "Sync: %1$s; rows: %2$d; cursor: %3$d."
 msgstr ""
 
-#: includes/class-cli.php:294
+#: includes/class-cli.php:302
 msgid "A key given as --key=VALUE stays in your shell history and shows in the process list. Use SHOWFM_KEY or --key=- next time."
 msgstr ""
 
-#: includes/class-cli.php:304
+#: includes/class-cli.php:312
 msgid "Site key from show.fm (input hidden)"
 msgstr ""
 
-#: includes/class-connect.php:628
+#: includes/class-connect.php:596
+msgid "This site’s key was revoked at show.fm."
+msgstr ""
+
+#: includes/class-connect.php:598
+msgid "show.fm had already stopped accepting this site’s key, so there was nothing left to revoke."
+msgstr ""
+
+#: includes/class-connect.php:600
+msgid "show.fm couldn’t be reached to revoke this site’s key, so it may still work. Revoke it in show.fm under Connected sites."
+msgstr ""
+
+#: includes/class-connect.php:683
 msgid "This connection request did not come from this browser session. Start again with Connect to show.fm."
 msgstr ""
 
-#: includes/class-connect.php:630
+#: includes/class-connect.php:685
 msgid "The connection request expired or was already used. Start again with Connect to show.fm."
 msgstr ""
 
-#: includes/class-connect.php:632
+#: includes/class-connect.php:687
 msgid "show.fm did not accept the connection. Codes last five minutes and work once. Start again with Connect to show.fm."
 msgstr ""
 
-#: includes/class-connect.php:634
+#: includes/class-connect.php:689
 msgid "That is not a show.fm site key. Copy the key from Connected sites in show.fm."
 msgstr ""
 
-#: includes/class-connect.php:636
+#: includes/class-connect.php:691
 msgid "show.fm did not accept that key. Site keys must be registered within 24 hours. Create a new one in show.fm under Connected sites."
 msgstr ""
 
-#: includes/class-connect.php:638
+#: includes/class-connect.php:693
 msgid "show.fm could not confirm that this site belongs to you. Check that the site is public, uses https and has the show.fm plugin active, then try again."
 msgstr ""
 
 #. translators: %d: number of seconds.
-#: includes/class-connect.php:642
+#: includes/class-connect.php:697
 #, php-format
 msgid "show.fm asked this site to wait. Try again in %d second."
 msgid_plural "show.fm asked this site to wait. Try again in %d seconds."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/class-connect.php:646
+#: includes/class-connect.php:701
 msgid "show.fm could not be reached. Try again in a few minutes."
 msgstr ""
 
-#: includes/class-connect.php:648
+#: includes/class-connect.php:703
 msgid "show.fm sent an answer this plugin does not understand. Update the plugin, then try again."
 msgstr ""
 
-#: includes/class-connect.php:650
+#: includes/class-connect.php:705
 msgid "The connection was cancelled."
 msgstr ""
 
-#: includes/class-connect.php:652
+#: includes/class-connect.php:707
 msgid "This site’s address must use https."
 msgstr ""
 
-#: includes/class-connect.php:654
+#: includes/class-connect.php:709
 msgid "The change took too long and another change took over part way through. Reload to see the connection as it is now."
 msgstr ""
 
-#: includes/class-connect.php:656
+#: includes/class-connect.php:711
 msgid "Another change to this site’s show.fm connection was in progress. Try again in a moment."
 msgstr ""
 
-#: includes/class-connect.php:658
+#: includes/class-connect.php:713
 msgid "The connection could not be saved. Your server needs the PHP sodium extension, or WordPress 6.6 or later. Then try again."
 msgstr ""
 
-#: includes/class-connect.php:660
+#: includes/class-connect.php:715
 msgid "Connected, but this site could not report in to show.fm yet. It tries again automatically."
 msgstr ""
 
-#: includes/class-connect.php:662
+#: includes/class-connect.php:717
 msgid "Something went wrong. Start again with Connect to show.fm."
 msgstr ""
 
 #: includes/class-embed-settings.php:47
-#: build/admin.js:14
+#: build/admin.js:15
 msgid "Show “Powered by show.fm”"
 msgstr ""
 
 #: includes/class-embed-settings.php:48
-#: build/admin.js:14
+#: build/admin.js:15
 msgid "Load players only after a visitor clicks"
 msgstr ""
 
 #: includes/class-embed-settings.php:49
-#: build/admin.js:14
+#: build/admin.js:15
 msgid "Add episode structured data for search engines"
 msgstr ""
 
 #: includes/class-embed-settings.php:50
-#: build/admin.js:14
+#: build/admin.js:15
 msgid "Use my theme’s colours and fonts"
 msgstr ""
 
@@ -570,8 +586,12 @@ msgstr ""
 msgid "See what to fix"
 msgstr ""
 
+#: includes/class-notices.php:195
+msgid "Check the Publishing settings"
+msgstr ""
+
 #. translators: %d: number of days.
-#: includes/class-notices.php:203
+#: includes/class-notices.php:207
 #: build/admin.js:11
 #, php-format,js-format
 msgid "Your show.fm connection expires in %d day."
@@ -596,30 +616,175 @@ msgid "When this site is connected to a show.fm account, the site's server sends
 msgstr ""
 
 #: includes/class-privacy.php:38
-msgid "While connected, the site's server also asks show.fm for the account holder’s name and the names and addresses of the shows the site posts for, right after connecting and once a day. It keeps them in the WordPress database to show on the plugin's settings screen, and deletes them when the site disconnects or the plugin is uninstalled. For each administrator, the plugin also remembers which of its admin notices they dismissed."
+msgid "While connected, the site's server also asks show.fm for the account holder’s name and the names and addresses of the shows the site posts for, right after connecting and once a day. It keeps them in the WordPress database to show on the plugin's settings screen, and deletes them when the site disconnects or the plugin is uninstalled. When an administrator disconnects the site, the site's server asks show.fm to revoke the site's key. The plugin keeps a list of the last 20 changes it made to posts (the episode title, the show and the post), which only administrators see. For each administrator, the plugin also remembers which of its admin notices they dismissed."
 msgstr ""
 
 #: includes/class-privacy.php:39
 msgid "show.fm's privacy policy is at https://show.fm/privacy."
 msgstr ""
 
-#: includes/class-sync-artwork.php:160
+#: includes/class-publishing-endpoint.php:211
+msgid "New episodes aren’t being posted here because the chosen post type isn’t available any more. Choose another post type, then save."
+msgstr ""
+
+#: includes/class-publishing-endpoint.php:212
+msgid "New episodes aren’t being posted here because nobody on this site can publish the chosen post type. Choose another post type or author, then save."
+msgstr ""
+
+#: includes/class-publishing.php:78
+#: build/admin.js:15
+#: build/admin.js:17
+msgid "The settings couldn’t be saved. Try again."
+msgstr ""
+
+#: includes/class-publishing.php:94
+msgid "Choose a public post type that uses the block editor."
+msgstr ""
+
+#: includes/class-publishing.php:102
+msgid "Choose someone who can publish this post type."
+msgstr ""
+
+#: includes/class-publishing.php:109
+msgid "That category doesn’t exist any more. Choose another one."
+msgstr ""
+
+#: includes/class-publishing.php:114
+msgid "That template isn’t available for this post type. Choose another one."
+msgstr ""
+
+#: includes/class-publishing.php:307
+msgid "Default"
+msgstr ""
+
+#: includes/class-sync-activity.php:153
+msgid "Posted"
+msgstr ""
+
+#. translators: %s: date and time the post goes live, for example "14 October at 09:00".
+#: includes/class-sync-activity.php:157
+#, php-format
+msgid "Scheduled for %s"
+msgstr ""
+
+#: includes/class-sync-activity.php:158
+msgid "Scheduled"
+msgstr ""
+
+#: includes/class-sync-activity.php:160
+msgid "Updated the date and status only. The post was edited here."
+msgstr ""
+
+#: includes/class-sync-activity.php:162
+msgid "Moved to draft. The episode was unpublished on show.fm."
+msgstr ""
+
+#: includes/class-sync-activity.php:164
+msgid "Moved to draft. The episode was taken off this site in show.fm."
+msgstr ""
+
+#: includes/class-sync-activity.php:166
+msgid "Moved to the bin. The episode was deleted on show.fm."
+msgstr ""
+
+#: includes/class-sync-activity.php:168
+msgid "No longer synced. This site lost access to the show on show.fm."
+msgstr ""
+
+#: includes/class-sync-activity.php:170
+msgid "Skipped. Auto-posting was paused by the show’s plan."
+msgstr ""
+
+#: includes/class-sync-activity.php:172
+msgid "Not posted. Auto-posting is turned off."
+msgstr ""
+
+#: includes/class-sync-activity.php:178
+msgid "Updated the title and description"
+msgstr ""
+
+#: includes/class-sync-activity.php:181
+msgid "Updated the title"
+msgstr ""
+
+#: includes/class-sync-activity.php:184
+msgid "Updated the description"
+msgstr ""
+
+#: includes/class-sync-activity.php:187
+msgid "Updated the date"
+msgstr ""
+
+#: includes/class-sync-activity.php:189
+msgid "Updated"
+msgstr ""
+
+#: includes/class-sync-activity.php:206
+msgid "View bin"
+msgstr ""
+
+#: includes/class-sync-activity.php:214
+msgid "Edit post"
+msgstr ""
+
+#: includes/class-sync-activity.php:220
+msgid "View post"
+msgstr ""
+
+#. translators: %s: time of day.
+#: includes/class-sync-activity.php:238
+#, php-format
+msgid "Today, %s"
+msgstr ""
+
+#. translators: %s: time of day.
+#: includes/class-sync-activity.php:242
+#, php-format
+msgid "Yesterday, %s"
+msgstr ""
+
+#. translators: 1: date, for example "5 Oct", 2: time of day.
+#: includes/class-sync-activity.php:245
+#, php-format
+msgctxt "recent activity: date, then time"
+msgid "%1$s, %2$s"
+msgstr ""
+
+#. translators: 1: date, for example "5 Oct", 2: time of day.
+#: includes/class-sync-activity.php:245
+msgctxt "recent activity date"
+msgid "j M"
+msgstr ""
+
+#. translators: 1: date, for example "14 October", 2: time of day.
+#: includes/class-sync-activity.php:255
+#, php-format
+msgid "%1$s at %2$s"
+msgstr ""
+
+#. translators: 1: date, for example "14 October", 2: time of day.
+#: includes/class-sync-activity.php:255
+msgctxt "scheduled post date"
+msgid "j F"
+msgstr ""
+
+#: includes/class-sync-artwork.php:159
 msgid "Artwork must use a public HTTPS address."
 msgstr ""
 
-#: includes/class-sync-artwork.php:172
+#: includes/class-sync-artwork.php:171
 msgid "A temporary artwork file could not be created."
 msgstr ""
 
-#: includes/class-sync-artwork.php:209
+#: includes/class-sync-artwork.php:208
 msgid "Artwork must be a JPEG, PNG, WebP or GIF image."
 msgstr ""
 
-#: includes/class-sync-posts.php:153
+#: includes/class-sync-posts.php:158
 msgid "No longer synced from show.fm"
 msgstr ""
 
-#: includes/class-sync-posts.php:164
+#: includes/class-sync-posts.php:172
 msgid "The post could not be moved to the bin."
 msgstr ""
 
@@ -653,15 +818,6 @@ msgstr ""
 
 #: build/admin.js:3
 msgid "Blocks keep playing public episodes. You can reconnect at any time."
-msgstr ""
-
-#: build/admin.js:3
-msgid "This site’s key stays valid at show.fm until you disconnect the site there too, under Connected sites."
-msgstr ""
-
-#: build/admin.js:3
-#: build/admin.js:10
-msgid "Open Connected sites in show.fm"
 msgstr ""
 
 #: build/admin.js:3
@@ -831,7 +987,7 @@ msgid "show.fm tells this site straight away when an episode changes."
 msgstr ""
 
 #: build/admin.js:10
-#: build/admin.js:14
+#: build/admin.js:17
 msgid "Connection"
 msgstr ""
 
@@ -860,7 +1016,7 @@ msgid "Disconnected from show.fm."
 msgstr ""
 
 #: build/admin.js:10
-msgid "This site’s key stays valid at show.fm until you disconnect the site there too."
+msgid "Open Connected sites in show.fm"
 msgstr ""
 
 #: build/admin.js:10
@@ -937,55 +1093,203 @@ msgstr ""
 msgid "New episodes will be posted here."
 msgstr ""
 
-#: build/admin.js:14
-msgid "Disconnected from show.fm. This site’s key stays valid at show.fm until you disconnect the site there too."
+#. translators: %s: what happened to the key at show.fm.
+#: build/admin.js:15
+#, js-format
+msgid "Disconnected from show.fm. %s"
 msgstr ""
 
-#: build/admin.js:14
+#: build/admin.js:15
 msgid "The display settings couldn’t be loaded. Reload the page to try again."
 msgstr ""
 
-#: build/admin.js:14
+#: build/admin.js:15
 msgid "Adds a small credit under the first player on each page."
 msgstr ""
 
-#: build/admin.js:14
+#: build/admin.js:15
 msgid "Nothing loads from show.fm until someone presses play. Turn this on if your cookie consent tool needs it."
 msgstr ""
 
-#: build/admin.js:14
+#: build/admin.js:15
 msgid "Adds episode details to pages with a player, so search engines can show them."
 msgstr ""
 
-#: build/admin.js:14
+#: build/admin.js:15
 msgid "Players use your theme’s font and accent colour. Turn this off to use show.fm’s defaults."
 msgstr ""
 
-#: build/admin.js:14
+#: build/admin.js:15
 msgid "Players on this site"
 msgstr ""
 
-#: build/admin.js:14
+#: build/admin.js:15
 msgid "Applies to every show.fm block. Colours set on a block still win."
 msgstr ""
 
-#: build/admin.js:14
+#: build/admin.js:15
+#: build/admin.js:17
 msgid "Settings saved."
 msgstr ""
 
-#: build/admin.js:14
-msgid "The settings couldn’t be saved. Try again."
-msgstr ""
-
-#: build/admin.js:14
+#: build/admin.js:15
+#: build/admin.js:17
 msgid "Save changes"
 msgstr ""
 
-#: build/admin.js:14
+#: build/admin.js:15
+msgid "Post type"
+msgstr ""
+
+#: build/admin.js:15
+msgid "Any public post type that supports the block editor."
+msgstr ""
+
+#: build/admin.js:15
+msgid "Category"
+msgstr ""
+
+#: build/admin.js:15
+msgid "Added to every new episode post."
+msgstr ""
+
+#. translators: %s: post type name, for example "Pages".
+#: build/admin.js:16
+#, js-format
+msgid "%s don’t have categories."
+msgstr ""
+
+#: build/admin.js:16
+msgid "Default category"
+msgstr ""
+
+#: build/admin.js:16
+msgid "Author"
+msgstr ""
+
+#: build/admin.js:16
+msgid "Shown as the post’s author."
+msgstr ""
+
+#: build/admin.js:16
+msgid "Nobody on this site can publish this post type."
+msgstr ""
+
+#: build/admin.js:16
+msgid "Post template"
+msgstr ""
+
+#: build/admin.js:16
+msgid "From your theme. Default uses the normal post template."
+msgstr ""
+
+#: build/admin.js:16
+msgid "Recent activity"
+msgstr ""
+
+#: build/admin.js:16
+msgid "Last 20 events"
+msgstr ""
+
+#: build/admin.js:16
+msgid "Time"
+msgstr ""
+
+#: build/admin.js:16
+msgid "Episode"
+msgstr ""
+
+#: build/admin.js:16
+msgid "What happened"
+msgstr ""
+
+#: build/admin.js:16
+msgid "Post"
+msgstr ""
+
+#: build/admin.js:16
+msgid "None"
+msgstr ""
+
+#: build/admin.js:16
+msgid "No episodes posted yet."
+msgstr ""
+
+#: build/admin.js:16
+msgid "The next episode you publish on show.fm will appear here, with a link to its post."
+msgstr ""
+
+#: build/admin.js:16
+msgid "Sync is one way, from show.fm to WordPress."
+msgstr ""
+
+#: build/admin.js:16
+msgid "If you edit a synced post here, show.fm then only updates its date and status."
+msgstr ""
+
+#: build/admin.js:16
+msgid "Unpublished episodes go back to draft."
+msgstr ""
+
+#: build/admin.js:16
+msgid "Deleted episodes go to the bin."
+msgstr ""
+
+#: build/admin.js:16
+msgid "How sync works"
+msgstr ""
+
+#: build/admin.js:16
+msgid "The publishing settings couldn’t be loaded. Reload the page to try again."
+msgstr ""
+
+#: build/admin.js:16
+msgid "Auto-posting"
+msgstr ""
+
+#. translators: %s: show names, for example "The Long Table and Second Helpings".
+#: build/admin.js:17
+#, js-format
+msgid "Applies to %s."
+msgstr ""
+
+#: build/admin.js:17
+msgid "Post new episodes automatically"
+msgstr ""
+
+#: build/admin.js:17
+msgid "When an episode is published on show.fm, a post is created here. Scheduled episodes become scheduled posts."
+msgstr ""
+
+#: build/admin.js:17
+msgid "New episodes aren’t posted here. Posts that already exist keep updating."
+msgstr ""
+
+#: build/admin.js:17
+msgid "Include the transcript"
+msgstr ""
+
+#: build/admin.js:17
+msgid "Adds the transcript under the player, so search engines and screen readers can use it."
+msgstr ""
+
+#: build/admin.js:17
+msgid "Use the episode artwork as the featured image"
+msgstr ""
+
+#: build/admin.js:17
+msgid "Falls back to the show artwork when an episode has none."
+msgstr ""
+
+#: build/admin.js:17
+msgid "Publishing"
+msgstr ""
+
+#: build/admin.js:17
 msgid "Display"
 msgstr ""
 
-#: build/admin.js:14
+#: build/admin.js:17
 msgid "The show.fm settings couldn’t be loaded. Reload the page to try again."
 msgstr ""
 

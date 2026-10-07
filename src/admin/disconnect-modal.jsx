@@ -1,27 +1,21 @@
 /**
  * The confirm dialog for Disconnect.
  */
-import { Button, ExternalLink, Modal, Notice } from '@wordpress/components';
+import { Button, Modal, Notice } from '@wordpress/components';
 import { useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 
 /**
  * Asks before removing the connection. Below 600px the modal fills the screen, as
- * `@wordpress/components` does. It says plainly that the site's key stays valid at show.fm:
- * the show.fm API has no way for a site key to revoke itself.
+ * `@wordpress/components` does. Disconnect revokes the site's key at show.fm when it can;
+ * the notice afterwards says whether it did.
  *
  * @param {Object}              props
- * @param {string}              props.sitesUrl  The account's Connected sites page.
  * @param {() => void}          props.onCancel  Closes without disconnecting.
  * @param {() => Promise<void>} props.onConfirm Disconnects.
  * @param {() => void}          props.onDone    Called after a successful disconnect.
  */
-export default function DisconnectModal( {
-	sitesUrl,
-	onCancel,
-	onConfirm,
-	onDone,
-} ) {
+export default function DisconnectModal( { onCancel, onConfirm, onDone } ) {
 	const [ busy, setBusy ] = useState( false );
 	const [ failed, setFailed ] = useState( false );
 
@@ -67,15 +61,6 @@ export default function DisconnectModal( {
 						'Blocks keep playing public episodes. You can reconnect at any time.',
 						'showfm'
 					) }
-				</p>
-				<p>
-					{ __(
-						'This site’s key stays valid at show.fm until you disconnect the site there too, under Connected sites.',
-						'showfm'
-					) }{ ' ' }
-					<ExternalLink href={ sitesUrl }>
-						{ __( 'Open Connected sites in show.fm', 'showfm' ) }
-					</ExternalLink>
 				</p>
 			</div>
 			<div className="showfm-modal__actions">

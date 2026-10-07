@@ -117,6 +117,7 @@ final class Plugin {
 	public static function register_admin_routes(): void {
 		$status = new Admin_Status( self::connection() );
 		( new Admin_Endpoint( self::connect(), $status ) )->register();
+		( new Publishing_Endpoint( self::connection() ) )->register();
 	}
 
 	/**

@@ -185,9 +185,10 @@ final class Cli {
 	}
 
 	/**
-	 * Removes this site's show.fm credentials and stops its scheduled syncs.
+	 * Revokes this site's key at show.fm, removes its credentials and stops its scheduled syncs.
 	 *
-	 * The key stays live in show.fm until you revoke it there, under Connected sites.
+	 * The revoke is best effort: if show.fm can't be reached, the credentials are still removed
+	 * here and the command says where to revoke the key in show.fm.
 	 *
 	 * ## OPTIONS
 	 *
@@ -210,6 +211,8 @@ final class Cli {
 		}
 		\WP_CLI::confirm( __( 'Disconnect this site from show.fm? Posts already created stay.', 'showfm' ), $assoc_args );
 
+		$sites  = Admin_Status::sites_url_for( $pinned );
+		$revoke = $this->connect->revoke( $pinned );
 		try {
 			$done = $this->connect->disconnect( $pinned );
 		} catch ( Connection_Lost $lost ) {
@@ -223,7 +226,12 @@ final class Cli {
 			\WP_CLI::error( __( 'The connection changed while this command ran, so nothing was disconnected. Check it with wp showfm status, then run the command again.', 'showfm' ) );
 			return;
 		}
-		\WP_CLI::success( __( 'Disconnected. Revoke the key in show.fm under Connected sites if you no longer need it.', 'showfm' ) );
+		if ( Connect::REVOKE_FAILED === $revoke ) {
+			\WP_CLI::warning( Connect::revoke_message( $revoke ) . ' ' . $sites );
+			\WP_CLI::success( __( 'Disconnected here.', 'showfm' ) );
+			return;
+		}
+		\WP_CLI::success( __( 'Disconnected.', 'showfm' ) . ' ' . Connect::revoke_message( $revoke ) );
 	}
 
 	/**

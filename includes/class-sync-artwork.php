@@ -98,9 +98,8 @@ final class Sync_Artwork {
 				$this->apply( (int) $id, $pending['episode'] );
 				continue;
 			}
-			$post     = get_post( $id );
-			$settings = (array) get_option( Sync_Posts::SETTINGS, array() );
-			if ( ! $post || 'publish' !== $post->post_status || 'synced' !== get_post_meta( $id, '_showfm_sync_state', true ) || empty( $settings['featured_image'] ) || ( new Sync_Posts() )->edited( $post ) ) {
+			$post = get_post( $id );
+			if ( ! $post || 'publish' !== $post->post_status || 'synced' !== get_post_meta( $id, '_showfm_sync_state', true ) || ! Publishing::options_of( (int) $id )['featured_image'] || ( new Sync_Posts() )->edited( $post ) ) {
 				$current = (array) get_option( self::QUEUE, array() );
 				unset( $current[ $id ] );
 				update_option( self::QUEUE, $current, false );

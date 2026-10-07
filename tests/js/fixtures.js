@@ -43,3 +43,93 @@ export function view( overrides = {} ) {
 		...overrides,
 	};
 }
+
+/**
+ * Publishing data as `GET /showfm/v1/admin/publishing` returns it.
+ *
+ * @param {Object} overrides Fields to replace.
+ * @return {Object} Publishing data.
+ */
+export function publishing( overrides = {} ) {
+	return {
+		settings: {
+			autoPost: true,
+			postType: 'post',
+			category: 3,
+			author: 1,
+			template: '',
+			transcript: true,
+			featuredImage: true,
+		},
+		postTypes: [
+			{ value: 'post', label: 'Posts', categories: true },
+			{ value: 'page', label: 'Pages', categories: false },
+		],
+		categories: [
+			{ value: 1, label: 'Uncategorised' },
+			{ value: 3, label: 'Podcast' },
+		],
+		authors: {
+			post: [
+				{ value: 1, label: 'Maya Lindgren' },
+				{ value: 4, label: 'Sam Author' },
+			],
+			page: [ { value: 1, label: 'Maya Lindgren' } ],
+		},
+		templates: {
+			post: [
+				{ value: '', label: 'Default' },
+				{ value: 'single-episode.php', label: 'Single episode' },
+			],
+			page: [ { value: '', label: 'Default' } ],
+		},
+		shows: [ 'The Long Table', 'Second Helpings' ],
+		problem: null,
+		activity: [],
+		...overrides,
+	};
+}
+
+/**
+ * Recent activity rows, newest first.
+ *
+ * @return {Object[]} Events.
+ */
+export function activity() {
+	return [
+		{
+			id: '3',
+			time: 'Today, 09:00',
+			episode:
+				'Sourdough, salt and the slow return of the village bakery',
+			show: 'The Long Table',
+			what: 'Posted',
+			muted: false,
+			link: {
+				label: 'Edit post',
+				url: 'https://thelongtable.co/wp-admin/post.php?post=12&action=edit',
+			},
+		},
+		{
+			id: '2',
+			time: '3 Oct, 14:55',
+			episode: 'A test episode',
+			show: 'Second Helpings',
+			what: 'Moved to the bin. The episode was deleted on show.fm.',
+			muted: false,
+			link: {
+				label: 'View bin',
+				url: 'https://thelongtable.co/wp-admin/edit.php?post_status=trash&post_type=post',
+			},
+		},
+		{
+			id: '1',
+			time: '29 Sept, 10:30',
+			episode: 'The spice drawer',
+			show: 'Second Helpings',
+			what: 'Skipped. Auto-posting was paused by the show’s plan.',
+			muted: true,
+			link: null,
+		},
+	];
+}

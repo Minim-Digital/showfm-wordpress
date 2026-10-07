@@ -418,6 +418,7 @@ class Test_Cli extends WP_UnitTestCase {
 		update_option( Ping_Endpoint::LAST_PING_OPTION, time() );
 		update_option( Connect::VERIFY_PENDING_OPTION, 1 );
 
+		$this->http->respond( 200, '{"data":{"disconnected":true}}' );
 		$this->cli->disconnect( array(), array( 'yes' => true ) );
 
 		$this->assertSame( Connection::STATE_DISCONNECTED, $this->connection->state() );
@@ -426,8 +427,35 @@ class Test_Cli extends WP_UnitTestCase {
 		$this->assertFalse( wp_next_scheduled( Ping_Endpoint::PULL_HOOK ) );
 		$this->assertFalse( get_option( Ping_Endpoint::LAST_PING_OPTION ) );
 		$this->assertFalse( Connect::verify_pending() );
+		$this->assertSame( array( 'success', 'Disconnected. This site’s key was revoked at show.fm.' ), end( WP_CLI::$output ) );
+		$this->assertSame( 1, $this->http->count() );
+		$this->assertStringEndsWith( '/v1/me/sites/' . self::SITE_ID . '/disconnect', $this->http->last()['url'] );
+	}
+
+	public function test_disconnect_after_a_401_clears_locally_and_says_nothing_was_left_to_revoke(): void {
+		$this->connection->save( self::KEY, self::SECRET, self::SITE_ID, 0 );
+		$this->http->respond( 401 );
+
+		$this->cli->disconnect( array(), array( 'yes' => true ) );
+
+		$this->assertSame( Connection::STATE_DISCONNECTED, $this->connection->state() );
+		$this->assertSame( 1, $this->http->count() );
 		$this->assertSame( 'success', end( WP_CLI::$output )[0] );
-		$this->assertSame( 0, $this->http->count(), 'Disconnecting is local only.' );
+		$this->assertStringContainsString( 'nothing left to revoke', end( WP_CLI::$output )[1] );
+	}
+
+	public function test_disconnect_when_showfm_cannot_be_reached_warns_with_the_connected_sites_link(): void {
+		$this->connection->save( self::KEY, self::SECRET, self::SITE_ID, 0 );
+		$this->http->fail( 'Could not resolve host' );
+
+		$this->cli->disconnect( array(), array( 'yes' => true ) );
+
+		$this->assertSame( Connection::STATE_DISCONNECTED, $this->connection->state(), 'Cleared locally either way.' );
+		$warning = WP_CLI::$output[ count( WP_CLI::$output ) - 2 ];
+		$this->assertSame( 'warning', $warning[0] );
+		$this->assertStringContainsString( 'Revoke it in show.fm under Connected sites.', $warning[1] );
+		$this->assertStringContainsString( 'https://my.show.fm/', $warning[1] );
+		$this->assertSame( array( 'success', 'Disconnected here.' ), end( WP_CLI::$output ) );
 	}
 
 	public function test_disconnect_when_not_connected_is_a_no_op(): void {

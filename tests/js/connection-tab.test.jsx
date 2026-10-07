@@ -17,6 +17,15 @@ vi.mock( '@wordpress/api-fetch', () => ( {
 
 const SITES = 'https://my.show.fm/p/the-long-table/settings/sites';
 
+/** Disconnect's answer when show.fm couldn't be reached to revoke the key. */
+const NOT_REVOKED = {
+	revoke: 'not_revoked',
+	keyRevoked: false,
+	message:
+		'show.fm couldn’t be reached to revoke this site’s key, so it may still work. Revoke it in show.fm under Connected sites.',
+	sitesUrl: SITES,
+};
+
 /**
  * The tab as the app holds it: Disconnect swaps in the server's answer.
  */
@@ -29,7 +38,7 @@ function Stateful() {
 				setCurrent(
 					view( {
 						state: 'not_connected',
-						disconnected: { keyRevoked: false, sitesUrl: SITES },
+						disconnected: NOT_REVOKED,
 					} )
 				)
 			}
@@ -277,7 +286,7 @@ describe( 'Connection tab', () => {
 		expect( screen.getByRole( 'dialog' ) ).toBeInTheDocument();
 	} );
 
-	it( 'says in the dialog that the key stays valid at show.fm, with a link', async () => {
+	it( 'says in the dialog what disconnecting does, as the design does', async () => {
 		render( <ConnectionTab view={ view( { sitesUrl: SITES } ) } /> );
 
 		await userEvent.click(
@@ -287,14 +296,42 @@ describe( 'Connection tab', () => {
 
 		expect(
 			within( dialog ).getByText(
-				/key stays valid at show.fm until you disconnect the site there too/
+				'New episodes stop being posted here. Posts that were already created stay as they are.'
 			)
 		).toBeInTheDocument();
 		expect(
-			within( dialog ).getByRole( 'link', {
+			within( dialog ).getByText(
+				'Blocks keep playing public episodes. You can reconnect at any time.'
+			)
+		).toBeInTheDocument();
+		expect( within( dialog ).queryByRole( 'link' ) ).toBeNull();
+	} );
+
+	it( 'says after disconnecting that the key was revoked at show.fm', () => {
+		render(
+			<ConnectionTab
+				view={ view( {
+					state: 'not_connected',
+					disconnected: {
+						revoke: 'revoked',
+						keyRevoked: true,
+						message: 'This site’s key was revoked at show.fm.',
+						sitesUrl: SITES,
+					},
+				} ) }
+			/>
+		);
+
+		expect(
+			screen.getByText( 'This site’s key was revoked at show.fm.', {
+				exact: false,
+			} )
+		).toBeInTheDocument();
+		expect(
+			screen.queryByRole( 'link', {
 				name: /Open Connected sites in show.fm/,
 			} )
-		).toHaveAttribute( 'href', SITES );
+		).toBeNull();
 	} );
 
 	it( 'moves focus to the Connect heading and announces once after disconnecting', async () => {
@@ -316,7 +353,7 @@ describe( 'Connection tab', () => {
 		await waitFor( () => expect( heading ).toHaveFocus() );
 		expect( speak ).toHaveBeenCalledTimes( 1 );
 		expect( speak ).toHaveBeenCalledWith(
-			expect.stringContaining( 'Disconnected from show.fm.' ),
+			`Disconnected from show.fm. ${ NOT_REVOKED.message }`,
 			'polite'
 		);
 		expect(

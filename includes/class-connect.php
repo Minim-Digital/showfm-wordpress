@@ -545,9 +545,64 @@ final class Connect {
 		return (bool) get_option( self::VERIFY_PENDING_OPTION, false );
 	}
 
+	/** Disconnect revoked the key at show.fm. */
+	const REVOKE_DONE = 'revoked';
+
+	/** Already refused by show.fm (revoked or expired), so nothing was left to revoke. */
+	const REVOKE_REFUSED = 'refused';
+
+	/** The key could not be revoked from here: it must be revoked at show.fm. */
+	const REVOKE_FAILED = 'not_revoked';
+
+	/**
+	 * Asks show.fm to revoke the key of the state the caller pinned, before Disconnect clears
+	 * it locally. Best effort: one request with a short timeout, made outside the connection
+	 * lock, and Disconnect goes ahead whatever the answer.
+	 *
+	 * - Success: the key is revoked.
+	 * - A 401 now, or a key show.fm already refused or that has expired: show.fm no longer
+	 *   accepts it, so there is nothing to revoke. A 401 is never retried.
+	 * - Anything else (no answer, a server error, a rate limit, or a key that can't be read
+	 *   after the salts changed): the key may still work, so it must be revoked at show.fm.
+	 *
+	 * @param Connection $pinned The connection, pinned when the caller read it.
+	 * @return string One of the REVOKE_ constants.
+	 */
+	public function revoke( Connection $pinned ): string {
+		$site = $pinned->site_id();
+		if ( null === $site || $pinned->is_unreadable() ) {
+			return self::REVOKE_FAILED;
+		}
+		$key = $pinned->key();
+		if ( null === $key ) {
+			// Stored and readable but not usable: refused or expired at show.fm already.
+			return self::REVOKE_REFUSED;
+		}
+		$result = $this->api_client->disconnect_site( $site, $key );
+		if ( $result->is( Api_Result::SUCCESS ) ) {
+			return self::REVOKE_DONE;
+		}
+		return $result->is( Api_Result::UNAUTHORISED ) ? self::REVOKE_REFUSED : self::REVOKE_FAILED;
+	}
+
+	/**
+	 * What Disconnect did with the key at show.fm, in one sentence.
+	 *
+	 * @param string $outcome One of the REVOKE_ constants.
+	 */
+	public static function revoke_message( string $outcome ): string {
+		switch ( $outcome ) {
+			case self::REVOKE_DONE:
+				return __( 'This site’s key was revoked at show.fm.', 'showfm' );
+			case self::REVOKE_REFUSED:
+				return __( 'show.fm had already stopped accepting this site’s key, so there was nothing left to revoke.', 'showfm' );
+		}
+		return __( 'show.fm couldn’t be reached to revoke this site’s key, so it may still work. Revoke it in show.fm under Connected sites.', 'showfm' );
+	}
+
 	/**
 	 * Removes the local connection: credentials, scheduled events and connection state.
-	 * The key stays live at show.fm until it is revoked there.
+	 * Callers ask show.fm to revoke the key first (see `revoke()`).
 	 *
 	 * The swap and the whole teardown run in one change under the connection lock, on the
 	 * state read fresh inside it: only the state the caller read is disconnected, and a

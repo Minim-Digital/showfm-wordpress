@@ -19,12 +19,14 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * - `GET admin/connection`: the Connection tab's data. Reading changes nothing.
  * - `POST admin/connection/dismiss-result`: clears the current user's connect outcome.
- * - `POST admin/disconnect`: removes the local connection, then answers like the GET, with
- *   `disconnected` saying where to disconnect the site at show.fm. The show.fm API has no
- *   route for a site key to revoke itself, so the key stays valid there until then. It
- *   needs the state the screen showed (`state`, the view's `stateId`) and disconnects only
- *   that state: if the connection changed since, nothing changes and the answer is a 409
- *   with the fresh view. A missing state is a 400; a lock held too long is a 503.
+ * - `POST admin/disconnect`: asks show.fm to revoke the site's key (best effort), removes
+ *   the local connection either way, then answers like the GET, with `disconnected` saying
+ *   whether the key was revoked at show.fm or must be revoked there, and where. It needs
+ *   the state the screen showed (`state`, the view's `stateId`) and disconnects only that
+ *   state: if the connection changed since, nothing changes and the answer is a 409 with
+ *   the fresh view. A missing state is a 400; a lock held too long is a 503.
+ * - `GET admin/publishing` and `POST admin/publishing`: the Publishing tab's settings, choices
+ *   and recent activity (see `Publishing_Endpoint`).
  * - `POST admin/notices/dismiss`: hides a notice instance for the current user.
  */
 final class Admin_Endpoint {
@@ -136,12 +138,13 @@ final class Admin_Endpoint {
 	}
 
 	/**
-	 * Removes the local connection. The key stays valid at show.fm until the site is
-	 * disconnected there, so the answer says where.
+	 * Asks show.fm to revoke the key, then removes the local connection whatever the answer.
+	 * The answer says whether the key was revoked, and where to revoke it when it was not.
 	 *
 	 * Reads once, and disconnects only that state, and only if it is the one the screen
 	 * showed: a reconnect or disconnect by another tab, admin or WP-CLI in between is never
-	 * undone.
+	 * undone. The revoke request is made before the connection lock is taken, so a slow
+	 * show.fm never holds the lock.
 	 *
 	 * @param \WP_REST_Request $request Request.
 	 * @return \WP_REST_Response|\WP_Error
@@ -155,7 +158,8 @@ final class Admin_Endpoint {
 		if ( $seen !== $pinned->snapshot()['id'] ) {
 			return $this->moved_on();
 		}
-		$sites = Admin_Status::sites_url_for( $pinned );
+		$sites  = Admin_Status::sites_url_for( $pinned );
+		$revoke = $this->connect->revoke( $pinned );
 		try {
 			// The swap and its whole teardown, including this admin's earlier connect outcome,
 			// happen in one change under the connection lock.
@@ -169,7 +173,9 @@ final class Admin_Endpoint {
 		}
 		$view                 = $this->status->view( get_current_user_id() );
 		$view['disconnected'] = array(
-			'keyRevoked' => false,
+			'revoke'     => $revoke,
+			'keyRevoked' => Connect::REVOKE_FAILED !== $revoke,
+			'message'    => Connect::revoke_message( $revoke ),
 			'sitesUrl'   => $sites,
 		);
 		return self::private_response( $view );

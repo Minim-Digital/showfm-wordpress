@@ -9,6 +9,7 @@ use ShowFM\Connect;
 use ShowFM\Connection;
 use ShowFM\Notices;
 use ShowFM\Plugin;
+use ShowFM\Sync;
 
 /**
  * Notice tests.
@@ -145,14 +146,30 @@ class Test_Notices extends WP_UnitTestCase {
 		$this->assertSame( 'https://my.show.fm/pricing', $paused['action']['url'] );
 	}
 
-	public function test_a_sync_problem_points_to_site_health(): void {
+	public function test_a_configuration_problem_points_to_the_publishing_tab(): void {
 		$this->connect();
 		$this->sync_problem( 'row_author' );
 
 		$notice = $this->notices->current( $this->admin );
 
-		$this->assertSame( admin_url( 'site-health.php' ), $notice['action']['url'] );
+		$this->assertSame( admin_url( 'options-general.php?page=showfm&tab=publishing' ), $notice['action']['url'] );
+		$this->assertSame( 'Check the Publishing settings', $notice['action']['label'] );
 		$this->assertStringContainsString( 'author', $notice['text'] );
+	}
+
+	public function test_an_unreadable_feed_points_to_site_health(): void {
+		$this->connect();
+		update_option(
+			Sync::OPTION,
+			array(
+				'site'  => self::SITE_ID,
+				'error' => 'invalid_feed',
+			)
+		);
+
+		$notice = $this->notices->current( $this->admin );
+
+		$this->assertSame( admin_url( 'site-health.php' ), $notice['action']['url'] );
 	}
 
 	public function test_only_one_notice_is_printed_on_the_dashboard_and_plugins_screens(): void {

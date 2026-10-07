@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import App, { CONNECTION_PATH } from '../../src/admin/app';
 import { allTabs } from '../../src/admin/tabs';
-import { view } from './fixtures';
+import { publishing, view } from './fixtures';
 
 vi.mock( '@wordpress/api-fetch', () => ( { default: vi.fn() } ) );
 
@@ -37,6 +37,9 @@ function serve( connection ) {
 		if ( path === CONNECTION_PATH ) {
 			return Promise.resolve( connection );
 		}
+		if ( path === '/showfm/v1/admin/publishing' ) {
+			return Promise.resolve( publishing() );
+		}
 		if ( path.startsWith( '/wp/v2/settings' ) ) {
 			return Promise.resolve( {
 				showfm_show_credit: false,
@@ -58,7 +61,7 @@ describe( 'Settings app', () => {
 		);
 	} );
 
-	it( 'shows the header and the Connection and Display tabs', async () => {
+	it( 'shows the header and the Connection, Publishing and Display tabs while connected', async () => {
 		serve( view() );
 		render( <App /> );
 
@@ -69,9 +72,77 @@ describe( 'Settings app', () => {
 			await screen.findByRole( 'tab', { name: 'Connection' } )
 		).toHaveAttribute( 'aria-selected', 'true' );
 		expect(
-			screen.getByRole( 'tab', { name: 'Display' } )
+			screen.getAllByRole( 'tab' ).map( ( tab ) => tab.textContent )
+		).toEqual( [ 'Connection', 'Publishing', 'Display' ] );
+	} );
+
+	it( 'opens the Publishing tab, wider, without repeating its own problem as an admin notice', async () => {
+		window.history.replaceState(
+			null,
+			'',
+			'/wp-admin/options-general.php?page=showfm&tab=publishing'
+		);
+		serve(
+			view( {
+				notice: {
+					key: 'sync:row_author:3f2b8c1e',
+					type: 'warning',
+					text: 'New episodes aren’t being posted here because the chosen author can’t publish posts.',
+					action: {
+						type: 'link',
+						label: 'Check the Publishing settings',
+						url: '/wp-admin/options-general.php?page=showfm&tab=publishing',
+					},
+				},
+			} )
+		);
+		render( <App /> );
+
+		expect(
+			await screen.findByRole( 'heading', { name: 'Auto-posting' } )
 		).toBeInTheDocument();
-		expect( screen.getAllByRole( 'tab' ) ).toHaveLength( 2 );
+		expect(
+			screen.getByRole( 'tab', { name: 'Publishing' } )
+		).toHaveAttribute( 'aria-selected', 'true' );
+		expect(
+			screen
+				.getByRole( 'heading', { name: 'Auto-posting' } )
+				.closest( '.showfm-settings__content' )
+		).toHaveClass( 'is-wide' );
+		expect(
+			screen.queryByText( /the chosen author can’t publish posts/ )
+		).toBeNull();
+	} );
+
+	it( 'shows other admin notices on the Publishing tab', async () => {
+		window.history.replaceState(
+			null,
+			'',
+			'/wp-admin/options-general.php?page=showfm&tab=publishing'
+		);
+		serve( view( { notice: PLAN_NOTICE } ) );
+		render( <App /> );
+
+		expect(
+			await screen.findByText( PLAN_NOTICE.text, { selector: 'p' } )
+		).toBeInTheDocument();
+	} );
+
+	it( 'hides the Publishing tab while not connected', async () => {
+		window.history.replaceState(
+			null,
+			'',
+			'/wp-admin/options-general.php?page=showfm&tab=publishing'
+		);
+		serve( view( { state: 'not_connected' } ) );
+		render( <App /> );
+
+		expect(
+			await screen.findByRole( 'tab', { name: 'Connection' } )
+		).toHaveAttribute( 'aria-selected', 'true' );
+		expect(
+			screen.queryByRole( 'tab', { name: 'Publishing' } )
+		).toBeNull();
 	} );
 
 	it( 'shows no empty tabs: every tab renders content', () => {
@@ -219,7 +290,10 @@ describe( 'Settings app', () => {
 			view( {
 				state: 'not_connected',
 				disconnected: {
+					revoke: 'not_revoked',
 					keyRevoked: false,
+					message:
+						'show.fm couldn’t be reached to revoke this site’s key, so it may still work. Revoke it in show.fm under Connected sites.',
 					sitesUrl:
 						'https://my.show.fm/p/the-long-table/settings/sites',
 				},
@@ -238,7 +312,9 @@ describe( 'Settings app', () => {
 			data: { state: '3f2b8c1e-9a4d-4e6f-8b7c-1d2e3f4a5b6c' },
 		} );
 		expect(
-			screen.getByText( 'Disconnected from show.fm.' )
+			screen.getByText( 'Disconnected from show.fm.', {
+				selector: 'strong',
+			} )
 		).toBeInTheDocument();
 		expect(
 			screen.getByRole( 'link', {

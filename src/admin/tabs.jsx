@@ -1,17 +1,20 @@
 /**
- * The settings tabs. Publishing (WP-4b) and Migrate (WP-5b) add an entry here with
- * `requiresConnection: true`, so they appear only while a connection is stored.
+ * The settings tabs. Publishing and Migrate (WP-5b) have `requiresConnection: true`, so they
+ * appear only while a connection is stored.
  */
 import { __ } from '@wordpress/i18n';
 
 import ConnectionTab from './connection-tab';
 import DisplayTab from './display-tab';
+import PublishingTab from './publishing-tab';
 
 /**
  * Every tab, in display order.
  *
- * Each has a `name` (the `tab` query argument), a `title`, `requiresConnection`, and a
- * `render( { view, onDisconnect } )` that returns the tab's content.
+ * Each has a `name` (the `tab` query argument), a `title`, `requiresConnection`,
+ * `showsAdminNotice`, and a `render( { view, onDisconnect } )` that returns the tab's
+ * content. `wide` gives the tab the wider layout with a side column. `hidesNotice( notice )`
+ * hides an admin notice the tab already shows in its own words.
  *
  * @return {Object[]} Tabs.
  */
@@ -23,6 +26,17 @@ export function allTabs() {
 			requiresConnection: false,
 			showsAdminNotice: false,
 			render: ( props ) => <ConnectionTab { ...props } />,
+		},
+		{
+			name: 'publishing',
+			title: __( 'Publishing', 'showfm' ),
+			requiresConnection: true,
+			showsAdminNotice: true,
+			wide: true,
+			hidesNotice: ( notice ) =>
+				notice.key.startsWith( 'sync:row_post_type:' ) ||
+				notice.key.startsWith( 'sync:row_author:' ),
+			render: () => <PublishingTab />,
 		},
 		{
 			name: 'display',

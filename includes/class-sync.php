@@ -260,6 +260,27 @@ final class Sync {
 	}
 
 	/**
+	 * After the Publishing tab fixed the settings a held row failed on: drops the back-off and
+	 * queues a pull now. Skips the reset while a pull holds the lock, since that pull already
+	 * uses the new settings.
+	 */
+	public static function retry_now(): void {
+		$lock = new Sync_Lock();
+		if ( $lock->acquire() ) {
+			try {
+				wp_cache_delete( self::OPTION, 'options' );
+				$state             = self::state();
+				$state['retry_at'] = 0;
+				$state['failures'] = 0;
+				update_option( self::OPTION, $state, false );
+			} finally {
+				$lock->release();
+			}
+		}
+		self::wake( time() );
+	}
+
+	/**
 	 * Fail closed on malformed pages before applying anything.
 	 *
 	 * @param mixed $data API body.

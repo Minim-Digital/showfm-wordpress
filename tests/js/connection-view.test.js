@@ -263,16 +263,50 @@ describe( 'connection view', () => {
 		);
 	} );
 
-	it( 'says after Disconnect that the key stays valid at show.fm', () => {
+	it( 'says after Disconnect that the key was revoked at show.fm', () => {
+		const disconnected = {
+			revoke: 'revoked',
+			keyRevoked: true,
+			message: 'This site’s key was revoked at show.fm.',
+			sitesUrl: 'https://my.show.fm/p/the-long-table/settings/sites',
+		};
+		expect( disconnectedNotice( disconnected ) ).toEqual( {
+			status: 'success',
+			title: 'Disconnected from show.fm.',
+			text: 'This site’s key was revoked at show.fm.',
+			action: null,
+			dismissible: true,
+		} );
+		expect( disconnectedMessage( disconnected ) ).toBe(
+			'Disconnected from show.fm. This site’s key was revoked at show.fm.'
+		);
+	} );
+
+	it( 'says after Disconnect when show.fm already refused the key', () => {
+		const notice = disconnectedNotice( {
+			revoke: 'refused',
+			keyRevoked: true,
+			message:
+				'show.fm had already stopped accepting this site’s key, so there was nothing left to revoke.',
+			sitesUrl: 'https://my.show.fm/dashboard',
+		} );
+		expect( notice.status ).toBe( 'success' );
+		expect( notice.action ).toBeNull();
+	} );
+
+	it( 'warns after Disconnect when the key must be revoked at show.fm, with a link', () => {
 		expect(
 			disconnectedNotice( {
+				revoke: 'not_revoked',
 				keyRevoked: false,
+				message:
+					'show.fm couldn’t be reached to revoke this site’s key, so it may still work. Revoke it in show.fm under Connected sites.',
 				sitesUrl: 'https://my.show.fm/p/the-long-table/settings/sites',
 			} )
 		).toEqual( {
-			status: 'info',
+			status: 'warning',
 			title: 'Disconnected from show.fm.',
-			text: 'This site’s key stays valid at show.fm until you disconnect the site there too.',
+			text: 'show.fm couldn’t be reached to revoke this site’s key, so it may still work. Revoke it in show.fm under Connected sites.',
 			action: {
 				type: 'link',
 				label: 'Open Connected sites in show.fm',
@@ -280,7 +314,6 @@ describe( 'connection view', () => {
 			},
 			dismissible: true,
 		} );
-		expect( disconnectedMessage() ).toContain( 'stays valid at show.fm' );
 	} );
 
 	it( 'never says Connected once the site is not connected', () => {

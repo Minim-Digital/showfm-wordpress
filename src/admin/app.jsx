@@ -171,12 +171,22 @@ export default function App() {
 				>
 					{ ( { name } ) => {
 						const tab = tabs.find( ( item ) => item.name === name );
+						const notice =
+							tab.showsAdminNotice &&
+							view.notice &&
+							! tab.hidesNotice?.( view.notice )
+								? view.notice
+								: null;
 						return (
-							<div className="showfm-settings__content">
-								{ tab.showsAdminNotice && view.notice && (
+							<div
+								className={ `showfm-settings__content${
+									tab.wide ? ' is-wide' : ''
+								}` }
+							>
+								{ notice && (
 									<AdminNotice
-										key={ view.notice.key }
-										notice={ view.notice }
+										key={ notice.key }
+										notice={ notice }
 										connect={ view.connect }
 									/>
 								) }

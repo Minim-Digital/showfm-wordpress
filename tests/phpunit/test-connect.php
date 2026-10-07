@@ -1015,7 +1015,7 @@ class Test_Connect extends WP_UnitTestCase {
 		$allowed = array( 'class-connection.php', 'class-connect.php', 'class-account.php' );
 		$pattern = '/(?:update|add|delete)_option\(\s*(?:self|Connection|Connect|Account)::(?:OPTION|STATE_OPTION|REFUSED_AT_OPTION|PAUSED_OPTION|CONNECTED_AT_OPTION|VERIFY_PENDING_OPTION)\b/';
 		foreach ( glob( SHOWFM_DIR . '/includes/*.php' ) as $file ) {
-			if ( in_array( basename( $file ), $allowed, true ) || 'class-sync.php' === basename( $file ) || 0 === strpos( basename( $file ), 'class-sync-' ) || 0 === strpos( basename( $file ), 'class-migrat' ) || 'class-cache.php' === basename( $file ) ) {
+			if ( in_array( basename( $file ), $allowed, true ) || 'class-sync.php' === basename( $file ) || 0 === strpos( basename( $file ), 'class-sync-' ) || 0 === strpos( basename( $file ), 'class-migrat' ) || in_array( basename( $file ), array( 'class-cache.php', 'class-publishing.php' ), true ) ) {
 				continue;
 			}
 			$this->assertSame( 0, preg_match( $pattern, (string) file_get_contents( $file ) ), basename( $file ) . ' writes connection state outside Connection::mutate().' );

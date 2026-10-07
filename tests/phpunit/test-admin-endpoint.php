@@ -7,6 +7,7 @@
 
 use ShowFM\Account;
 use ShowFM\Admin_Status;
+use ShowFM\Api_Client;
 use ShowFM\Api_Result;
 use ShowFM\Connect;
 use ShowFM\Connection;
@@ -560,8 +561,19 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 		$this->assertNull( $this->view()['result'] );
 	}
 
-	public function test_disconnect_removes_the_local_connection_and_says_the_key_stays_valid(): void {
+	public function test_disconnect_revokes_the_key_at_showfm_then_removes_the_local_connection(): void {
 		$this->connect();
+		$this->http->respond(
+			200,
+			wp_json_encode(
+				array(
+					'data' => array(
+						'site_id'      => self::SITE_ID,
+						'disconnected' => true,
+					),
+				)
+			)
+		);
 
 		$response = $this->dispatch( 'POST', '/showfm/v1/admin/disconnect', array( 'state' => Connection::state_id() ) );
 		$data     = $response->get_data();
@@ -570,15 +582,107 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 		$this->assertSame( 'not_connected', $data['state'] );
 		$this->assertSame( Connection::STATE_DISCONNECTED, Plugin::connection()->state() );
 		$this->assertFalse( get_option( Account::OPTION ) );
-		$this->assertSame( 0, $this->http->count(), 'show.fm has no route for a site key to revoke itself.' );
-		$this->assertSame(
-			array(
-				'keyRevoked' => false,
-				'sitesUrl'   => 'https://my.show.fm/p/the-long-table/settings/sites',
-			),
-			$data['disconnected'],
-			'The answer says the key stays valid and where to disconnect it.'
-		);
+
+		$this->assertSame( 1, $this->http->count() );
+		$request = $this->http->last();
+		$this->assertSame( 'https://api.show.fm/v1/me/sites/' . self::SITE_ID . '/disconnect', $request['url'] );
+		$this->assertSame( 'POST', $request['args']['method'] );
+		$this->assertSame( '{}', $request['args']['body'], 'show.fm accepts only an empty object.' );
+		$this->assertSame( 'Bearer ' . self::KEY, $request['args']['headers']['Authorization'] );
+		$this->assertSame( Api_Client::DISCONNECT_TIMEOUT, $request['args']['timeout'], 'Best effort, with a short timeout.' );
+
+		$this->assertSame( Connect::REVOKE_DONE, $data['disconnected']['revoke'] );
+		$this->assertTrue( $data['disconnected']['keyRevoked'] );
+		$this->assertSame( 'This site’s key was revoked at show.fm.', $data['disconnected']['message'] );
+		$this->assertSame( 'https://my.show.fm/p/the-long-table/settings/sites', $data['disconnected']['sitesUrl'] );
+		$this->assertStringNotContainsString( self::KEY, wp_json_encode( $data ) );
+	}
+
+	public function test_disconnect_after_a_401_says_the_key_was_already_revoked_and_never_retries(): void {
+		$this->connect();
+		$this->http->respond( 401, wp_json_encode( array( 'error' => array( 'code' => 'invalid_api_key' ) ) ) );
+
+		$data = $this->dispatch( 'POST', '/showfm/v1/admin/disconnect', array( 'state' => Connection::state_id() ) )->get_data();
+
+		$this->assertSame( 1, $this->http->count(), 'A 401 is not retried.' );
+		$this->assertSame( Connection::STATE_DISCONNECTED, Plugin::connection()->state(), 'Cleared locally either way.' );
+		$this->assertSame( Connect::REVOKE_REFUSED, $data['disconnected']['revoke'] );
+		$this->assertTrue( $data['disconnected']['keyRevoked'] );
+		$this->assertStringContainsString( 'nothing left to revoke', $data['disconnected']['message'] );
+	}
+
+	public function test_disconnect_when_showfm_cannot_be_reached_still_clears_locally_and_links_to_showfm(): void {
+		$this->connect();
+		$this->http->fail( 'cURL error 28: Operation timed out' );
+
+		$response = $this->dispatch( 'POST', '/showfm/v1/admin/disconnect', array( 'state' => Connection::state_id() ) );
+		$data     = $response->get_data();
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( Connection::STATE_DISCONNECTED, Plugin::connection()->state() );
+		$this->assertSame( Connect::REVOKE_FAILED, $data['disconnected']['revoke'] );
+		$this->assertFalse( $data['disconnected']['keyRevoked'] );
+		$this->assertSame( 'show.fm couldn’t be reached to revoke this site’s key, so it may still work. Revoke it in show.fm under Connected sites.', $data['disconnected']['message'] );
+		$this->assertSame( 'https://my.show.fm/p/the-long-table/settings/sites', $data['disconnected']['sitesUrl'] );
+		$this->assertStringNotContainsString( 'cURL', wp_json_encode( $data ) );
+	}
+
+	public function test_disconnect_after_a_server_error_says_the_key_must_be_revoked_at_showfm(): void {
+		$this->connect();
+		$this->http->respond( 503 );
+
+		$data = $this->dispatch( 'POST', '/showfm/v1/admin/disconnect', array( 'state' => Connection::state_id() ) )->get_data();
+
+		$this->assertSame( Connection::STATE_DISCONNECTED, Plugin::connection()->state() );
+		$this->assertSame( Connect::REVOKE_FAILED, $data['disconnected']['revoke'] );
+	}
+
+	public function test_disconnect_while_rate_limited_sends_nothing_and_says_the_key_must_be_revoked(): void {
+		$this->connect();
+		update_option( Api_Client::RATE_LIMIT_OPTION, time() + 60 );
+
+		$data = $this->dispatch( 'POST', '/showfm/v1/admin/disconnect', array( 'state' => Connection::state_id() ) )->get_data();
+
+		$this->assertSame( 0, $this->http->count() );
+		$this->assertSame( Connect::REVOKE_FAILED, $data['disconnected']['revoke'] );
+		$this->assertSame( Connection::STATE_DISCONNECTED, Plugin::connection()->state() );
+		$this->assertFalse( get_option( Api_Client::RATE_LIMIT_OPTION ), 'Disconnect clears the hold.' );
+	}
+
+	public function test_disconnect_of_a_refused_key_sends_nothing(): void {
+		$this->connect();
+		$this->assertTrue( Plugin::connection()->mark_reconnect_needed() );
+
+		$data = $this->dispatch( 'POST', '/showfm/v1/admin/disconnect', array( 'state' => Connection::state_id() ) )->get_data();
+
+		$this->assertSame( 0, $this->http->count(), 'show.fm already refused the key.' );
+		$this->assertSame( Connect::REVOKE_REFUSED, $data['disconnected']['revoke'] );
+		$this->assertSame( Connection::STATE_DISCONNECTED, Plugin::connection()->state() );
+	}
+
+	public function test_disconnect_of_an_unreadable_key_says_it_must_be_revoked_at_showfm(): void {
+		$this->connect();
+		$stored      = get_option( Connection::OPTION );
+		$stored['c'] = base64_encode( 'not the ciphertext' ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+		update_option( Connection::OPTION, $stored );
+
+		$data = $this->dispatch( 'POST', '/showfm/v1/admin/disconnect', array( 'state' => Connection::state_id() ) )->get_data();
+
+		$this->assertSame( 0, $this->http->count() );
+		$this->assertSame( Connect::REVOKE_FAILED, $data['disconnected']['revoke'] );
+		$this->assertSame( Connection::STATE_DISCONNECTED, Plugin::connection()->state() );
+	}
+
+	public function test_disconnect_of_a_changed_state_sends_nothing(): void {
+		$this->connect();
+		$seen = Connection::state_id();
+		$this->connect();
+
+		$response = $this->dispatch( 'POST', '/showfm/v1/admin/disconnect', array( 'state' => $seen ) );
+
+		$this->assertSame( 409, $response->get_status() );
+		$this->assertSame( 0, $this->http->count(), 'The key is never revoked for a state the screen did not show.' );
+		$this->assertSame( Connection::STATE_CONNECTED, Plugin::connection()->state() );
 	}
 
 	public function test_the_connected_sites_link_follows_the_first_show(): void {

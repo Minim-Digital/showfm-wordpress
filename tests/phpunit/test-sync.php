@@ -43,7 +43,8 @@ class Test_Sync extends WP_UnitTestCase {
 		update_option( 'siteurl', 'https://site.example/show' );
 		Plugin::connection()->save( 'showfm_live_TEST_SYNC_abcdefghijk', str_repeat( 'a', 64 ), self::SITE, 0 );
 		delete_option( Sync::OPTION );
-		delete_option( Sync_Posts::SETTINGS );
+		// The Publishing tab turns the featured image on by default; these tests opt in.
+		update_option( Sync_Posts::SETTINGS, array( 'featured_image' => false ) );
 		delete_option( Api_Client::RATE_LIMIT_OPTION );
 		delete_option( ShowFM\Connect::VERIFY_PENDING_OPTION );
 		$this->http = new ShowFM_Http_Mock();
@@ -508,7 +509,7 @@ class Test_Sync extends WP_UnitTestCase {
 		$this->assertTrue( $this->http->last()['args']['reject_unsafe_urls'] );
 		$this->assertArrayNotHasKey( 'Authorization', $this->http->last()['args']['headers'] );
 		$this->http->respond( 200, wp_json_encode( array( 'data' => array( 'artwork' => array( 'url' => 'https://m.cdn.media/cover.png' ) ) ) ) );
-		update_option( Sync_Posts::SETTINGS, array( 'featured_image' => true ) );
+		update_post_meta( $id, '_showfm_post_options', array( 'featured_image' => true ) );
 		$this->apply( $this->row( 2 ) );
 		$this->assertSame( $attachment, (int) get_post_thumbnail_id( $id ) );
 		$this->apply( $this->row( 3 ) );
@@ -976,7 +977,7 @@ class Test_Sync extends WP_UnitTestCase {
 
 	public function test_artwork_crashed_attempts_are_bounded_and_hook_errors_do_not_fail_rows(): void {
 		$id = $this->apply( $this->row() );
-		update_option( Sync_Posts::SETTINGS, array( 'featured_image' => true ) );
+		update_post_meta( $id, '_showfm_post_options', array( 'featured_image' => true ) );
 		$this->http->respond_with(
 			static function () {
 				throw new RuntimeException( 'private hook detail' );
@@ -1096,6 +1097,7 @@ class Test_Sync extends WP_UnitTestCase {
 		for ( $i = 0; $i <= Sync::PAGE_SIZE; ++$i ) {
 			$id = self::factory()->post->create( array( 'post_status' => 'publish' ) );
 			update_post_meta( $id, '_showfm_sync_state', 'synced' );
+			update_post_meta( $id, '_showfm_post_options', array( 'featured_image' => true ) );
 			if ( $i < Sync::PAGE_SIZE ) {
 				update_post_meta( $id, '_showfm_artwork_done', $i % 2 ? 'failed' : 1 );
 			}
@@ -1146,7 +1148,7 @@ class Test_Sync extends WP_UnitTestCase {
 		WP_CLI::$output = array();
 		( new ShowFM\Cli( Plugin::connect(), Plugin::connection() ) )->sync( array( 'status' ), array() );
 		$this->assertStringContainsString( 'row_post_type', wp_json_encode( WP_CLI::$output ) );
-		delete_option( Sync_Posts::SETTINGS );
+		update_option( Sync_Posts::SETTINGS, array( 'featured_image' => false ) );
 		$this->clear_backoff();
 		$this->page( array( $this->row() ) );
 		$this->http->respond( 200, '{}' );
@@ -1329,7 +1331,7 @@ class Test_Sync extends WP_UnitTestCase {
 		$this->assertSame( 0, $status['retry']['attempts'] );
 		$this->assertSame( array(), $status['skipped'] );
 		$this->assertGreaterThanOrEqual( time() + HOUR_IN_SECONDS - 2, Sync::state()['retry_at'] );
-		delete_option( Sync_Posts::SETTINGS );
+		update_option( Sync_Posts::SETTINGS, array( 'featured_image' => false ) );
 		$this->clear_backoff();
 		$this->page( array( $this->row() ) );
 		$this->http->respond( 200, '{}' );
