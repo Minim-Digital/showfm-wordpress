@@ -13,15 +13,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /** Byte offsets are preserved. Malformed or oversized input fails closed. */
 final class Migration_Tokens {
-	const MAX_BYTES  = 2097152;
-	const MAX_TAG    = 16384;
-	const MAX_TOKENS = 10000;
+	const MAX_BYTES   = 2097152;
+	const MAX_TAG     = 16384;
+	const MAX_TOKENS  = 10000;
+	const TOKEN_LIMIT = 1;
 
 	/**
 	 * Read a bounded post once, pairing tags/comments with explicit delimiter searches.
 	 *
 	 * @param string $content Original content.
-	 * @return array{ranges:array<int,array<string,mixed>>,wrappers:array<int,array<string,mixed>>}
+	 * @return array{ranges:array<int,array<string,mixed>>,wrappers:array<int,array<string,mixed>>,captions:array<int,array<string,mixed>>}
 	 * @throws \RuntimeException For malformed syntax, resource bounds or PCRE failure.
 	 */
 	public static function read( string $content ): array {
@@ -29,20 +30,23 @@ final class Migration_Tokens {
 		if ( $size > self::MAX_BYTES ) {
 			throw new \RuntimeException( 'Post exceeds the scan limit.' );
 		}
-		$ranges    = array();
-		$ignored   = array();
-		$wrappers  = array();
-		$stack     = array();
-		$empty_div = null;
-		$cursor    = 0;
-		$count     = 0;
+		$ranges        = array();
+		$ignored       = array();
+		$wrappers      = array();
+		$captions      = array();
+		$caption_start = null;
+		$stack         = array();
+		$empty_div     = null;
+		$cursor        = 0;
+		$count         = 0;
 		while ( $cursor < $size ) {
 			$cursor += strcspn( $content, '<[', $cursor );
 			if ( $cursor >= $size ) {
 				break;
 			}
 			if ( ++$count > self::MAX_TOKENS ) {
-				throw new \RuntimeException( 'Too many tokens.' );
+				// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- The second argument is an internal numeric reason code, never output.
+				throw new \RuntimeException( 'Too many tokens.', self::TOKEN_LIMIT );
 			}
 			$start = $cursor;
 			if ( '<!--' === substr( $content, $cursor, 4 ) ) {
@@ -97,16 +101,31 @@ final class Migration_Tokens {
 				continue;
 			}
 			if ( '<' === $content[ $start ] ) {
+				// A comparison or emoticon in ordinary text is not an HTML opener.
+				if ( ! self::match( '~\A<[a-z/!?]~i', substr( $content, $start, 2 ) ) ) {
+					++$cursor;
+					continue;
+				}
 				$end    = self::tag_end( $content, $start );
 				$raw    = substr( $content, $start, $end - $start );
 				$cursor = $end;
 				if ( ! self::match( '~\A<([a-z][a-z0-9]*+)(?=[\s>/])~i', $raw, $tag ) ) {
+					if ( null !== $caption_start && self::match( '~\A</figcaption\s*+>\z~i', $raw ) ) {
+						$captions[]    = array(
+							'offset' => $caption_start,
+							'length' => $cursor - $caption_start,
+						);
+						$caption_start = null;
+					}
 					continue;
 				}
 				$name_tag = strtolower( $tag[1] );
+				if ( 'figcaption' === $name_tag ) {
+					$caption_start = $start;
+				}
 				if ( in_array( $name_tag, array( 'pre', 'code', 'a', 'iframe', 'script' ), true ) ) {
-					$close = stripos( $content, '</' . $name_tag, $cursor );
-					if ( false === $close ) {
+					$close = self::closing_tag( $content, $name_tag, $cursor );
+					if ( null === $close ) {
 						throw new \RuntimeException( 'Unclosed player or literal tag.' );
 					}
 					$cursor = self::tag_end( $content, $close );
@@ -192,7 +211,29 @@ final class Migration_Tokens {
 		return array(
 			'ranges'   => $ranges,
 			'wrappers' => $wrappers,
+			'captions' => $captions,
 		);
+	}
+
+	/**
+	 * Find a closing tag without accepting another tag with the same prefix.
+	 *
+	 * @param string $content Content.
+	 * @param string $name Lowercase tag name.
+	 * @param int    $cursor First byte to search.
+	 */
+	private static function closing_tag( string $content, string $name, int $cursor ): ?int {
+		$needle = '</' . $name;
+		$close  = stripos( $content, $needle, $cursor );
+		while ( false !== $close ) {
+			$cursor = $close + strlen( $needle );
+			$next   = substr( $content, $cursor, 1 );
+			if ( '>' === $next || ( '' !== $next && false !== strpos( " \t\r\n\f", $next ) ) ) {
+				return $close;
+			}
+			$close = stripos( $content, $needle, $cursor );
+		}
+		return null;
 	}
 
 	/**

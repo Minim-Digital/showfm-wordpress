@@ -55,10 +55,11 @@ final class Migrator {
 	/**
 	 * Start a report only after all API pages have succeeded.
 	 *
-	 * @param int $post_id Single-post restriction, or zero.
+	 * @param int  $post_id Single-post restriction, or zero.
+	 * @param bool $reset Discard pending acquisition and start afresh.
 	 * @return array<string,mixed>|\WP_Error
 	 */
-	private function start_locked( int $post_id = 0 ) {
+	private function start_locked( int $post_id = 0, bool $reset = false ) {
 		$access = $this->access();
 		if ( is_wp_error( $access ) ) {
 			return $access;
@@ -70,9 +71,13 @@ final class Migrator {
 			}
 		}
 		$pending = get_option( Migration_Catalogue::PENDING, array() );
-		$run     = $pending['run'] ?? wp_generate_uuid4();
-		if ( $pending && ( ( $pending['connection'] ?? '' ) !== $this->fingerprint() || ( $pending['post_id'] ?? 0 ) !== $post_id ) ) {
-			return new \WP_Error( 'showfm_pending_scan', __( 'Resume or clear the pending catalogue before changing the connection or post restriction.', 'showfm' ) );
+		if ( $reset || ( $pending && ( $pending['connection'] ?? '' ) !== $this->fingerprint() ) ) {
+			$this->reset_pending();
+			$pending = array();
+		}
+		$run = $pending['run'] ?? wp_generate_uuid4();
+		if ( $pending && ( $pending['post_id'] ?? 0 ) !== $post_id ) {
+			return new \WP_Error( 'showfm_pending_scan', __( 'Resume the pending catalogue or use --dry-run --reset to change the post restriction.', 'showfm' ) );
 		}
 		if ( ! $pending ) {
 			update_option(
@@ -173,15 +178,42 @@ final class Migrator {
 	/**
 	 * Start or resume catalogue acquisition without replacing the active report on failure.
 	 *
-	 * @param int $post_id Optional post restriction.
+	 * @param int  $post_id Optional post restriction.
+	 * @param bool $reset Discard pending acquisition and start afresh.
 	 * @return array<string,mixed>|\WP_Error
 	 */
-	public function start( int $post_id = 0 ) {
+	public function start( int $post_id = 0, bool $reset = false ) {
 		return Migration_Store::locked(
-			function () use ( $post_id ) {
-				return $this->start_locked( $post_id );
+			function () use ( $post_id, $reset ) {
+				return $this->start_locked( $post_id, $reset );
 			}
 		);
+	}
+
+	/**
+	 * Forget pending acquisition without HTTP, even when the old key has been refused.
+	 *
+	 * @return true|\WP_Error
+	 */
+	public function reset() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return new \WP_Error( 'showfm_forbidden', __( 'Use --user=<administrator> to reset pending migration data.', 'showfm' ) );
+		}
+		return Migration_Store::locked(
+			function () {
+				$this->reset_pending();
+				return true;
+			}
+		);
+	}
+
+	/** Discard only the abandoned pending run while holding the site lock. */
+	private function reset_pending(): void {
+		$pending = get_option( Migration_Catalogue::PENDING, array() );
+		if ( isset( $pending['run'] ) && ( Migration_Store::state()['run'] ?? '' ) !== $pending['run'] ) {
+			Migration_Store::discard( $pending['run'] );
+		}
+		delete_option( Migration_Catalogue::PENDING );
 	}
 
 	/**

@@ -23,6 +23,9 @@ final class Migration_Detectors {
 		try {
 			return self::read( $post );
 		} catch ( \RuntimeException $error ) {
+			if ( Migration_Tokens::TOKEN_LIMIT === $error->getCode() ) {
+				return new \WP_Error( 'showfm_scan_error', __( 'The scan exceeded the 10,000-token limit (candidate < and [ starts). No embeds from this post were accepted. Shorten or split the content before rescanning.', 'showfm' ) );
+			}
 			return new \WP_Error( 'showfm_scan_error', __( 'The content could not be scanned safely. Review the malformed or oversized embed markup.', 'showfm' ) );
 		}
 	}
@@ -59,11 +62,18 @@ final class Migration_Detectors {
 					$items[ $index ]['range_ambiguous'] = true;
 				}
 			} elseif ( 1 === count( $inside ) ) {
-				$index  = $inside[0];
-				$item   = $items[ $index ];
-				$before = substr( $content, $wrapper['body'], $item['offset'] - $wrapper['body'] );
-				$after  = substr( $content, $item['offset'] + $item['length'], $wrapper['body_end'] - $item['offset'] - $item['length'] );
-				if ( Migration_Tokens::match( '~\A(?:\s|<(?:div|figure|p|span)(?:\s[^<>]{0,8192})?>)*+\z~i', $before ) && Migration_Tokens::match( '~\A(?:\s|</(?:div|figure|p|span)\s*>)*+\z~i', $after ) ) {
+				$index         = $inside[0];
+				$item          = $items[ $index ];
+				$before        = substr( $content, $wrapper['body'], $item['offset'] - $wrapper['body'] );
+				$after         = substr( $content, $item['offset'] + $item['length'], $wrapper['body_end'] - $item['offset'] - $item['length'] );
+				$before_markup = self::without_captions( $before, $wrapper['body'], $tokens['captions'] );
+				$after_markup  = self::without_captions( $after, $item['offset'] + $item['length'], $tokens['captions'] );
+				if ( Migration_Tokens::match( '~\A(?:\s|<(?:div|figure|p|span)(?:\s[^<>]{0,8192})?>)*+\z~i', $before_markup ) && Migration_Tokens::match( '~\A(?:\s|</(?:div|figure|p|span)\s*>)*+\z~i', $after_markup ) ) {
+					if ( $before_markup !== $before || $after_markup !== $after ) {
+						// Keep caption markup and its surrounding figure byte-for-byte, outside the old core wrapper.
+						$items[ $index ]['prefix'] = $before;
+						$items[ $index ]['suffix'] = $after;
+					}
 					$items[ $index ]['offset'] = $wrapper['offset'];
 					$items[ $index ]['length'] = $wrapper['end'] - $wrapper['offset'];
 				}
@@ -135,6 +145,23 @@ final class Migration_Detectors {
 		}
 		Migration_Tokens::check();
 		return $items;
+	}
+
+	/**
+	 * Ignore complete captions only when checking wrapper decoration, never when swapping.
+	 *
+	 * @param string                         $fragment Bytes before or after the player.
+	 * @param int                            $offset Fragment start in the post.
+	 * @param array<int,array<string,mixed>> $captions Caption locations.
+	 */
+	private static function without_captions( string $fragment, int $offset, array $captions ): string {
+		$end = $offset + strlen( $fragment );
+		foreach ( array_reverse( $captions ) as $caption ) {
+			if ( $caption['offset'] >= $offset && $caption['offset'] + $caption['length'] <= $end ) {
+				$fragment = substr_replace( $fragment, '', $caption['offset'] - $offset, $caption['length'] );
+			}
+		}
+		return $fragment;
 	}
 
 	/**

@@ -104,7 +104,8 @@ final class Migration_Swap {
 			}
 		);
 		foreach ( $replacements as $replacement ) {
-			$block   = 0 === $replacement['length'] ? "\n\n" . $replacement['block'] : $replacement['block'];
+			$block   = ( $replacement['prefix'] ?? '' ) . $replacement['block'] . ( $replacement['suffix'] ?? '' );
+			$block   = 0 === $replacement['length'] ? "\n\n" . $block : $block;
 			$content = substr_replace( $content, $block, $replacement['offset'], $replacement['length'] );
 		}
 		// Force a byte-exact pre-edit revision, even if core's whitespace comparison sees no change.
@@ -136,18 +137,36 @@ final class Migration_Swap {
 		}
 		clean_post_cache( $post->ID );
 		$updated = Migration_Scanner::fresh( $post->ID );
-		// Notify integrations after the atomic write. The pre-edit revision remains the undo.
-		if ( $updated ) {
-            // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Core post-update notifications after the atomic write.
-			do_action( 'post_updated', $post->ID, $updated, $post );
-            // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Core post-update notifications after the atomic write.
-			do_action( "save_post_{$post->post_type}", $post->ID, $updated, true );
-            // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Core post-update notifications after the atomic write.
-			do_action( 'save_post', $post->ID, $updated, true );
-            // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Core post-update notifications after the atomic write.
-			do_action( 'wp_insert_post', $post->ID, $updated, true );
-			$report['applied_hash'] = Migration_Scanner::hash( $updated );
+		// Core and third-party save callbacks may prune revisions while notifying integrations.
+		$keep_undo = static function ( $revisions ) use ( $revision ) {
+			return array_filter(
+				$revisions,
+				static function ( $saved ) use ( $revision ) {
+					return (int) $saved->ID !== (int) $revision;
+				}
+			);
+		};
+		add_filter( 'wp_save_post_revision_revisions_before_deletion', $keep_undo, PHP_INT_MAX );
+		try {
+			if ( $updated ) {
+				// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Core post-update notifications after the atomic write.
+				do_action( 'post_updated', $post->ID, $updated, $post );
+				// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Core post-update notifications after the atomic write.
+				do_action( "save_post_{$post->post_type}", $post->ID, $updated, true );
+				// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Core post-update notifications after the atomic write.
+				do_action( 'save_post', $post->ID, $updated, true );
+				// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Core post-update notifications after the atomic write.
+				do_action( 'wp_insert_post', $post->ID, $updated, true );
+				$report['applied_hash'] = Migration_Scanner::hash( $updated );
+			}
+		} finally {
+			remove_filter( 'wp_save_post_revision_revisions_before_deletion', $keep_undo, PHP_INT_MAX );
 		}
+		$undo = Migration_Scanner::fresh( (int) $revision );
+		if ( ! $undo || 'revision' !== $undo->post_type || $undo->post_parent !== $post->ID || $undo->post_content !== $post->post_content ) {
+			return new \WP_Error( 'showfm_revision_missing', __( 'The post was migrated, but another save callback removed or changed its undo revision. Review the post before continuing.', 'showfm' ) );
+		}
+
 		$report['revision_id']  = $revision;
 		$report['revision_url'] = admin_url( 'revision.php?revision=' . $revision );
 		$report['status']       = 'swapped';

@@ -62,6 +62,9 @@ final class Migration_Cli {
 	 * [--resume]
 	 * : Continue the current scan or apply its completed report.
 	 *
+	 * [--reset]
+	 * : Discard pending catalogue pages. Use alone, or with --dry-run to start afresh.
+	 *
 	 * [--batches=<number>]
 	 * : Stop after this many batches of 50; continue with --resume.
 	 *
@@ -75,6 +78,21 @@ final class Migration_Cli {
 	 * @param array<string,string|bool> $assoc_args Named arguments.
 	 */
 	public function __invoke( array $args, array $assoc_args ): void {
+		if ( ! empty( $assoc_args['reset'] ) ) {
+			if ( ! empty( $assoc_args['yes'] ) || ! empty( $assoc_args['resume'] ) || ! empty( $assoc_args['choose'] ) ) {
+				\WP_CLI::error( __( 'Use --reset alone or with --dry-run; it cannot apply or resume an existing report.', 'showfm' ) );
+				return;
+			}
+			if ( empty( $assoc_args['dry-run'] ) ) {
+				$reset = $this->migrator->reset();
+				if ( is_wp_error( $reset ) ) {
+					\WP_CLI::error( self::terminal( $reset->get_error_message() ) );
+					return;
+				}
+				\WP_CLI::success( __( 'Pending catalogue pages discarded. The active report, posts and revisions are unchanged.', 'showfm' ) );
+				return;
+			}
+		}
 		$access = $this->migrator->access();
 		if ( is_wp_error( $access ) ) {
 			\WP_CLI::error( self::terminal( $access->get_error_message() ) );
@@ -110,7 +128,8 @@ final class Migration_Cli {
 		} else {
 			$pending = get_option( Migration_Catalogue::PENDING, array() );
 			if ( empty( $assoc_args['resume'] ) || $pending ) {
-				$state = $this->migrator->start( (int) ( $assoc_args['post'] ?? $pending['post_id'] ?? 0 ) );
+				$post_id = (int) ( $assoc_args['post'] ?? ( ! empty( $assoc_args['resume'] ) ? ( $pending['post_id'] ?? 0 ) : 0 ) );
+				$state   = $this->migrator->start( $post_id, ! empty( $assoc_args['reset'] ) );
 			}
 		}
 		if ( is_wp_error( $state ) || ! $state ) {

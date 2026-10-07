@@ -112,6 +112,26 @@ final class Migration_Store {
 	}
 
 	/**
+	 * Discard only a pending run's pages and rows, keeping the active report intact.
+	 *
+	 * @param string $run Pending run UUID.
+	 */
+	public static function discard( string $run ): void {
+		if ( '' === $run ) {
+			return;
+		}
+		global $wpdb;
+		do {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Bounded cleanup of one abandoned run, with a literal escaped prefix.
+			$keys = $wpdb->get_col( $wpdb->prepare( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s LIMIT 50", $wpdb->esc_like( 'showfm_migration_' . $run . '_' ) . '%' ) );
+			foreach ( $keys as $key ) {
+				delete_option( $key );
+			}
+			$size = count( $keys );
+		} while ( 50 === $size );
+	}
+
+	/**
 	 * Serialise report state transitions on this site, including CLI requests.
 	 *
 	 * @param callable $operation Operation.

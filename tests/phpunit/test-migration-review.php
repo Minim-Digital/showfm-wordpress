@@ -216,7 +216,7 @@ class Test_Migration_Review extends WP_UnitTestCase {
 		}
 	}
 
-	public function test_verified_show_identity_is_required_for_title_only_auto_match(): void {
+	public function test_title_only_candidates_require_a_choice_even_with_show_identifiers(): void {
 		$embed = array(
 			'host'         => 'buzzsprout',
 			'show_id'      => '123',
@@ -224,8 +224,6 @@ class Test_Migration_Review extends WP_UnitTestCase {
 			'published_at' => '2024-01-02T12:00:00Z',
 		);
 		$this->assertSame( 'ambiguous', Migration_Matcher::match( $embed, array( $this->episode() ) )['status'] );
-		$this->assertSame( 'matched', Migration_Matcher::match( $embed, array( $this->episode() ), array( 'buzzsprout:123' => self::PODCAST ) )['status'] );
-		$this->assertSame( 'ambiguous', Migration_Matcher::match( $embed, array( $this->episode() ), array( 'buzzsprout:other' => self::PODCAST ) )['status'] );
 		$episode             = $this->episode();
 		$episode['rss_guid'] = 'public-guid';
 		$this->assertSame( 'guid', Migration_Matcher::match( array( 'guid' => ' public-guid ' ), array( $episode ) )['method'] );
@@ -436,6 +434,235 @@ class Test_Migration_Review extends WP_UnitTestCase {
 		$report['items'][0]['length'] += 5;
 		$this->assertWPError( Migration_Swap::apply( $this->connection, $report ) );
 		$this->assertSame( $post->post_content, get_post( $post->ID )->post_content );
+	}
+
+	public function test_pre_edit_revision_survives_a_limit_of_one(): void {
+		$post  = $this->post( '[powerpress url="https://media.example/a.mp3"]' );
+		$limit = static function () {
+			return 1;
+		};
+		// Exercise the real core pruning path, including sites using the earlier hook.
+		remove_action( 'wp_after_insert_post', 'wp_save_post_revision_on_insert', 9 );
+		add_filter( 'wp_revisions_to_keep', $limit );
+		try {
+			$result = Migration_Swap::apply( $this->connection, $this->scan( $post ) );
+			$this->assertNotWPError( $result );
+			$revision = get_post( $result['revision_id'] );
+			$this->assertInstanceOf( WP_Post::class, $revision, 'The report must link to a surviving undo revision.' );
+			$this->assertSame( $post->post_content, $revision->post_content );
+			$this->assertSame( $post->ID, wp_restore_post_revision( $revision->ID ) );
+			$this->assertSame( $post->post_content, get_post( $post->ID )->post_content );
+		} finally {
+			remove_filter( 'wp_revisions_to_keep', $limit );
+			add_action( 'wp_after_insert_post', 'wp_save_post_revision_on_insert', 9, 3 );
+		}
+	}
+
+	public function test_revisions_disabled_refuses_swap_without_a_write(): void {
+		$post      = $this->post( '[powerpress url="https://media.example/a.mp3"]' );
+		$report    = $this->scan( $post );
+		$revisions = wp_get_post_revisions( $post->ID );
+		add_filter( 'wp_revisions_to_keep', '__return_zero' );
+		try {
+			$result = Migration_Swap::apply( $this->connection, $report );
+			$this->assertWPError( $result );
+			$this->assertSame( 'showfm_revisions_disabled', $result->get_error_code() );
+			$this->assertStringContainsString( 'undone', $result->get_error_message() );
+			$this->assertSame( $post->post_content, get_post( $post->ID )->post_content );
+			$this->assertEquals( $revisions, wp_get_post_revisions( $post->ID ) );
+		} finally {
+			remove_filter( 'wp_revisions_to_keep', '__return_zero' );
+		}
+	}
+
+	public function test_text_less_than_signs_do_not_block_a_real_embed(): void {
+		foreach ( array( 'Price is < 5 dollars', 'x < y < 7', 'At the end <', 'Less than <3', 'Before << 2' ) as $text ) {
+			$post   = $this->post( $text . '\n[powerpress url="https://media.example/a.mp3"]' );
+			$report = $this->scan( $post );
+			$this->assertSame( 'scanned', $report['status'], $text );
+			$this->assertCount( 1, $report['items'] );
+			$result = Migration_Swap::apply( $this->connection, $report );
+			$this->assertNotWPError( $result );
+			$this->assertStringStartsWith( $text . '\n<!-- wp:showfm/player', get_post( $post->ID )->post_content );
+		}
+	}
+
+	public function test_anchor_closing_tag_does_not_match_longer_names(): void {
+		foreach ( array( '</a>', '</a >', "</a\n>" ) as $close ) {
+			$prefix = '<a href="https://example.test"><abbr>Words</abbr><article>More</article>' . $close;
+			$post   = $this->post( $prefix . '[powerpress url="https://media.example/a.mp3"]' );
+			$report = $this->scan( $post );
+			$this->assertSame( 'scanned', $report['status'] );
+			$this->assertSame( strlen( $prefix ), $report['items'][0]['offset'] );
+		}
+	}
+
+	public function test_figcaption_wrapper_expands_and_preserves_caption_bytes(): void {
+		$caption = '<figcaption class="wp-element-caption">Été &amp; <a href="https://example.test"><abbr>more</abbr></a></figcaption>';
+		$player  = '[powerpress url="https://media.example/a.mp3"]';
+		foreach ( array( array( $caption, '' ), array( '', $caption ) ) as $placement ) {
+			$prefix = '<figure class="wp-block-embed">' . $placement[0] . '<div class="wp-block-embed__wrapper">';
+			$suffix = '</div>' . $placement[1] . '</figure>';
+			$post   = $this->post( '<!-- wp:embed {"providerNameSlug":"buzzsprout"} -->' . $prefix . $player . $suffix . '<!-- /wp:embed -->' );
+			$report = $this->scan( $post );
+			$this->assertSame( 'scanned', $report['status'] );
+			$this->assertSame( 0, $report['items'][0]['offset'] );
+			$this->assertSame( strlen( $post->post_content ), $report['items'][0]['length'] );
+			$result = Migration_Swap::apply( $this->connection, $report );
+			$this->assertNotWPError( $result );
+			$saved = get_post( $post->ID )->post_content;
+			$this->assertStringStartsWith( $prefix . '<!-- wp:showfm/player', $saved );
+			$this->assertStringEndsWith( $suffix, $saved );
+			$this->assertStringContainsString( $caption, $saved );
+			$this->assertStringNotContainsString( '<!-- wp:embed', $saved );
+			$this->assertContains( 'showfm/player', array_column( parse_blocks( $saved ), 'blockName' ) );
+		}
+	}
+
+	public function test_token_cap_is_named_in_the_report_reason(): void {
+		$report = $this->scan( $this->post( str_repeat( '[', 10001 ) ) );
+		$this->assertSame( 'error', $report['status'] );
+		$this->assertStringContainsString( '10,000', $report['error'] );
+		$this->assertStringContainsString( 'token', $report['error'] );
+		$this->assertSame( array(), $report['items'] );
+	}
+
+	public function test_reconnect_discards_old_pending_catalogue_without_manual_options_edits(): void {
+		$engine = new Migrator( $this->connection, new Api_Client( $this->connection ) );
+		$this->page( array( array( 'id' => self::PODCAST ) ) );
+		$this->page( array( $this->episode() + array( 'status' => 'published' ) ), 'next' );
+		$this->http->respond( 401 );
+		$this->assertWPError( $engine->start() );
+		$pending  = get_option( ShowFM\Migration_Catalogue::PENDING );
+		$old_page = 'showfm_migration_' . $pending['run'] . '_catalogue_1';
+		$this->assertNotFalse( get_option( $old_page ) );
+		$this->connection->save( 'showfm_live_RECONNECTED1234567890123456', str_repeat( 'b', 64 ), self::PODCAST, 0 );
+		$this->page( array() );
+		$result = $engine->start();
+		$this->assertNotWPError( $result );
+		$this->assertNotSame( $pending['run'], $result['run'] );
+		$this->assertSame( 0, $result['pages'] );
+		$this->assertFalse( get_option( $old_page ) );
+		$this->assertSame( 4, $this->http->count() );
+	}
+
+	public function test_cli_reset_discards_pending_pages_without_http_or_losing_active_report(): void {
+		$engine = new Migrator( $this->connection, new Api_Client( $this->connection ) );
+		$this->page( array() );
+		$active = $engine->start();
+		Migration_Store::put(
+			$active['run'],
+			array(
+				'post_id' => 789,
+				'items'   => array(),
+			)
+		);
+		$this->page( array( array( 'id' => self::PODCAST ) ) );
+		$this->page( array( $this->episode() + array( 'status' => 'published' ) ), 'next' );
+		$this->http->respond( 503 );
+		$this->assertWPError( $engine->start() );
+		$pending = get_option( ShowFM\Migration_Catalogue::PENDING );
+		( new Migration_Cli( $engine ) )( array(), array( 'reset' => true ) );
+		$this->assertFalse( get_option( ShowFM\Migration_Catalogue::PENDING ) );
+		$this->assertFalse( get_option( 'showfm_migration_' . $pending['run'] . '_catalogue_1' ) );
+		$this->assertSame( $active, Migration_Store::state() );
+		$this->assertNotEmpty( Migration_Store::get( $active['run'], 789 ) );
+		$this->assertSame( 4, $this->http->count() );
+	}
+
+	public function test_reset_dry_run_replaces_failed_acquisition_and_cleans_earlier_report_rows(): void {
+		$engine = new Migrator( $this->connection, new Api_Client( $this->connection ) );
+		$this->page( array() );
+		$active = $engine->start();
+		for ( $id = 1; $id <= 55; ++$id ) {
+			Migration_Store::put(
+				$active['run'],
+				array(
+					'post_id' => $id,
+					'items'   => array(),
+				)
+			);
+		}
+		$this->http->respond( 503 );
+		$this->assertWPError( $engine->start() );
+		$this->assertCount( 55, iterator_to_array( Migration_Store::reports( $active['run'] ) ) );
+		$this->page( array() );
+		( new Migration_Cli( $engine ) )(
+			array(),
+			array(
+				'dry-run' => true,
+				'reset'   => true,
+			)
+		);
+		$this->assertNotSame( $active['run'], Migration_Store::state()['run'] );
+		$this->assertSame( array(), iterator_to_array( Migration_Store::reports( $active['run'] ) ) );
+		$this->assertSame( 3, $this->http->count() );
+	}
+
+	public function test_reset_authorisation_disconnected_recovery_and_mode_safety(): void {
+		$engine = new Migrator( $this->connection, new Api_Client( $this->connection ) );
+		$cli    = new Migration_Cli( $engine );
+		$this->http->respond( 503 );
+		$this->assertWPError( $engine->start() );
+		$pending = get_option( ShowFM\Migration_Catalogue::PENDING );
+		foreach ( array( 'yes', 'resume', 'choose' ) as $mode ) {
+			try {
+				$cli(
+					array(),
+					array(
+						'reset' => true,
+						$mode   => true,
+					)
+				);
+				$this->fail( 'Reset cannot reuse a prior scan.' );
+			} catch ( ShowFM_Cli_Halt $halt ) {
+				$this->assertStringContainsString( 'cannot apply or resume', $halt->getMessage() );
+			}
+		}
+		$admin = get_current_user_id();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'subscriber' ) ) );
+		$this->assertWPError( $engine->reset() );
+		$this->assertSame( $pending, get_option( ShowFM\Migration_Catalogue::PENDING ) );
+		wp_set_current_user( $admin );
+		$this->connection->disconnect();
+		$cli( array(), array( 'reset' => true ) );
+		$this->assertFalse( get_option( ShowFM\Migration_Catalogue::PENDING ) );
+		$this->assertSame( 1, $this->http->count() );
+	}
+
+	public function test_reset_cannot_bypass_api_retry_after(): void {
+		$engine = new Migrator( $this->connection, new Api_Client( $this->connection ) );
+		$this->http->respond( 429, '', array( 'Retry-After' => '90' ) );
+		$this->assertWPError( $engine->start() );
+		$this->assertWPError( $engine->start( 0, true ) );
+		$this->assertSame( 1, $this->http->count() );
+		$this->assertGreaterThanOrEqual( time() + 89, get_option( ShowFM\Migration_Catalogue::PENDING )['retry_at'] );
+	}
+
+	public function test_save_post_pruning_also_keeps_undo_and_removes_temporary_filter(): void {
+		$post    = $this->post( '[powerpress url="https://media.example/a.mp3"]' );
+		$limit   = static function () {
+			return 1;
+		};
+		$prune   = static function ( $id ) use ( $post ) {
+			if ( $id === $post->ID ) {
+				wp_save_post_revision( $id );
+			}
+		};
+		$filters = has_filter( 'wp_save_post_revision_revisions_before_deletion' );
+		add_filter( 'wp_revisions_to_keep', $limit );
+		add_action( 'save_post', $prune );
+		try {
+			$result = Migration_Swap::apply( $this->connection, $this->scan( $post ) );
+			$this->assertNotWPError( $result );
+			$undo = get_post( $result['revision_id'] );
+			$this->assertInstanceOf( WP_Post::class, $undo );
+			$this->assertSame( $post->post_content, $undo->post_content );
+			$this->assertSame( $filters, has_filter( 'wp_save_post_revision_revisions_before_deletion' ) );
+		} finally {
+			remove_filter( 'wp_revisions_to_keep', $limit );
+			remove_action( 'save_post', $prune );
+		}
 	}
 
 	private function page( array $rows, ?string $cursor = null ): void {

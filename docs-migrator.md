@@ -13,6 +13,8 @@ wp showfm migrate-embeds --dry-run --user=admin
 wp showfm migrate-embeds --dry-run --post=42 --format=json --user=admin
 wp showfm migrate-embeds --dry-run --batches=1 --user=admin
 wp showfm migrate-embeds --dry-run --resume --user=admin
+wp showfm migrate-embeds --reset --user=admin
+wp showfm migrate-embeds --dry-run --reset --user=admin
 wp showfm migrate-embeds --yes --resume --user=admin
 wp showfm migrate-embeds --yes --resume --choose=42:1:11111111-2222-4333-8444-555555555555 --user=admin
 ```
@@ -29,8 +31,15 @@ Catalogue pages and both API cursors survive request failures. Resume with `--dr
 --resume` after the stored `retry_at` time; 429 honours `Retry-After`, other failures wait
 at least five seconds. Successful pages are not fetched again. The active report remains
 available until its replacement catalogue is complete. Pending acquisition is bound to
-the connection and post restriction; finish it or explicitly clear the store before
-changing either.
+the connection and post restriction. After a reconnect with a different key, the next
+scan automatically discards the obsolete pending run and its pages before fetching anew.
+`--reset` discards pending acquisition without HTTP, even when disconnected, while keeping
+the active report, posts and revisions. It requires `manage_options`. Combine it with
+`--dry-run` to discard pending pages and start a fresh scan; it cannot be combined with
+`--yes`, `--resume` or `--choose`. Resetting does not bypass the API's site-wide rate limit.
+A successful new run removes earlier report rows and catalogue pages in batches of 50;
+a failed new catalogue leaves the active report intact.
+
 The table lists each embed's source, status, matching method, candidates and undo revision.
 JSON emits one document with `run`, `complete` and `reports`, streaming post records rather
 than building an array of every post. The stored report contains the same evidence and
@@ -58,9 +67,9 @@ uninstall removes them with the plugin's existing namespace cleanup.
 - Matching uses the SHA-256 fingerprint of the normalised source enclosure, then source
   GUID fingerprint or public `rss_guid`, then title with a publication timestamp within
   24 hours in either direction. Stronger ambiguity never falls through to weaker evidence.
-  Title/date alone is ambiguous unless the embed's own show ID or feed has an independently
-  verified mapping to the candidate's connected podcast. The current API provides no such
-  mapping, so the catalogue adapter cannot automatically approve title/date-only matches.
+  Title/date alone is always ambiguous and requires an explicit choice, even if the embed
+  provides a provider show ID. The API has no verified mapping to connected show identities;
+  there is no unused auto-approval path.
 - Enclosure normalisation follows app provenance contract version 1: retain the scheme,
   path case, dot segments and Unicode; remove credentials, query and fragment; normalise
   authority and percent escape case; strip only the listed tracking prefixes. Query removal
@@ -71,11 +80,16 @@ uninstall removes them with the plugin's existing namespace cleanup.
   keyed podcast and episode list endpoints are requested, with at most 50 rows per page.
   No per-episode detail requests or remote enclosure probes are needed.
 - Detection uses a bounded token walk, with a 2 MiB post, 16 KiB tag/comment/shortcode and
-  10,000-token limit. Malformed input and PCRE failures produce scan errors, never clean
-  reports. Two players inside one core wrapper make the post ambiguous and cannot be swapped.
+  10,000-token limit. The scanner counts visited candidate `<` and `[` starts, including
+  text comparisons and unmatched brackets. Exceeding the cap reports the 10,000-token limit
+  explicitly and accepts no embeds from that post; shorten or split it before rescanning.
+  Ordinary text such as `Price is < 5` does not require a closing tag. Malformed markup and
+  PCRE failures produce scan errors, never clean reports. Two players inside one core wrapper make the post ambiguous and cannot be swapped.
 - Swaps splice only detected byte ranges and use WordPress's block-comment serialiser
   for `showfm/player` UUIDs and snapshots. A complete core HTML/shortcode/oEmbed wrapper
-  around a sole player is replaced as one unit. Other content is never reserialised.
+  around a sole player is replaced as one unit. Captioned wrappers retain the original
+  figure, figcaption, inline markup and whitespace around the new block byte for byte,
+  outside the removed core wrapper. Other content is never reserialised.
 - Metadata-only players have zero-length locations at the end of the post, where the block
   is appended. Enclosure/audio metadata stays intact for feeds. Migration markers in the
   block snapshot suppress the corresponding automatic PowerPress/SSP content player only
@@ -88,7 +102,8 @@ uninstall removes them with the plugin's existing namespace cleanup.
   only when the original content and relevant post fields still match. An edit made during
   revision creation or at the actual write is refused. Reapplying a successful report is
   idempotent. The engine creates an exact pre-edit revision, even with revision retention
-  set to one. Disabled revisions refuse swaps. Later retention and restore permissions
+  set to one, by protecting that revision from pruning throughout save notifications.
+  The undo row is checked before its link is returned. Disabled revisions refuse swaps. Later retention and restore permissions
   follow core rules; multisite site administrators' restores sanitise legacy scripts.
 - Public migration snapshots store only the source fingerprint, never a legacy audio URL
   or its query tokens. Compatibility filters accept unexpected third-party arguments and

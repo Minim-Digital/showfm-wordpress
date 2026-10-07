@@ -20,21 +20,12 @@ final class Migration_Matcher {
 	 */
 	private $index = array();
 	/**
-	 * Verified provider identity to connected podcast IDs. Never inferred from titles.
-	 *
-	 * @var array<string,string>
-	 */
-	private $shows;
-
-	/**
 	 * Build an immutable index once.
 	 *
-	 * @param iterable             $episodes Episodes.
-	 * @param array<string,string> $shows Verified host:show-id or host:feed to podcast UUID mapping.
+	 * @param iterable $episodes Episodes.
 	 * @phpstan-param iterable<array<string,mixed>> $episodes
 	 */
-	public function __construct( iterable $episodes, array $shows = array() ) {
-		$this->shows = $shows;
+	public function __construct( iterable $episodes ) {
 		foreach ( $episodes as $episode ) {
 			$keys = array(
 				'enclosure'  => $episode['source']['enclosure_sha256'] ?? null,
@@ -53,14 +44,13 @@ final class Migration_Matcher {
 	/**
 	 * Convenience entry point for callers with a small standalone catalogue.
 	 *
-	 * @param array<string,mixed>  $embed Identifiers.
-	 * @param iterable             $episodes Episodes.
-	 * @param array<string,string> $shows Verified show identity mapping.
+	 * @param array<string,mixed> $embed Identifiers.
+	 * @param iterable            $episodes Episodes.
 	 * @phpstan-param iterable<array<string,mixed>> $episodes
 	 * @return array<string,mixed>
 	 */
-	public static function match( array $embed, iterable $episodes, array $shows = array() ): array {
-		return ( new self( $episodes, $shows ) )->find( $embed );
+	public static function match( array $embed, iterable $episodes ): array {
+		return ( new self( $episodes ) )->find( $embed );
 	}
 
 	/**
@@ -104,7 +94,7 @@ final class Migration_Matcher {
 		}
 		$candidates = array_values( $hits );
 		$status     = $hits ? 'matched' : 'unmatched';
-		if ( count( $hits ) > 1 || ( $hits && 'title_date' === $method && ! $this->same_show( $embed, $candidates[0]['podcast_id'] ) ) ) {
+		if ( count( $hits ) > 1 || ( $hits && 'title_date' === $method ) ) {
 			$status = 'ambiguous';
 		}
 		return array(
@@ -112,21 +102,6 @@ final class Migration_Matcher {
 			'method'     => $hits ? $method : '',
 			'candidates' => $candidates,
 		);
-	}
-
-	/**
-	 * Require identity supplied by the embed and an independently verified connected show.
-	 *
-	 * @param array<string,mixed> $embed Embed.
-	 * @param string              $podcast Podcast UUID.
-	 */
-	private function same_show( array $embed, string $podcast ): bool {
-		foreach ( array( 'show_id', 'feed' ) as $field ) {
-			if ( ! empty( $embed[ $field ] ) && ( $this->shows[ ( $embed['host'] ?? '' ) . ':' . $embed[ $field ] ] ?? '' ) === $podcast ) {
-				return true;
-			}
-		}
-		return false;
 	}
 
 	/**
