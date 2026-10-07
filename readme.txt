@@ -30,7 +30,7 @@ This plugin relies on show.fm, a podcast hosting service run by show.fm Ltd. It 
 **show.fm public API (api.show.fm)**
 
 * Used to fetch show and episode details (titles, descriptions, artwork, audio links and transcripts) for the shows and episodes you add to your pages.
-* When: when WP-Cron refreshes a missing or stale cache entry (fresh for 15 minutes, with retries after errors). Page rendering reads only cached data or the insertion snapshot and schedules a background refresh; it makes no inline HTTP request. The enhanced player also requests public episode data directly from the visitor's browser when it loads, or after a click with load="click".
+* When: when WP-Cron refreshes a missing or stale cache entry (fresh for 15 minutes, with retries after errors). Page rendering reads only cached public data and schedules a background refresh; it makes no inline HTTP request. The enhanced player also requests public episode data directly from the visitor's browser when it loads, or after a click with load="click".
 * What is sent: the show or episode identifier, and your site's address in the request's User-Agent header. Your server's IP address is visible to show.fm, as with any web request. Background requests send no visitor data. Browser requests expose the visitor's IP address and browser details to the service. WordPress may also request /v1/oembed to resolve a pasted listen-page URL, then caches the returned iframe in post meta.
 
 **show.fm API for connected sites (api.show.fm)**
@@ -38,10 +38,10 @@ This plugin relies on show.fm, a podcast hosting service run by show.fm Ltd. It 
 * Used only after an administrator connects the site to a show.fm account.
 * Connecting (code exchange): once, when the administrator returns from my.show.fm after approving the connection. Sent: the one-time code from my.show.fm and the matching verifier this site created, in the body of a request to api.show.fm/v1/sites/exchange. show.fm answers with the site key and ping secret, which the plugin stores encrypted.
 * Connecting with WP-CLI: once, when someone runs `wp showfm connect`. Sent: the site key, your site's address and REST API address, and a one-time state and challenge, to api.show.fm/v1/me/sites.
-* Reporting in (verify): right after connecting. If that fails, it is retried with the next health report. Sent: the site key, the plugin, WordPress and PHP versions, and the site's name.
+* Reporting in (verify): right after connecting. If that fails, it is retried before the next sync or health report. Sent: the site key, the plugin, WordPress and PHP versions, and the site's name.
 * Health report: once a day while connected. Sent: the site key, the plugin, WordPress and PHP versions, the time of the last sync and the number of sync errors.
-* Sync: to sync episodes into posts (every 15 minutes, and when show.fm signals that an episode changed), and to tell show.fm the address of each post created for an episode. Sent: the site key, the plugin version, sync status, and the post addresses and post IDs of synced posts.
-* After show.fm refuses the site key, the plugin sends nothing more until an administrator reconnects. When show.fm asks it to slow down, it waits as long as show.fm says.
+* Sync: a check every 15 minutes (with a staggered start), signed wake-up requests and explicit WP-CLI sync commands pull episode changes in the background. Sent: the site key, the last applied sequence number and page size. Post reports send the episode identifier, post ID, HTTPS post address, publication state and source content hash. Transient report failures are queued and retried; terminal refusals, missing posts and invalid addresses are dropped with a local reason code; no WordPress post text or visitor data is uploaded. A dry run previews one page at the applied cursor (or zero with --from-start), recording contact with show.fm but never acknowledging unapplied changes. It leaves local posts and the saved cursor unchanged.
+* After show.fm refuses the site key, the plugin stops authenticated requests until an administrator reconnects. Public embeds continue to work. When show.fm asks it to slow down, it waits as long as show.fm says.
 
 **Requests from show.fm to your site**
 
@@ -51,7 +51,8 @@ This plugin relies on show.fm, a podcast hosting service run by show.fm Ltd. It 
 **show.fm media (m.cdn.media)**
 
 * Audio and transcript files are served from m.cdn.media.
-* When: only when a visitor plays an episode or opens a transcript. The visitor's browser loads the file directly, so show.fm sees the visitor's IP address and browser details, as with any audio file on the web.
+* Featured images: when enabled in publishing settings, background sync also reads public episode artwork metadata and downloads that image once into the media library, reusing images already imported by this plugin. Scheduled artwork waits until it is public. Downloads use only show.fm media hosts (m.cdn.media, m.showfm.dev, media.podcasterplus.com and media.podcasterplus.dev), with limits of 10 MB, 8000 pixels per side and 16 million pixels. Permanent failures are skipped and temporary failures retry up to three times without delaying other episodes. The image host sees the server IP address; no site key is sent to it.
+* When: audio and transcripts load only when a visitor plays an episode or opens a transcript. The visitor's browser loads the file directly, so show.fm sees the visitor's IP address and browser details, as with any audio file on the web.
 * Scripts are bundled with the plugin. Recognised show.fm oEmbed iframe responses are rendered as local players too, so they do not load code from embed.cdn.media.
 
 **show.fm account (my.show.fm)**
@@ -80,9 +81,16 @@ Yes. Create a site key in show.fm under Connected sites, then Add a site with WP
 
 The site key and ping secret are encrypted with a key derived from your WordPress salts. Set the salts in `wp-config.php`: without them WordPress keeps a generated salt in the database, so a copy of the database alone would be enough to read the key. Changing the salts means you connect again.
 
+The plugin keeps up to 50 local sync diagnostics containing its own reason codes, feed sequence numbers and timestamps. They contain no remote error text or post content. Identity receipts preserve user trash and deletion decisions, including during a replay. Restoring a post from the bin re-attaches it, queues one report of its restored state and resumes syncing; detected WordPress edits remain protected. A successful user trash or permanent deletion queues one trashed-state report using the saved post ID and address. Transient post-write failures retry up to five times per sequence; exhausted reasons remain in connection sync status. Configuration failures (an unavailable post type or no publishing author) keep the episode pending indefinitely, with back-off up to an hourly retry. Fixing the setting resumes syncing automatically without --from-start. Tools > Site Health and `wp showfm sync status` show these problems. Site Health also identifies invalid feed boundaries as server contract problems; checking it makes no HTTP request. Uninstall removes these plugin records while keeping posts and media.
+
 == Changelog ==
 
 = 0.1.0 =
 * Development release: the plugin's foundations (API client, cache and encrypted connection storage). No designed settings screen yet.
 * Added cache-only block and shortcode rendering, local embed assets, fallback parity checks, episode bindings, oEmbed and theme mapping. Credit defaults off and public-episode JSON-LD defaults on.
 * Connect a site to show.fm from the show.fm menu or with `wp showfm connect`, with a daily health report and signed wake-up pings.
+* Added the sync engine: scheduled and ping-triggered pulls, post lifecycle updates, permanent WordPress edit protection, optional featured images, durable post reports, and `wp showfm sync [--dry-run] [--from-start]` plus `wp showfm sync status`. Publishing controls and the post panel follow in a later release.
+
+* Fixed lifecycle-only sync updates, terminal report handling, bounded artwork retries and limits, poison-row recovery, dry-run cursor safety, user deletion protection, fallback locking and local diagnostics.
+* Fixed feed cursor boundary validation, completed artwork queue cleanup, recoverable apply errors with a five-attempt budget, local deletion reports and a 16 MP artwork limit.
+* Fixed configuration retries so episodes are never skipped for a setting problem, added local Site Health diagnostics, and re-attached restored posts with edit protection and a durable restored-state report.

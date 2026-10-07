@@ -184,6 +184,7 @@ class Test_Api_Client extends WP_UnitTestCase {
 		$this->assertSame( Api_Client::DEFAULT_RETRY_AFTER, $missing->retry_after() );
 		$this->assertSame( Api_Client::MAX_RETRY_AFTER, Api_Client::parse_retry_after( '999999' ) );
 		$this->assertSame( 1, Api_Client::parse_retry_after( '0' ) );
+		$this->assertSame( Api_Client::MAX_RETRY_AFTER, Api_Client::parse_retry_after( gmdate( 'D, d M Y H:i:s', time() + 3 * DAY_IN_SECONDS ) . ' GMT' ) );
 	}
 
 	public function test_500_is_transient_failure(): void {

@@ -27,6 +27,7 @@ final class Plugin {
 	const CRON_HOOKS = array(
 		Cache::REFRESH_HOOK,
 		Health::HOOK,
+		Sync::POLL_HOOK,
 		Ping_Endpoint::PULL_HOOK,
 	);
 
@@ -70,7 +71,16 @@ final class Plugin {
 	 */
 	public static function boot(): void {
 		add_action( Cache::REFRESH_HOOK, array( self::cache(), 'refresh' ) );
+		add_filter( 'site_status_tests', array( Health::class, 'site_tests' ) );
 		add_action( Health::HOOK, array( self::health(), 'run' ) );
+		// phpcs:ignore WordPress.WP.CronInterval.ChangeDetected -- Sync::schedules sets a 900-second interval.
+		add_filter( 'cron_schedules', array( Sync::class, 'schedules' ) );
+		add_action( Sync::POLL_HOOK, array( Sync::class, 'run' ) );
+		add_action( Ping_Endpoint::PULL_HOOK, array( Sync::class, 'run' ) );
+		add_action( 'init', array( Sync::class, 'schedule' ) );
+		add_action( 'transition_post_status', array( Sync_Identity::class, 'transition' ), 10, 3 );
+		add_action( 'before_delete_post', array( Sync_Identity::class, 'detach' ) );
+		add_action( 'deleted_post', array( Sync_Identity::class, 'report_detachment' ), 10, 2 );
 
 		add_action( 'init', array( Blocks::class, 'register' ) );
 		add_action( 'init', array( Bindings::class, 'register' ) );

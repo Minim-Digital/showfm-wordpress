@@ -11,7 +11,7 @@ Version 0.1.0 has the foundation (the API client, the cache, encrypted connectio
 and uninstall) and the plugin side of connecting a site to show.fm: the browser flow, the
 code exchange, WP-CLI registration, the ownership challenge, the signed ping endpoint and
 the daily health report. The settings page is a placeholder until the designed admin
-screens land. Blocks, the shortcode and the sync come in later pull requests.
+screens land. Blocks and the shortcode are available, together with the background sync engine.
 
 ## Requirements
 
@@ -111,6 +111,85 @@ Plan sections 5.2.2, 5.2.6 and 5.3.5 (show.fm issue #731). Every admin action ne
 
 A WordPress install in a subdirectory sends a `site_url` with a path. show.fm accepts that
 once podcaster-plus-app PR #741 is merged.
+
+### Publishing engine
+
+`wp showfm sync [--dry-run] [--from-start]` runs the same consumer as `showfm_pull`
+and the jittered 15-minute `showfm_poll`. `wp showfm sync status` reads local state only.
+A run handles at most ten pages of twenty rows, then queues a continuation. Dry runs
+preview one page only and leave posts, reports and the cursor unchanged. The server
+records contact and the requested `after` cursor, so a dry run never requests the next
+page at a cursor it has not applied. `dry_run_limit` means more rows remain beyond the
+preview. Authentication and rate-limit protection remain active during a dry run.
+
+A per-blog options lease uses a unique row and conditional updates to prevent
+concurrent claims. It renews before work and expires after five minutes if a worker
+crashes. A MySQL session lock adds immediate crash recovery when supported. Unsupported
+GET_LOCK or session ownership falls back to the lease; hosts with multiplexed database
+connections can disable named locks through `showfm_sync_use_named_lock`. A contending
+pull queues another attempt after 15 seconds. A stale worker cannot release a new lease.
+
+The consumer validates the page envelope and requires `cursor.next` to match the
+rows' highest usable sequence, then handles rows individually. Unknown or
+malformed rows and validation refusals are skipped with a plugin-owned error code and
+sequence number. Configuration errors (unavailable post types or publishing authors)
+and transient write failures stop at the failing row, save only the successful prefix
+and back off. After five failed attempts at one sequence, the row is skipped with its
+reason retained in `showfm_connection_sync_status`. Its active retry and latest 50
+exhausted rows remain available to CLI status and the later connection screen.
+After handling the page it stores the cursor and pending reports
+together in the non-autoloaded `showfm_sync` option. The next GET acknowledges
+`last_pulled_seq`, including an extra read after the final page. Indexed identity
+receipts and a bounded primary-key lookup recover interrupted inserts; existing posts
+migrate through their episode meta. `_showfm_content_hash`, lifecycle fields and
+pending artwork together determine whether a row needs work. `_showfm_synced_revision`
+hashes the stored title, content and excerpt. A WordPress edit permanently sets
+`_showfm_edited`; content is then protected. User trash or permanent deletion records
+a durable local detachment and is never undone by an upsert or replay. Restoring a
+post from the bin keeps that detachment; automatic reattachment is not supported.
+The player is the WP-2a `showfm/player` block. Description/show notes are sanitised,
+saved block HTML, rather than a live binding that would bypass edit protection.
+
+The per-blog `showfm_publishing` option accepts `post_type` (default `post`), `author`
+(default first site member who can publish the post type), `categories` (array of IDs) and `featured_image`
+(default false). WP-4b will add the Publishing tab and post panel. The default template
+is a player followed by show notes, falling back to the plain description. Transcript
+insertion and template controls are not exposed by this engine. Public artwork is
+sideloaded once from the exact show.fm media hosts `m.cdn.media`, `m.showfm.dev`,
+`media.podcasterplus.com` or `media.podcasterplus.dev`. Downloads require HTTPS, no
+credentials, explicit ports or redirects, and safe HTTP validation. Limits are 10 MB,
+8000 pixels per side and 16 million pixels, checked before image processing; only
+JPEG, PNG, WebP and GIF are accepted. Indexed attachment receipts deduplicate source
+URLs. Permanent failures are recorded per post and skipped; network errors, 429,
+5xx and temporarily missing public metadata retry up to three times independently
+of the feed cursor. Scheduled artwork is
+not exposed by the merged feed, so it waits for the public episode on publication.
+
+Scheduled/published rows become future/published posts; removed or unpublished rows
+become drafts; deleted rows go to the bin, including when automatic trash is disabled.
+Detached rows retain the post and `_showfm_sync_notice` says “No longer synced from
+show.fm”; paused rows retain the post. A restored-access upsert resumes the existing
+post and still respects the permanent edit flag. Tombstones without a local post do
+not create empty posts or send a report, since the API requires a positive post ID.
+
+The server has a per-episode report endpoint, not a bulk endpoint. Reports are drained
+in batches of twenty requests. Network and server failures retry idempotently with
+separate backoff, without holding up feed reads or pings. HTTP 400/403/404 responses,
+missing posts and invalid local permalinks drop that report with a local reason code.
+Detached and paused source rows do not send reports. A successful user trash or
+permanent deletion queues one `trashed` report, the terminal state accepted by the
+server, using its saved post ID and URL. These separate per-episode outbox entries
+survive removal of the post and cannot be overwritten by a concurrent feed save. A valid report URL must use HTTPS,
+the home host and a path beneath the home path. A 401 stops keyed requests and asks for
+reconnection; 429 honours Retry-After up to a one-day cap. Feed failures and report
+retries back off to an hour. `wp showfm sync status` shows pending report/artwork counts,
+the active apply retry, exhausted rows and the latest 50 local diagnostic entries (own codes, sequence numbers and timestamps,
+never remote error text or post content).
+A new connection ID starts its own cursor and outbox without claiming the old
+connection's posts. Uninstall removes plugin receipts, never posts or media files.
+
+Contract reviewed against podcaster-plus-app `04f2718fc344f4fdecd9a90a6cfb9b8d5685db33`:
+`connected-sites.md`, the keyed site routes and the generated OpenAPI schemas.
 
 ### Staging
 

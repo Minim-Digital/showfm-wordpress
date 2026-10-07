@@ -38,8 +38,8 @@ final class Api_Client {
 	/** Wait used when a 429 has no usable Retry-After header. */
 	const DEFAULT_RETRY_AFTER = 60;
 
-	/** Longest wait honoured from Retry-After (one hour). */
-	const MAX_RETRY_AFTER = 3600;
+	/** A corrupt header must not disable the connection indefinitely. */
+	const MAX_RETRY_AFTER = DAY_IN_SECONDS;
 
 	/** Option holding the time until which keyed calls wait after a 429 (autoload off). */
 	const RATE_LIMIT_OPTION = 'showfm_rate_limited_until';
@@ -403,7 +403,7 @@ final class Api_Client {
 	}
 
 	/**
-	 * Converts Retry-After (seconds or an HTTP date) into seconds, between 1 and 3600.
+	 * Converts Retry-After (seconds or an HTTP date) into seconds, bounded to one day.
 	 *
 	 * @param string|null $value Header value.
 	 */
