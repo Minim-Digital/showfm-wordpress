@@ -13,7 +13,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /**
  * Once a day a connected site posts `/v1/me/sites/{id}/health`: the plugin, WordPress and
- * PHP versions, the last sync time and the sync error count. It finishes a verify that did
+ * PHP versions, the last sync time and the sync error count. After a success it refreshes
+ * the account name and shows for the settings screen. It finishes a verify that did
  * not go through at connect time first. It runs only while connected: after a 401 the
  * connection needs reconnecting and the client sends nothing, and after a 429 the client
  * waits for Retry-After.
@@ -86,13 +87,7 @@ final class Health {
 	 * @return array<string,mixed>
 	 */
 	public static function test_sync(): array {
-		$connection = Plugin::connection();
-		$retry      = $connection->sync_status()['retry'];
-		$state      = Sync::state();
-		$code       = $connection->is_connected() ? ( $retry['code'] ?? '' ) : '';
-		if ( $connection->is_connected() && $state['site'] === $connection->site_id() && 'invalid_feed' === $state['error'] ) {
-			$code = 'invalid_feed';
-		}
+		$code     = self::sync_problem();
 		$messages = array(
 			'row_post_type' => __( 'The selected post type is unavailable or is not public. Enable it or choose an available public post type. The episode is kept for retry and syncing resumes automatically after the setting is fixed, with retries at most an hour apart.', 'showfm' ),
 			'row_author'    => __( 'Sync needs an existing author who can publish the selected post type. Choose a publishing author for this site. The episode is kept for retry and syncing resumes automatically after the setting is fixed, with retries at most an hour apart.', 'showfm' ),
@@ -110,6 +105,23 @@ final class Health {
 			'actions'     => '',
 			'test'        => 'showfm_sync',
 		);
+	}
+
+	/**
+	 * The blocking sync problem recorded for this connection: `row_post_type`, `row_author`,
+	 * `invalid_feed`, or '' for none. Reads local state only.
+	 */
+	public static function sync_problem(): string {
+		$connection = Plugin::connection();
+		if ( ! $connection->is_connected() ) {
+			return '';
+		}
+		$state = Sync::state();
+		if ( $state['site'] === $connection->site_id() && 'invalid_feed' === $state['error'] ) {
+			return 'invalid_feed';
+		}
+		$code = $connection->sync_status()['retry']['code'] ?? '';
+		return in_array( $code, array( 'row_post_type', 'row_author' ), true ) ? $code : '';
 	}
 
 	/**
@@ -154,7 +166,12 @@ final class Health {
 			}
 		}
 
-		return $this->api_client->post_keyed( '/v1/me/sites/' . rawurlencode( $site_id ) . '/health', self::payload() );
+		$result = $this->api_client->post_keyed( '/v1/me/sites/' . rawurlencode( $site_id ) . '/health', self::payload() );
+		Connection::note_report( $result );
+		if ( $result->is( Api_Result::SUCCESS ) ) {
+			( new Account( $this->connection, $this->api_client ) )->refresh();
+		}
+		return $result;
 	}
 
 	/**

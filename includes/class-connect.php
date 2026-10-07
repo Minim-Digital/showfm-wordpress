@@ -39,6 +39,13 @@ final class Connect {
 	/** The settings page slug. The return address points here. */
 	const PAGE = 'showfm';
 
+	/**
+	 * Query argument added to the return address. show.fm keeps it, and adds `code` and
+	 * `state` only on approval, so a return with this argument alone means the admin
+	 * cancelled or show.fm could not connect the site.
+	 */
+	const RETURN_ARG = 'showfm_return';
+
 	/** The show.fm app, where the admin approves the connection. */
 	const DEFAULT_APP_URL = 'https://my.show.fm';
 
@@ -130,6 +137,12 @@ final class Connect {
 	/** The API answered with something the plugin cannot use. */
 	const ERROR_BAD_RESPONSE = 'bad_response';
 
+	/** The admin came back from show.fm without approving the connection. */
+	const ERROR_CANCELLED = 'cancelled';
+
+	/** The site's address does not use https, which show.fm requires. */
+	const ERROR_INSECURE = 'https_required';
+
 	/** The credentials could not be stored (for example, no libsodium). */
 	const ERROR_STORAGE = 'storage_failed';
 
@@ -215,7 +228,14 @@ final class Connect {
 	 * The settings page, where show.fm sends the admin back.
 	 */
 	public static function settings_url(): string {
-		return admin_url( 'admin.php?page=' . self::PAGE );
+		return admin_url( 'options-general.php?page=' . self::PAGE );
+	}
+
+	/**
+	 * Whether the site's address uses https. show.fm connects only https sites.
+	 */
+	public static function site_is_https(): bool {
+		return 'https' === wp_parse_url( home_url(), PHP_URL_SCHEME );
 	}
 
 	/**
@@ -245,7 +265,7 @@ final class Connect {
 			'rest_root'      => rest_url(),
 			'state'          => $pkce['state'],
 			'code_challenge' => $pkce['challenge'],
-			'return'         => self::settings_url(),
+			'return'         => add_query_arg( self::RETURN_ARG, '1', self::settings_url() ),
 		);
 		$partner = self::partner();
 		if ( null !== $partner ) {
@@ -298,14 +318,23 @@ final class Connect {
 	 * @param array<string,mixed> $query   The request's query arguments.
 	 */
 	public function handle_return( int $user_id, array $query ): ?string {
+		$clean = self::settings_url();
+		$flow  = get_transient( self::FLOW_PREFIX . $user_id );
 		if ( ! isset( $query['code'] ) && ! isset( $query['state'] ) ) {
-			return null;
+			if ( ! isset( $query[ self::RETURN_ARG ] ) ) {
+				return null;
+			}
+			// Back from show.fm without approval. Only a flow still waiting for its code
+			// counts as cancelled: a stale or crafted link changes nothing.
+			if ( is_array( $flow ) && is_string( $flow['state'] ?? null ) && ! isset( $flow['code'] ) ) {
+				$this->forget_flow( $user_id );
+				$this->fail( $user_id, self::ERROR_CANCELLED );
+			}
+			return $clean;
 		}
 
-		$clean = remove_query_arg( array( 'code', 'state' ), self::settings_url() );
 		$code  = is_string( $query['code'] ?? null ) ? $query['code'] : '';
 		$state = is_string( $query['state'] ?? null ) ? $query['state'] : '';
-		$flow  = get_transient( self::FLOW_PREFIX . $user_id );
 
 		// A stray or crafted link neither cancels the flow in progress nor replaces a notice
 		// the admin has not seen yet.
@@ -445,6 +474,7 @@ final class Connect {
 		}
 
 		$result = $this->api_client->post_keyed( '/v1/me/sites/' . rawurlencode( $site_id ) . '/verify', $body );
+		Connection::note_report( $result );
 		if ( $result->is( Api_Result::SUCCESS ) ) {
 			delete_option( self::VERIFY_PENDING_OPTION );
 		} else {
@@ -470,6 +500,8 @@ final class Connect {
 		delete_option( self::VERIFY_PENDING_OPTION );
 		delete_option( Api_Client::RATE_LIMIT_OPTION );
 		delete_option( Ping_Endpoint::LAST_PING_OPTION );
+		delete_option( Ping_Endpoint::MISSED_OPTION );
+		delete_option( Account::OPTION );
 		Ping_Endpoint::forget_nonces();
 	}
 
@@ -531,6 +563,10 @@ final class Connect {
 				return __( 'show.fm could not be reached. Try again in a few minutes.', 'showfm' );
 			case self::ERROR_BAD_RESPONSE:
 				return __( 'show.fm sent an answer this plugin does not understand. Update the plugin, then try again.', 'showfm' );
+			case self::ERROR_CANCELLED:
+				return __( 'The connection was cancelled.', 'showfm' );
+			case self::ERROR_INSECURE:
+				return __( 'This site’s address must use https.', 'showfm' );
 			case self::ERROR_STORAGE:
 				return __( 'The connection could not be saved. Your server needs the PHP sodium extension, or WordPress 6.6 or later. Then try again.', 'showfm' );
 			case self::ERROR_VERIFY:
@@ -573,6 +609,7 @@ final class Connect {
 			$outcome['status'] = self::STATUS_CONNECTED;
 			return $outcome;
 		}
+		( new Account( $this->connection, $this->api_client ) )->refresh();
 		return array(
 			'status'      => self::STATUS_CONNECTED,
 			'error'       => '',
@@ -653,7 +690,7 @@ final class Connect {
 	 * @param string $error       Error type.
 	 * @param int    $retry_after Seconds to wait, for a rate limit.
 	 */
-	private function fail( int $user_id, string $error, int $retry_after = 0 ): void {
+	public function fail( int $user_id, string $error, int $retry_after = 0 ): void {
 		$this->record( $user_id, self::outcome( $error, $retry_after ) );
 	}
 

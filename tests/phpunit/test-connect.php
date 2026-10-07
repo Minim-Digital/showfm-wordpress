@@ -84,6 +84,8 @@ class Test_Connect extends WP_UnitTestCase {
 
 	public function tear_down(): void {
 		unset( $_REQUEST['_wpnonce'], $_GET['code'], $_GET['state'] );
+		remove_filter( 'home_url', array( $this, 'https_home' ) );
+		remove_filter( 'home_url', array( $this, 'http_home' ) );
 		ini_set( 'error_log', (string) $this->previous_log );
 		$log = (string) file_get_contents( $this->log_file );
 		unlink( $this->log_file );
@@ -110,7 +112,7 @@ class Test_Connect extends WP_UnitTestCase {
 		$this->assertSame( array( 'site_url', 'rest_root', 'state', 'code_challenge', 'return' ), array_keys( $query ) );
 		$this->assertSame( home_url(), $query['site_url'] );
 		$this->assertSame( rest_url(), $query['rest_root'] );
-		$this->assertSame( admin_url( 'admin.php?page=showfm' ), $query['return'] );
+		$this->assertSame( admin_url( 'options-general.php?page=showfm&showfm_return=1' ), $query['return'] );
 		$this->assertMatchesRegularExpression( '/^[A-Za-z0-9_-]{43}$/', $query['state'], '32 random bytes, base64url.' );
 		$this->assertMatchesRegularExpression( '/^[A-Za-z0-9_-]{43}$/', $query['code_challenge'] );
 
@@ -202,12 +204,91 @@ class Test_Connect extends WP_UnitTestCase {
 	}
 
 	public function test_admin_post_redirects_to_the_app(): void {
+		add_filter( 'home_url', array( $this, 'https_home' ) );
 		$admin                = new Admin( $this->connect, $this->connection );
 		$_REQUEST['_wpnonce'] = wp_create_nonce( Connect::ACTION );
 		$location             = $this->capture_redirect( array( $admin, 'start_connect' ) );
 
 		$this->assertStringStartsWith( 'https://my.show.fm/connect/wordpress?', $location );
 		$this->assertSame( 0, $this->http->count() );
+	}
+
+	public function test_admin_post_stops_a_site_without_https(): void {
+		add_filter( 'home_url', array( $this, 'http_home' ) );
+		$admin                = new Admin( $this->connect, $this->connection );
+		$_REQUEST['_wpnonce'] = wp_create_nonce( Connect::ACTION );
+		$location             = $this->capture_redirect( array( $admin, 'start_connect' ) );
+
+		$this->assertSame( admin_url( 'options-general.php?page=showfm' ), $location );
+		$this->assertSame( Connect::ERROR_INSECURE, Connect::result( $this->user_id )['error'] );
+		$this->assertFalse( get_transient( Connect::FLOW_PREFIX . $this->user_id ), 'No flow is started.' );
+		$this->assertSame( 0, $this->http->count() );
+	}
+
+	public function test_returning_without_approval_records_a_cancel(): void {
+		$state = $this->started_state();
+
+		$clean = $this->connect->handle_return( $this->user_id, array( Connect::RETURN_ARG => '1' ) );
+
+		$this->assertSame( admin_url( 'options-general.php?page=showfm' ), $clean );
+		$this->assertSame( Connect::ERROR_CANCELLED, Connect::result( $this->user_id )['error'] );
+		$this->assertFalse( get_transient( Connect::FLOW_PREFIX . $this->user_id ), 'The flow is over.' );
+		$this->assertNull( Connect::challenge_for_state( $state ) );
+	}
+
+	public function test_a_return_marker_without_a_flow_changes_nothing(): void {
+		$clean = $this->connect->handle_return( $this->user_id, array( Connect::RETURN_ARG => '1' ) );
+
+		$this->assertSame( admin_url( 'options-general.php?page=showfm' ), $clean );
+		$this->assertNull( Connect::result( $this->user_id ) );
+	}
+
+	public function test_a_return_marker_does_not_cancel_a_code_waiting_for_exchange(): void {
+		$this->returned();
+
+		$this->connect->handle_return( $this->user_id, array( Connect::RETURN_ARG => '1' ) );
+
+		$this->assertSame( self::CODE, get_transient( Connect::FLOW_PREFIX . $this->user_id )['code'] );
+		$this->assertNull( Connect::result( $this->user_id ) );
+	}
+
+	public function test_the_old_settings_address_redirects_and_keeps_the_return(): void {
+		global $pagenow;
+		$previous      = $pagenow;
+		$pagenow       = 'admin.php';
+		$_GET['page']  = 'showfm';
+		$_GET['code']  = self::CODE;
+		$_GET['state'] = 'abc_DEF-123';
+		$_GET['other'] = 'dropped';
+
+		try {
+			$location = $this->capture_redirect( array( Admin::class, 'redirect_old_address' ) );
+		} finally {
+			$pagenow = $previous;
+			unset( $_GET['page'], $_GET['other'] );
+		}
+
+		$this->assertSame( admin_url( 'options-general.php?page=showfm&code=' . self::CODE . '&state=abc_DEF-123' ), $location );
+	}
+
+	public function test_other_admin_pages_are_not_redirected(): void {
+		global $pagenow;
+		$previous     = $pagenow;
+		$pagenow      = 'admin.php';
+		$_GET['page'] = 'another-plugin';
+		$redirected   = false;
+		$watch        = static function ( $location ) use ( &$redirected ) {
+			$redirected = true;
+			return $location;
+		};
+		add_filter( 'wp_redirect', $watch );
+
+		Admin::redirect_old_address();
+
+		remove_filter( 'wp_redirect', $watch );
+		$pagenow = $previous;
+		unset( $_GET['page'] );
+		$this->assertFalse( $redirected );
 	}
 
 
@@ -227,7 +308,7 @@ class Test_Connect extends WP_UnitTestCase {
 			)
 		);
 
-		$this->assertSame( admin_url( 'admin.php?page=showfm' ), $clean );
+		$this->assertSame( admin_url( 'options-general.php?page=showfm' ), $clean );
 		$this->assertStringNotContainsString( 'code=', $clean );
 		$this->assertStringNotContainsString( 'state=', $clean );
 		$this->assertSame( 0, $this->http->count(), 'The exchange runs on the clean page load, not here.' );
@@ -261,7 +342,7 @@ class Test_Connect extends WP_UnitTestCase {
 			)
 		);
 
-		$this->assertSame( admin_url( 'admin.php?page=showfm' ), $clean );
+		$this->assertSame( admin_url( 'options-general.php?page=showfm' ), $clean );
 		$this->assertSame( Connect::ERROR_STATE_MISMATCH, Connect::result( $this->user_id )['error'] );
 		$this->assertSame( $state, get_transient( Connect::FLOW_PREFIX . $this->user_id )['state'] );
 		$this->assertFalse( $this->connect->complete_pending( $this->user_id ) );
@@ -369,7 +450,7 @@ class Test_Connect extends WP_UnitTestCase {
 		$location = $this->capture_redirect( array( $admin, 'load' ) );
 
 		unset( $_GET['code'], $_GET['state'] );
-		$this->assertSame( admin_url( 'admin.php?page=showfm' ), $location );
+		$this->assertSame( admin_url( 'options-general.php?page=showfm' ), $location );
 		$this->assertSame( 0, $this->http->count() );
 	}
 
@@ -379,10 +460,27 @@ class Test_Connect extends WP_UnitTestCase {
 		$verifier = get_transient( Connect::FLOW_PREFIX . $this->user_id )['verifier'];
 		$this->http->respond( 200, $this->exchange_body() );
 		$this->http->respond( 200, '{"data":{"status":"active","activated":true}}' );
+		$this->http->respond( 200, '{"data":{"user":{"id":"u1","name":"Maya Lindgren"},"key":{"id":"k1"}}}' );
+		$this->http->respond( 200, '{"data":[{"id":"7C9E6679-7425-40DE-944B-E07FC1F90AE7","slug":"the-long-table","title":"The <b>Long</b> Table"}],"pagination":{"next_cursor":null}}' );
 
 		$this->assertTrue( $this->connect->complete_pending( $this->user_id ) );
 
-		$this->assertSame( 2, $this->http->count() );
+		$this->assertSame( 4, $this->http->count() );
+		$this->assertSame( 'https://api.show.fm/v1/me', $this->http->requests[2]['url'] );
+		$this->assertSame( 'https://api.show.fm/v1/me/podcasts?limit=50', $this->http->requests[3]['url'] );
+		$this->assertSame(
+			array(
+				'name'  => 'Maya Lindgren',
+				'shows' => array(
+					array(
+						'id'    => '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+						'title' => 'The Long Table',
+						'slug'  => 'the-long-table',
+					),
+				),
+			),
+			( new ShowFM\Account( $this->connection, new Api_Client( $this->connection ) ) )->details()
+		);
 		$exchange = $this->http->requests[0];
 		$this->assertSame( 'https://api.show.fm/v1/sites/exchange', $exchange['url'], 'Nothing secret in the URL.' );
 		$this->assertSame( 'POST', $exchange['args']['method'] );
@@ -593,7 +691,7 @@ class Test_Connect extends WP_UnitTestCase {
 
 			$this->assertSame( $other_site, $this->connection->site_id() );
 			$this->assertSame( 'showfm_live_SITE2KEYabcdefghijklmnopqrs', $this->connection->key() );
-			$this->assertStringContainsString( '/v1/me/sites/' . $other_site . '/verify', $this->http->last()['url'] );
+			$this->assertStringContainsString( '/v1/me/sites/' . $other_site . '/verify', $this->http->requests[ $this->http->count() - 2 ]['url'], 'Verify, then the account refresh (blocked here).' );
 			$this->connection->disconnect();
 		} finally {
 			restore_current_blog();
@@ -614,7 +712,7 @@ class Test_Connect extends WP_UnitTestCase {
 			parse_str( (string) wp_parse_url( $this->connect->start( $this->user_id ), PHP_URL_QUERY ), $query );
 			$this->assertSame( home_url(), $query['site_url'] );
 			$this->assertStringEndsWith( '/second', $query['site_url'], 'A subdirectory site sends its path; show.fm accepts it once #741 is merged.' );
-			$this->assertSame( admin_url( 'admin.php?page=showfm' ), $query['return'] );
+			$this->assertSame( admin_url( 'options-general.php?page=showfm&showfm_return=1' ), $query['return'] );
 			$this->assertStringContainsString( '/second/wp-admin/', $query['return'] );
 		} finally {
 			restore_current_blog();
@@ -668,6 +766,24 @@ class Test_Connect extends WP_UnitTestCase {
 	 *
 	 * @param callable $handler Handler.
 	 */
+	/**
+	 * The home address over https.
+	 *
+	 * @param string $url Home URL.
+	 */
+	public function https_home( string $url ): string {
+		return set_url_scheme( $url, 'https' );
+	}
+
+	/**
+	 * The home address over http.
+	 *
+	 * @param string $url Home URL.
+	 */
+	public function http_home( string $url ): string {
+		return set_url_scheme( $url, 'http' );
+	}
+
 	private function capture_redirect( callable $handler ): string {
 		$throw = static function ( $location ) {
 			throw new ShowFM_Test_Redirect( $location ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Test exception, never output.

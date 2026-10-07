@@ -30,6 +30,18 @@ final class Connection {
 	/** Durable sync retry and exhausted-row details for connection status. */
 	const SYNC_STATUS_OPTION = 'showfm_connection_sync_status';
 
+	/** When show.fm first refused the stored key (autoload off). */
+	const REFUSED_AT_OPTION = 'showfm_connection_refused_at';
+
+	/** When the credentials were last stored (autoload off). */
+	const CONNECTED_AT_OPTION = 'showfm_connected_at';
+
+	/** Since when show.fm has refused the site's reports because of the plan (autoload off). */
+	const PAUSED_OPTION = 'showfm_plan_paused_at';
+
+	/** The error code show.fm sends when no podcast on the key may sync to a site. */
+	const PLAN_ERROR = 'plan_upgrade_required';
+
 	/** No connection stored. */
 	const STATE_DISCONNECTED = 'disconnected';
 
@@ -98,6 +110,9 @@ final class Connection {
 			return false;
 		}
 		delete_option( self::STATE_OPTION );
+		delete_option( self::REFUSED_AT_OPTION );
+		delete_option( self::PAUSED_OPTION );
+		update_option( self::CONNECTED_AT_OPTION, time(), false );
 		return true;
 	}
 
@@ -121,6 +136,50 @@ final class Connection {
 			return self::STATE_RECONNECT_NEEDED;
 		}
 		return self::STATE_CONNECTED;
+	}
+
+	/**
+	 * Whether credentials are stored but cannot be decrypted, for example after the salts
+	 * changed.
+	 */
+	public function is_unreadable(): bool {
+		return false !== get_option( self::OPTION, false ) && null === $this->credentials();
+	}
+
+	/**
+	 * When show.fm first refused the key, or 0.
+	 */
+	public static function refused_at(): int {
+		return (int) get_option( self::REFUSED_AT_OPTION, 0 );
+	}
+
+	/**
+	 * When the credentials were last stored, or 0.
+	 */
+	public static function connected_at(): int {
+		return (int) get_option( self::CONNECTED_AT_OPTION, 0 );
+	}
+
+	/**
+	 * Since when auto-posting has been paused by the plan, or 0 when it is not.
+	 */
+	public static function paused_at(): int {
+		return (int) get_option( self::PAUSED_OPTION, 0 );
+	}
+
+	/**
+	 * Records whether show.fm accepted a verify or health report. A 403 with
+	 * `plan_upgrade_required` means no podcast on the key may sync to a site, so auto-posting
+	 * is paused; a success lifts the pause. Other outcomes change nothing.
+	 *
+	 * @param Api_Result $result Result of a verify or health report.
+	 */
+	public static function note_report( Api_Result $result ): void {
+		if ( $result->is( Api_Result::SUCCESS ) ) {
+			delete_option( self::PAUSED_OPTION );
+		} elseif ( 403 === $result->status() && self::PLAN_ERROR === $result->error_code() && 0 === self::paused_at() ) {
+			update_option( self::PAUSED_OPTION, time(), false );
+		}
 	}
 
 	/**
@@ -218,6 +277,9 @@ final class Connection {
 		}
 		delete_option( self::STATE_OPTION );
 		add_option( self::STATE_OPTION, self::STATE_RECONNECT_NEEDED, '', false );
+		if ( 0 === self::refused_at() ) {
+			update_option( self::REFUSED_AT_OPTION, time(), false );
+		}
 	}
 
 	/**
@@ -226,6 +288,9 @@ final class Connection {
 	public function disconnect(): void {
 		delete_option( self::OPTION );
 		delete_option( self::STATE_OPTION );
+		delete_option( self::REFUSED_AT_OPTION );
+		delete_option( self::CONNECTED_AT_OPTION );
+		delete_option( self::PAUSED_OPTION );
 	}
 
 	/**

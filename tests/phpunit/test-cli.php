@@ -109,7 +109,7 @@ class Test_Cli extends WP_UnitTestCase {
 
 		$this->cli->connect( array(), array( 'key' => self::KEY ) );
 
-		$this->assertSame( 2, $this->http->count() );
+		$this->assertSame( 3, $this->http->count(), 'Register, verify, then the account refresh (blocked here).' );
 		$this->assertSame( 'https://api.show.fm/v1/me/sites', $this->http->requests[0]['url'] );
 		$this->assertSame( 'POST', $seen['method'] );
 		$this->assertSame( 'Bearer ' . self::KEY, $seen['headers']['Authorization'] );

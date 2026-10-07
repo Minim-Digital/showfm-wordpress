@@ -10,8 +10,8 @@ This file is for developers. The WordPress.org readme is `readme.txt`.
 Version 0.1.0 has the foundation (the API client, the cache, encrypted connection storage
 and uninstall) and the plugin side of connecting a site to show.fm: the browser flow, the
 code exchange, WP-CLI registration, the ownership challenge, the signed ping endpoint and
-the daily health report. The settings page is a placeholder until the designed admin
-screens land. Blocks and the shortcode are available, together with the background sync engine.
+the daily health report. Settings > show.fm has the Connection and Display tabs and the
+admin notices. Blocks and the shortcode are available, together with the background sync engine.
 
 ## Requirements
 
@@ -55,8 +55,30 @@ screens land. Blocks and the shortcode are available, together with the backgrou
   and kept per user for the settings screen, with `Connect::message()` for the text.
 - `Challenge_Endpoint` and `Ping_Endpoint` are the two REST routes show.fm calls.
 - `Health` sends the daily health report and finishes a verify that failed at connect time.
-- `Admin` registers the settings page (`admin.php?page=showfm`) and the connect action. Its
-  screen is a placeholder for the designed one.
+- `Admin` registers Settings > show.fm (`options-general.php?page=showfm`), its React app
+  (`src/admin.jsx`, built to `build/admin.js` with `@wordpress/components` from core) and the
+  connect action. `admin.php?page=showfm`, which the show.fm app links to, redirects there with
+  the connect return kept. The app's data is preloaded into the page.
+- `Admin_Endpoint` is `showfm/v1/admin/connection` (GET), `admin/disconnect` (POST) and
+  `admin/notices/dismiss` (POST), for `manage_options` with the `wp_rest` nonce. `Admin_Status`
+  builds the Connection tab's data from local state only: no request, no key (the last four
+  characters only), no ping secret.
+- `Notices` shows at most one admin notice on the Dashboard and Plugins screens (the settings
+  screen shows it on every tab except Connection): refused key, plan pause, sync configuration
+  problem, expiry within 7 days, within 30 days. Dismissals are per user and per instance key
+  (user meta `showfm_dismissed_notices`), so the next stage shows again.
+- `Account` keeps the account holder's name and the connected shows from `GET /v1/me` and
+  `GET /v1/me/podcasts`, fetched after connecting and after each daily health report.
+- `Embed_Settings` registers the four Display settings (`show_in_rest`), saved through
+  `/wp/v2/settings`.
+
+The plugin infers what show.fm does not expose: `Connection` records when show.fm first refused
+the key (`showfm_connection_refused_at`) and when a verify or health report got
+`403 plan_upgrade_required` (`showfm_plan_paused_at`); `Ping_Endpoint::note_change()` records a
+change that arrived through the 15-minute check with no ping after a 10-minute grace
+(`showfm_ping_missed_at`), which the next accepted ping clears. A return from show.fm carries
+`showfm_return=1`; without `code` and `state` it means the admin cancelled.
+
 - `Cli` is `wp showfm connect`, `status` and `disconnect`.
 - `Privacy` adds the suggested privacy policy text.
 
@@ -225,8 +247,10 @@ npm run env:start           # WordPress on http://localhost:8888 (user admin, pa
 | `composer analyse`           | PHPStan level 6 with the WordPress extension.                              |
 | `npm run test:php`           | PHPUnit inside `wp-env` (`tests-cli`).                                     |
 | `npm run test:php:multisite` | The same suite as a multisite network.                                     |
-| `npm run test:e2e`           | Playwright smoke test against the `wp-env` development site.               |
+| `npm run test:e2e`           | Playwright tests against the `wp-env` development site.                    |
+| `npm run test:js`            | Vitest (jsdom) unit tests for the settings screen, in `tests/js/`.         |
 | `npm run lint:js`            | ESLint through `@wordpress/scripts`.                                       |
+| `npm run i18n:pot`           | Builds, then regenerates `languages/showfm.pot` with WP-CLI in `wp-env`.   |
 | `npm run format`             | Prettier through `@wordpress/scripts`.                                     |
 | `npm run zip`                | Builds `dist/showfm/` and `dist/showfm-{version}.zip`.                     |
 
@@ -237,8 +261,12 @@ Run PHPUnit before Playwright, or on a fresh environment: the core test installe
 the tables of the `wp-env` tests site (port 8889), so the browser tests use the development
 site (port 8888).
 
-`npm run build` is ready for blocks: `@wordpress/scripts` builds `src/` into `build/`.
-`bin/build-zip.sh` runs it when `src/` exists.
+`npm run build` builds the block editor script, the settings app and the notice script from
+`src/` into `build/`. `bin/build-zip.sh` runs it when `src/` exists.
+
+The Playwright settings tests set up each connection state with a test-only plugin,
+`tests/e2e/plugin/showfm-e2e-states.php`, which `wp-env` maps into the site and the tests
+activate. It stores a local connection without contacting show.fm, and never ships.
 
 ## Rules
 

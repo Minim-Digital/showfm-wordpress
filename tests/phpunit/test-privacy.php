@@ -48,7 +48,7 @@ class Test_Privacy extends WP_UnitTestCase {
 	public function test_text_says_what_is_sent_when_connected(): void {
 		$text = Privacy::text();
 
-		foreach ( array( 'address', 'WordPress, PHP and plugin versions', 'site key', 'error counts', 'each post' ) as $phrase ) {
+		foreach ( array( 'address', 'WordPress, PHP and plugin versions', 'site key', 'error counts', 'each post', 'account holder’s name', 'dismissed' ) as $phrase ) {
 			$this->assertStringContainsString( $phrase, $text );
 		}
 	}

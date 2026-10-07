@@ -25,13 +25,18 @@ test.describe( 'show.fm plugin', () => {
 	test( 'activates from the Plugins screen', async ( { admin, page } ) => {
 		await admin.visitAdminPage( 'plugins.php' );
 
-		await page.getByRole( 'link', { name: 'Activate show.fm' } ).click();
+		await page
+			.getByRole( 'link', { name: 'Activate show.fm', exact: true } )
+			.click();
 
 		await expect( page.locator( '#message' ) ).toContainText(
 			'Plugin activated.'
 		);
 		await expect(
-			page.getByRole( 'link', { name: 'Deactivate show.fm' } )
+			page.getByRole( 'link', {
+				name: 'Deactivate show.fm',
+				exact: true,
+			} )
 		).toBeVisible();
 	} );
 

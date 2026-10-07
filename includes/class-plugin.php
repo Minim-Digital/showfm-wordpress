@@ -94,6 +94,7 @@ final class Plugin {
 
 		add_action( 'rest_api_init', array( Challenge_Endpoint::class, 'register' ) );
 		add_action( 'rest_api_init', array( new Ping_Endpoint( self::connection() ), 'register' ) );
+		add_action( 'rest_api_init', array( self::class, 'register_admin_routes' ) );
 
 		add_action( 'admin_init', array( Privacy::class, 'register' ) );
 		add_action( 'admin_init', array( self::health(), 'ensure_scheduled' ) );
@@ -104,6 +105,14 @@ final class Plugin {
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			Cli::register( new Cli( self::connect(), self::connection() ) );
 		}
+	}
+
+	/**
+	 * Registers the settings screen's REST routes.
+	 */
+	public static function register_admin_routes(): void {
+		$status = new Admin_Status( self::connection(), new Account( self::connection(), self::api_client() ), new Notices( self::connection() ) );
+		( new Admin_Endpoint( self::connect(), $status ) )->register();
 	}
 
 	/**

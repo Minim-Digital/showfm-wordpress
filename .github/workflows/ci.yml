@@ -48,6 +48,7 @@ jobs:
       - run: npm run build
       - run: npm run lint:js
       - run: npm run format:check
+      - run: npm run test:js
 
   phpunit:
     name: PHPUnit on wp-env
