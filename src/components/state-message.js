@@ -59,6 +59,15 @@ export function stateCopy( state, data = {} ) {
 				icon: 'info-outline',
 				tone: 'muted',
 			};
+		case 'no_transcript':
+			return {
+				message: __(
+					'There’s no transcript for this episode yet, so visitors won’t see this block.',
+					'showfm'
+				),
+				icon: 'info-outline',
+				tone: 'muted',
+			};
 		case 'scheduled':
 			return {
 				message: data.episode?.date
@@ -176,6 +185,11 @@ export function StateMessage( {
 				href: `${ settings.appUrl }/settings`,
 			};
 		}
+	} else if ( state === 'no_transcript' ) {
+		button = onChooseEpisode && {
+			label: __( 'Choose another episode', 'showfm' ),
+			onClick: onChooseEpisode,
+		};
 	} else if ( state === 'external' ) {
 		button = onChangeShow && {
 			label: __( 'Use another show', 'showfm' ),

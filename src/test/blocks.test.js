@@ -102,6 +102,7 @@ function Harness( { initial = {}, onSet, ...props } ) {
 
 beforeEach( () => {
 	request.mockReset();
+	request.mockResolvedValue( { state: 'error' } );
 	followable.length = 0;
 	updateBlockAttributes.mockReset();
 	window.showfmEditor = { connected: true, api: 'https://api.show.fm' };
@@ -419,11 +420,17 @@ describe( 'Transcript', () => {
 		} );
 	} );
 
-	it( 'previews the transcript element following the player, with height', () => {
+	it( 'previews the transcript element following the player, with height', async () => {
 		followable.push( {
 			clientId: 'aaaaaaaa-1',
 			name: 'showfm/player',
 			attributes: { id: 'p1', episode: EPISODE.id },
+		} );
+		answer( {
+			episode: {
+				state: 'ok',
+				episode: { ...EPISODE, transcript: true },
+			},
 		} );
 		const set = vi.fn();
 		const { container } = render(
@@ -431,6 +438,11 @@ describe( 'Transcript', () => {
 				attributes={ { for: 'p1', episode: EPISODE.id, height: '400' } }
 				setAttributes={ set }
 			/>
+		);
+		await waitFor( () =>
+			expect(
+				container.querySelector( 'showfm-transcript' )
+			).not.toBeNull()
 		);
 		const element = container.querySelector( 'showfm-transcript' );
 		expect( element.getAttribute( 'for' ) ).toBe( 'p1' );
@@ -442,6 +454,32 @@ describe( 'Transcript', () => {
 			target: { value: '' },
 		} );
 		expect( set ).toHaveBeenCalledWith( { for: undefined } );
+	} );
+
+	it( 'says when the followed episode has no transcript', async () => {
+		followable.push( {
+			clientId: 'aaaaaaaa-1',
+			name: 'showfm/player',
+			attributes: { id: 'p1', episode: EPISODE.id },
+		} );
+		answer( {
+			episode: {
+				state: 'ok',
+				episode: { ...EPISODE, transcript: false },
+			},
+		} );
+		const { container } = render(
+			<TranscriptEdit
+				attributes={ { for: 'p1', episode: EPISODE.id } }
+				setAttributes={ vi.fn() }
+			/>
+		);
+		expect(
+			await screen.findByText(
+				'There’s no transcript for this episode yet, so visitors won’t see this block.'
+			)
+		).toBeInTheDocument();
+		expect( container.querySelector( 'showfm-transcript' ) ).toBeNull();
 	} );
 
 	it( 'keeps the followed player’s episode', () => {

@@ -290,6 +290,10 @@ describe( 'StateMessage', () => {
 			'external',
 			'This show is hosted outside show.fm, so it can’t be embedded here.',
 		],
+		[
+			'no_transcript',
+			'There’s no transcript for this episode yet, so visitors won’t see this block.',
+		],
 	] )( '%s says “%s”', ( state, text ) => {
 		render(
 			<StateMessage

@@ -214,15 +214,15 @@ $showfm-blue: #3858e9;
 		line-height: 1.5;
 	}
 
-	&.is-error svg {
+	&.is-error :is( svg, .dashicon ) {
 		color: #cc1818;
 	}
 
-	&.is-warning svg {
+	&.is-warning :is( svg, .dashicon ) {
 		color: #996800;
 	}
 
-	&.is-muted svg {
+	&.is-muted :is( svg, .dashicon ) {
 		color: $showfm-muted;
 	}
 }
@@ -243,7 +243,7 @@ $showfm-blue: #3858e9;
 		background: #f0f6fc;
 	}
 
-	svg {
+	:is( svg, .dashicon ) {
 		flex: none;
 	}
 }
@@ -321,7 +321,7 @@ $showfm-blue: #3858e9;
 		line-height: 1.45;
 	}
 
-	&.is-success svg {
+	&.is-success :is( svg, .dashicon ) {
 		color: #008a20;
 	}
 
@@ -330,7 +330,7 @@ $showfm-blue: #3858e9;
 		border-left: 4px solid #f0b849;
 		background: #fef8ee;
 
-		svg {
+		:is( svg, .dashicon ) {
 			color: #996800;
 		}
 	}
@@ -340,7 +340,7 @@ $showfm-blue: #3858e9;
 		border-left: 4px solid #cc1818;
 		background: #fcf0f1;
 
-		svg {
+		:is( svg, .dashicon ) {
 			color: #cc1818;
 		}
 	}

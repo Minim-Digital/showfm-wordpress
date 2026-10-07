@@ -38,7 +38,10 @@ const episode = ( id, slug, title ) => ( {
 	},
 	artwork: { url: null },
 	links: { listen: `https://the-long-table.show.fm/e/${ slug }` },
-	transcript: null,
+	transcript:
+		slug === 'sourdough'
+			? { url: 'https://m.cdn.media/e2e/sourdough.vtt', type: 'text/vtt' }
+			: null,
 	podcast,
 } );
 
@@ -48,6 +51,16 @@ const episode = ( id, slug, title ) => ( {
  * @param {import('@playwright/test').Page} page Page.
  */
 async function routePublicApi( page ) {
+	await page.route( 'https://m.cdn.media/**', ( route ) =>
+		route.request().url().endsWith( '.vtt' )
+			? route.fulfill( {
+					status: 200,
+					contentType: 'text/vtt',
+					headers: { 'access-control-allow-origin': '*' },
+					body: 'WEBVTT\n\n00:00.000 --> 00:05.000\n<v Tom>Welcome to the bakery.\n\n00:05.000 --> 00:09.000\n<v Maya>It smells wonderful.\n',
+				} )
+			: route.fulfill( { status: 404 } )
+	);
 	await page.route( 'https://api.show.fm/**', ( route ) => {
 		const path = new URL( route.request().url() ).pathname;
 		const bodies = {
@@ -57,6 +70,7 @@ async function routePublicApi( page ) {
 			[ `/v1/episodes/${ KNIVES }` ]: {
 				data: episode( KNIVES, 'knives', 'Knives' ),
 			},
+			[ `/v1/podcasts/${ PODCAST }` ]: { data: podcast },
 			[ `/v1/podcasts/${ PODCAST }/episodes` ]: {
 				data: [ episode( SOURDOUGH, 'sourdough', SOURDOUGH_TITLE ) ],
 				podcast,

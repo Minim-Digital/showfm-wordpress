@@ -22,6 +22,8 @@ import { useEffect, useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 import ShowfmBlockEdit from '../components/block-edit';
 import ElementPreview from '../components/element-preview';
+import { StateMessage } from '../components/state-message';
+import { useEditorData } from '../hooks';
 import { transcriptIcon } from '../icons';
 
 const FOLLOWABLE = [ 'showfm/player', 'showfm/episodes' ];
@@ -76,6 +78,14 @@ export default function TranscriptEdit( props ) {
 			.filter( Boolean );
 	}, [] );
 	const { updateBlockAttributes } = useDispatch( blockEditorStore );
+	const followedAnswer = useEditorData(
+		'episode',
+		{ id: attributes.episode },
+		!! attributes.for && !! attributes.episode
+	);
+	const noTranscript =
+		followedAnswer.data?.state === 'ok' &&
+		followedAnswer.data.episode?.transcript === false;
 	const followed = followable.find(
 		( block ) => attributes.for && block.attributes.id === attributes.for
 	);
@@ -217,12 +227,20 @@ export default function TranscriptEdit( props ) {
 						{ followPanel }
 						{ sizePanel }
 					</InspectorControls>
-					{ followed ? (
+					{ followed && noTranscript && (
+						<StateMessage
+							icon={ transcriptIcon }
+							label={ __( 'show.fm Transcript', 'showfm' ) }
+							state="no_transcript"
+						/>
+					) }
+					{ followed && ! noTranscript && (
 						<ElementPreview
 							type="transcript"
 							attributes={ attributes }
 						/>
-					) : (
+					) }
+					{ ! followed && (
 						<Placeholder
 							icon={ transcriptIcon }
 							label={ __( 'show.fm Transcript', 'showfm' ) }

@@ -24,7 +24,7 @@ const SHOWFM_E2E_SITE    = '11111111-1111-4111-8111-111111111111';
  * @return array<string,array{0:int,1:array<string,mixed>}>
  */
 function showfm_e2e_responses(): array {
-	$podcast  = array(
+	$podcast   = array(
 		'id'            => SHOWFM_E2E_PODCAST,
 		'slug'          => 'the-long-table',
 		'title'         => 'The Long Table',
@@ -34,7 +34,7 @@ function showfm_e2e_responses(): array {
 		'links'         => array( 'listen' => 'https://the-long-table.show.fm' ),
 		'branding'      => array( 'show_powered_by' => false ),
 	);
-	$episode  = static function ( string $id, string $slug, string $title, int $number ) use ( $podcast ): array {
+	$episode   = static function ( string $id, string $slug, string $title, int $number ) use ( $podcast ): array {
 		return array(
 			'id'             => $id,
 			'slug'           => $slug,
@@ -51,7 +51,10 @@ function showfm_e2e_responses(): array {
 			),
 			'artwork'        => array( 'url' => null ),
 			'links'          => array( 'listen' => 'https://the-long-table.show.fm/e/' . $slug ),
-			'transcript'     => null,
+			'transcript'     => 'sourdough' === $slug ? array(
+				'url'  => 'https://m.cdn.media/e2e/sourdough.vtt',
+				'type' => 'text/vtt',
+			) : null,
 			'podcast'        => $podcast,
 		);
 	};
@@ -63,13 +66,13 @@ function showfm_e2e_responses(): array {
 		'pagination' => array( 'next_cursor' => null ),
 	);
 	return array(
-		'/v1/podcasts/the-long-table'                                 => array( 200, array( 'data' => $podcast ) ),
-		'/v1/podcasts/' . SHOWFM_E2E_PODCAST                          => array( 200, array( 'data' => $podcast ) ),
-		'/v1/podcasts/the-long-table/episodes?limit=50'               => array( 200, $list ),
-		'/v1/podcasts/' . SHOWFM_E2E_PODCAST . '/episodes?limit=50'   => array( 200, $list ),
-		'/v1/episodes/' . SHOWFM_E2E_EPISODE                          => array( 200, array( 'data' => $sourdough ) ),
-		'/v1/episodes/' . SHOWFM_E2E_KNIVES                           => array( 200, array( 'data' => $knives ) ),
-		'/v1/me/podcasts?limit=50'                                    => array(
+		'/v1/podcasts/the-long-table'                   => array( 200, array( 'data' => $podcast ) ),
+		'/v1/podcasts/' . SHOWFM_E2E_PODCAST            => array( 200, array( 'data' => $podcast ) ),
+		'/v1/podcasts/the-long-table/episodes?limit=50' => array( 200, $list ),
+		'/v1/podcasts/' . SHOWFM_E2E_PODCAST . '/episodes?limit=50' => array( 200, $list ),
+		'/v1/episodes/' . SHOWFM_E2E_EPISODE            => array( 200, array( 'data' => $sourdough ) ),
+		'/v1/episodes/' . SHOWFM_E2E_KNIVES             => array( 200, array( 'data' => $knives ) ),
+		'/v1/me/podcasts?limit=50'                      => array(
 			200,
 			array(
 				'data' => array(
@@ -108,7 +111,7 @@ function showfm_e2e_responses(): array {
 				),
 			),
 		),
-		'/v1/me/episodes/' . SHOWFM_E2E_PUDDING                       => array(
+		'/v1/me/episodes/' . SHOWFM_E2E_PUDDING         => array(
 			200,
 			array(
 				'data' => array(

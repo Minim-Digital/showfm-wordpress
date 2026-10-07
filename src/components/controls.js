@@ -69,7 +69,7 @@ export function hexColours( ...palettes ) {
 }
 
 /**
- * The accent colour: the theme's colours first, then the defaults, and a custom colour.
+ * The accent colour: swatches from the theme's palette, or the default one.
  *
  * @param {Object}                  props
  * @param {string}                  props.value    Hex colour.
@@ -86,15 +86,14 @@ export function AccentControl( { value, onChange } ) {
 			id="showfm-accent"
 			label={ __( 'Accent colour', 'showfm' ) }
 			help={ __(
-				'The show’s colour is used until you choose one. Your theme’s colours come first.',
+				'The show’s colour is used until you choose one. These are your theme’s colours.',
 				'showfm'
 			) }
 		>
 			<ColorPalette
-				colors={ hexColours( theme, defaults ) }
+				colors={ hexColours( theme.length ? theme : defaults ) }
 				value={ value }
-				disableCustomColors={ false }
-				enableAlpha={ false }
+				disableCustomColors
 				clearable
 				onChange={ ( colour ) =>
 					onChange( HEX.test( colour || '' ) ? colour : undefined )

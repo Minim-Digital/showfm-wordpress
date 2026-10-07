@@ -211,6 +211,19 @@ export default function ShowfmBlockEdit( {
 				}
 			/>
 		);
+	} else if (
+		type === 'transcript' &&
+		data.state === 'ok' &&
+		data.episode?.transcript === false
+	) {
+		body = (
+			<StateMessage
+				icon={ icon }
+				label={ label }
+				state="no_transcript"
+				onChooseEpisode={ () => setPicking( true ) }
+			/>
+		);
 	} else if ( data.state === 'ok' ) {
 		body = <ElementPreview type={ type } attributes={ attributes } />;
 	} else if ( STRIP_STATES.includes( data.state ) ) {
