@@ -229,49 +229,43 @@ class Test_Challenge_Endpoint extends WP_UnitTestCase {
 		$this->assertSame( 429, $status );
 	}
 
-	public function test_a_persistent_object_cache_counts_without_the_database(): void {
+	public function test_one_budget_across_the_window_with_or_without_an_object_cache(): void {
+		$half = intdiv( Challenge_Endpoint::LIMIT, 2 );
+		$this->set_counter( $this->window(), 0 );
+		for ( $i = 0; $i < $half; $i++ ) {
+			$this->assertSame( 404, $this->fetch( null )->get_status() );
+		}
+
 		$previous = wp_using_ext_object_cache( true );
 		try {
-			for ( $i = 0; $i < Challenge_Endpoint::LIMIT; $i++ ) {
+			for ( $i = $half; $i < Challenge_Endpoint::LIMIT; $i++ ) {
 				$this->assertSame( 404, $this->fetch( null )->get_status() );
 			}
-			$this->assertSame( 429, $this->fetch( null )->get_status() );
+			$this->assertSame( 429, $this->fetch( null )->get_status(), 'An object cache does not start a second budget.' );
 		} finally {
 			wp_using_ext_object_cache( (bool) $previous );
 		}
 
-		$this->assertSame( array(), $this->counter_rows() );
+		$this->assertSame( 429, $this->fetch( null )->get_status() );
+		$this->assertSame( Challenge_Endpoint::LIMIT, $this->counter_rows()[ Challenge_Endpoint::COUNTER_PREFIX . $this->window() ] );
 	}
 
-	public function test_a_cache_that_cannot_increment_falls_back_to_the_database(): void {
-		global $wp_object_cache;
-		$original        = $wp_object_cache;
-		$wp_object_cache = new class() extends WP_Object_Cache {
-			/**
-			 * An increment that always fails, like a drop-in whose backend is down.
-			 *
-			 * @param int|string $key    Key.
-			 * @param int        $offset Offset.
-			 * @param string     $group  Group.
-			 * @return false
-			 */
-			public function incr( $key, $offset = 1, $group = 'default' ) {
-				return false;
-			}
-		};
-		$previous        = wp_using_ext_object_cache( true );
-		try {
-			$window = $this->window();
-			$this->set_counter( $window, Challenge_Endpoint::LIMIT - 1 );
+	public function test_a_delayed_cleanup_never_removes_a_newer_windows_row(): void {
+		// This request computed window W just before a boundary; a request in W+1 has
+		// already created and counted its row. Only rows older than W may go.
+		$window = $this->window();
+		$this->set_counter( $window + 1, 5 );
+		$this->set_counter( $window - 2, 3 );
 
-			$this->assertSame( 404, $this->fetch( null )->get_status() );
-			$this->assertSame( 429, $this->fetch( null )->get_status(), 'A failed increment is never treated as allowed.' );
-		} finally {
-			wp_using_ext_object_cache( (bool) $previous );
-			$wp_object_cache = $original;
-		}
+		$this->assertSame( 404, $this->fetch( null )->get_status() );
 
-		$this->assertSame( Challenge_Endpoint::LIMIT, $this->counter_rows()[ Challenge_Endpoint::COUNTER_PREFIX . $window ] );
+		$this->assertSame(
+			array(
+				Challenge_Endpoint::COUNTER_PREFIX . $window       => 1,
+				Challenge_Endpoint::COUNTER_PREFIX . ( $window + 1 ) => 5,
+			),
+			$this->counter_rows()
+		);
 	}
 
 	/**
@@ -308,7 +302,7 @@ class Test_Challenge_Endpoint extends WP_UnitTestCase {
 		global $wpdb;
 		$rows   = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE %s",
+				"SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE %s ORDER BY option_name",
 				$wpdb->esc_like( Challenge_Endpoint::COUNTER_PREFIX ) . '%'
 			)
 		);

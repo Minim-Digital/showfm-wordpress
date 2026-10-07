@@ -38,14 +38,8 @@ final class Challenge_Endpoint {
 	/** Rate-limit window, in seconds. */
 	const WINDOW = 60;
 
-	/**
-	 * Prefix of the counter: one options row per window (autoload off, value is the misses),
-	 * or one object cache key per window.
-	 */
+	/** Prefix of the counter: one options row per window (autoload off, value is the misses). */
 	const COUNTER_PREFIX = 'showfm_challenge_misses_';
-
-	/** Object cache group for the counter when a persistent cache is in use. */
-	const CACHE_GROUP = 'showfm';
 
 	/**
 	 * Registers the route. Runs on `rest_api_init`.
@@ -128,39 +122,21 @@ final class Challenge_Endpoint {
 	}
 
 	/**
-	 * Counts a wrong state against the one global window. Returns false once the window's
-	 * budget is spent. A persistent object cache counts with one key per window, which
-	 * expires on its own. When there is none, or it cannot increment, the database counts.
-	 * Either way the number of keys never grows with the number of callers.
+	 * Counts a wrong state against the one global window, in one options row per window.
+	 * Returns false once the window's budget is spent.
+	 *
+	 * The conditional UPDATE is one atomic statement, so concurrent misses can never take
+	 * the count past LIMIT: a miss is admitted only when its UPDATE changed the row. The
+	 * first miss of a window creates the row with INSERT IGNORE and removes the rows of
+	 * strictly older windows only, so a request delayed across a boundary can never remove
+	 * a newer window's count. The database is the one counter, with or without an object
+	 * cache, so there is one budget.
 	 */
 	private static function count_miss(): bool {
-		$window = (int) floor( time() / self::WINDOW );
-
-		if ( wp_using_ext_object_cache() ) {
-			$key = self::COUNTER_PREFIX . $window;
-			wp_cache_add( $key, 0, self::CACHE_GROUP, 2 * self::WINDOW );
-			$count = wp_cache_incr( $key, 1, self::CACHE_GROUP );
-			if ( false !== $count ) {
-				return $count <= self::LIMIT;
-			}
-			// No increment (unsupported, or the backend is down): never admit uncounted.
-		}
-
-		return self::count_miss_in_database( $window );
-	}
-
-	/**
-	 * Counts a miss in one options row per window. The conditional UPDATE is one atomic
-	 * statement, so concurrent misses can never take the count past LIMIT: a miss is
-	 * admitted only when its UPDATE changed the row. The first miss of a window creates
-	 * the row with INSERT IGNORE and removes the rows of earlier windows.
-	 *
-	 * @param int $window Window number.
-	 */
-	private static function count_miss_in_database( int $window ): bool {
 		global $wpdb;
 
-		$name = self::COUNTER_PREFIX . $window;
+		$window = (int) floor( time() / self::WINDOW );
+		$name   = self::COUNTER_PREFIX . $window;
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- add_option() is not atomic (it upserts), INSERT IGNORE is.
 		$created = $wpdb->query(
@@ -173,9 +149,10 @@ final class Challenge_Endpoint {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Counter rows are never read through the options API.
 			$wpdb->query(
 				$wpdb->prepare(
-					"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s AND option_name <> %s",
+					"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s AND CAST(SUBSTRING(option_name, %d) AS UNSIGNED) < %d",
 					$wpdb->esc_like( self::COUNTER_PREFIX ) . '%',
-					$name
+					strlen( self::COUNTER_PREFIX ) + 1,
+					$window
 				)
 			);
 		}
