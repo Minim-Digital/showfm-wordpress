@@ -127,7 +127,9 @@ The tab follows the design's six screens (intro, scanning, dry-run report, confi
 nothing to migrate) and adds the states the design leaves out (see Design gaps below). Each
 new screen moves focus to its heading. A problem moves focus to its notice. "Show more"
 moves focus to the first new row. A pick keeps focus on its select, and Cancel in the
-confirm dialog returns focus to the Swap button.
+confirm dialog returns focus to the Swap button. When Stop or Resume goes away, focus
+returns to the heading. Progress is read out politely (`speak()`) each quarter of the way,
+not on every step.
 
 ### REST routes
 
@@ -142,15 +144,17 @@ limits from 1 to 100.
 | `POST /admin/migrate/scan`   | One scan step: up to 10 catalogue requests (`Migrator::start()` with a limit), or one batch of 50 posts. `restart` starts afresh.              |
 | `POST /admin/migrate/stop`   | Pauses the scan and gives the run back, so a reload doesn't carry on by itself.                                                                |
 | `GET /admin/migrate/rows`    | A page of rows for one group (`ready`, `choose`, `unmatched`, `already`, `review`) or the results (`changed`, `failed`).                       |
-| `POST /admin/migrate/choice` | Stores or clears the pick for one ambiguous embed.                                                                                             |
-| `POST /admin/migrate/swap`   | One swap step: up to five posts through `Migrator::swap()`.                                                                                    |
+| `POST /admin/migrate/choice` | Stores or clears the pick for one ambiguous embed, and answers with the view and `choice`, the pick as stored.                                 |
+| `POST /admin/migrate/swap`   | One swap step: up to five posts through `Migrator::swap()`. `confirm` is needed to start a swap or to carry on another admin's.                |
 
 A step answers with the view. A refused step is an error with `data.reason` and
 `data.view`, the fresh view: `not_connected`, `connection_lost` (the key stopped working
 during a scan or swap), `busy` (another admin's run, or another request on the site),
 `stale` (the run changed in another tab), `rate_limited` and `unreachable` (with
 `retryAt`), `reconnected` (the site reconnected with another key after the scan),
-`invalid_choice`, `swapped` (choices are fixed once the swap starts) and `forbidden`.
+`invalid_choice`, `swapped` (choices are fixed once the swap starts), `confirm` (the swap
+needs a confirm first), `unreleased` (the run finished but the lease couldn't be given
+back) and `forbidden`.
 
 Rows carry the post's title, link and date, the host, a short reference, how it matched,
 the status, and for a pick the candidates' IDs, titles and dates. They never carry the key,
@@ -160,10 +164,21 @@ address and episode ID, or the audio file's name, never a whole URL with its que
 ### One admin at a time
 
 Each step takes or renews a lease (`showfm_migrate_lease`, two minutes) for the admin who
-runs it, under the engine's per-site lock. While it is live, another admin's steps are a
-409 `busy` naming the admin, and their tab follows the progress every five seconds. The
-lease is given back when the scan or swap finishes or the admin stops it; a closed tab lets
-it lapse. `wp showfm migrate-embeds` also waits while another admin holds the lease. A watching tab carries on a scan whose lease lapsed, but a lapsed swap waits for Resume swapping.
+runs it, under the engine's per-site lock. Each site has its own lease. While it is live,
+another admin's steps are a 409 `busy` naming the admin, and their tab follows the progress
+every five seconds. The lease is given back when the scan or swap finishes or the admin
+stops it; a closed tab lets it lapse. Giving it back waits up to five seconds for the site
+lock. If the lock stays busy, the step or Stop says so (`unreleased` or `busy`) rather than
+failing quietly.
+
+`wp showfm migrate-embeds` takes the same lease for its run, renews it before each batch
+and each swapped post, and gives it back when it finishes or stops with an error. Every
+path that changes anything, `--reset` included, refuses while another admin holds it.
+
+A watching tab carries on a scan whose lease lapsed. A swap carries on by itself only for
+the admin who confirmed it. Anyone else sees Resume swapping, which asks them to confirm
+first; the server also refuses a swap step without `confirm` from anyone but the admin
+who confirmed it.
 
 ### Resume
 
@@ -171,14 +186,23 @@ The scan's cursor is the engine's (`Migration_Store::state()` and the pending ca
 The found count and the pause live in `showfm_migrate_progress`. Picks live in
 `showfm_migration_{run}_choices` and the swap cursor in `showfm_migration_{run}_swap`, so
 a new scan or a discarded run removes them with the reports. A reload reads the view and
-carries on a scan or swap the admin didn't pause. A catalogue failure is saved with its
-reason, so the problem shows again after a reload.
+carries on a scan the admin didn't pause, or a swap they confirmed. A catalogue failure is
+saved with its reason, so the problem shows again after a reload until its retry time. A
+rate-limit notice goes at its retry time and the scan carries on.
 
 ### Picks
 
 A pick must name one of the stored candidates of that ambiguous embed, in a post whose
-report is `scanned`. Anything else is a 400 `invalid_choice`. The swap passes the stored
-picks to `Migrator::swap()`, which checks them again.
+report is `scanned`. Anything else is a 400 `invalid_choice`. The check and the write run
+under the same per-site lock as the swap's first step, which copies the picks into the swap
+cursor. Picks are therefore fixed the moment the swap starts: a later pick is a 409
+`swapped`, and the swap only ever uses the copy. The tab saves one pick at a time per row,
+shows the pick the server stored, and holds Swap while a pick is saving. The swap passes
+the picks to `Migrator::swap()`, which checks them again.
+
+A post the admin can't edit is listed under "Not changed" with the reason, and the swap
+goes on with the rest. Only a refusal for the whole run (no connection, no
+`manage_options`, another request) stops it.
 
 ### WP-CLI table
 

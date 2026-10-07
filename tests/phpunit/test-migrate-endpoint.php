@@ -452,9 +452,21 @@ class Test_Migrate_Endpoint extends WP_UnitTestCase {
 		$this->assertGreaterThan( time() + 60, $response->get_data()['data']['retryAt'] );
 		$this->assertStringContainsString( 'Try again after', $response->get_data()['message'] );
 
-		$again = $this->dispatch( 'POST', '/scan', array( 'run' => $response->get_data()['data']['view']['run'] ) );
+		$run   = $response->get_data()['data']['view']['run'];
+		$again = $this->dispatch( 'POST', '/scan', array( 'run' => $run ) );
 		$this->assertSame( 'rate_limited', $again->get_data()['data']['reason'] );
 		$this->assertSame( 1, $this->http->count(), 'Waiting for the retry time sends nothing.' );
+
+		// Once the retry time has passed, the notice goes and the scan carries on.
+		$pending             = get_option( Migration_Catalogue::PENDING );
+		$pending['retry_at'] = time() - 1;
+		update_option( Migration_Catalogue::PENDING, $pending, false );
+		delete_option( Api_Client::RATE_LIMIT_OPTION );
+		$view = $this->dispatch( 'GET' )->get_data();
+		$this->assertNull( $view['problem'] );
+		$this->assertSame( 'scanning', $view['phase'] );
+		$this->catalogue();
+		$this->assertSame( 'report', $this->scan_until( 'report', $run )['phase'] );
 	}
 
 	public function test_a_connection_lost_mid_run_is_explained(): void {
@@ -593,6 +605,7 @@ class Test_Migrate_Endpoint extends WP_UnitTestCase {
 		$this->assertSame( 0, $this->dispatch( 'GET' )->get_data()['report']['chosen'] );
 
 		$view = $this->choose( $run, $bakery, strtoupper( self::BAKERY2 ) );
+		$this->assertSame( self::BAKERY2, $view['choice'], 'The answer says what was stored.' );
 		$this->assertSame( 1, $view['report']['chosen'] );
 		$this->assertSame(
 			array(
@@ -617,7 +630,7 @@ class Test_Migrate_Endpoint extends WP_UnitTestCase {
 		$run = $this->scan_until( 'report' )['run'];
 		$this->choose( $run, $bakery, self::BAKERY );
 
-		$view = $this->dispatch( 'POST', '/swap', array( 'run' => $run ) )->get_data();
+		$view = $this->swap( $run );
 
 		$this->assertSame( 'results', $view['phase'] );
 		$this->assertSame( 2, $view['swap']['embeds'] );
@@ -660,7 +673,7 @@ class Test_Migrate_Endpoint extends WP_UnitTestCase {
 			)
 		);
 
-		$view = $this->dispatch( 'POST', '/swap', array( 'run' => $run ) )->get_data();
+		$view = $this->swap( $run );
 
 		$this->assertSame( 'results', $view['phase'] );
 		$this->assertSame( 1, $view['swap']['failed'] );
@@ -724,9 +737,195 @@ class Test_Migrate_Endpoint extends WP_UnitTestCase {
 			( new Migration_Cli( new Migrator( Plugin::connection(), Plugin::api_client() ) ) )( array(), array( 'dry-run' => true ) );
 			$this->fail( 'WP-CLI must wait for the admin running the tab.' );
 		} catch ( ShowFM_Cli_Halt $halt ) {
-			$this->assertStringContainsString( 'Maya Lindgren is running a scan or swap', $halt->getMessage() );
+			$this->assertStringContainsString( 'Maya Lindgren is already running a scan or swap', $halt->getMessage() );
 		}
 		$this->assertSame( $run, Migration_Store::state()['run'] );
+	}
+
+	public function test_a_swap_needs_a_confirm_and_another_admin_confirms_to_carry_it_on(): void {
+		for ( $i = 0; $i < 6; ++$i ) {
+			$this->post( '[powerpress url="https://media.example/Hello.mp3"]', 'Hello' );
+		}
+		$this->catalogue();
+		$run = $this->scan_until( 'report' )['run'];
+
+		$unconfirmed = $this->dispatch( 'POST', '/swap', array( 'run' => $run ) );
+		$this->assertSame( 409, $unconfirmed->get_status() );
+		$this->assertSame( 'confirm', $unconfirmed->get_data()['data']['reason'] );
+
+		$view = $this->swap( $run );
+		$this->assertSame( 'swapping', $view['phase'] );
+		$this->assertTrue( $view['swap']['mine'] );
+		$this->assertSame( 5, $view['swap']['checked'] );
+
+		// The first admin closes the tab; the lease lapses.
+		update_option(
+			Migration_Admin::LEASE,
+			array(
+				'user'  => $this->admin,
+				'until' => time() - 1,
+			),
+			false
+		);
+		$other = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		if ( is_multisite() ) {
+			grant_super_admin( $other );
+		}
+		wp_set_current_user( $other );
+		$watching = $this->dispatch( 'GET' )->get_data();
+		$this->assertFalse( $watching['swap']['mine'] );
+		$this->assertSame( 'Maya Lindgren', $watching['swap']['by'] );
+
+		$refused = $this->dispatch( 'POST', '/swap', array( 'run' => $run ) );
+		$this->assertSame( 'confirm', $refused->get_data()['data']['reason'] );
+		$this->assertStringContainsString( 'Maya Lindgren started this swap', $refused->get_data()['message'] );
+		$this->assertSame( 5, $refused->get_data()['data']['view']['swap']['checked'], 'Nothing moved on.' );
+
+		$done = $this->swap( $run );
+		$this->assertSame( 'results', $done['phase'] );
+		$this->assertSame( 6, $done['swap']['posts'] );
+		$this->assertTrue( $done['swap']['mine'] );
+	}
+
+	public function test_picks_are_frozen_when_the_swap_starts(): void {
+		for ( $i = 0; $i < 5; ++$i ) {
+			$this->post( '[powerpress url="https://media.example/Hello.mp3"]', 'Hello' );
+		}
+		$bakery = $this->post( '<iframe src="https://www.buzzsprout.com/1234/episodes/1234567-bakery"></iframe>', 'The village bakery', '2024-03-01 09:00:00' );
+		$this->catalogue();
+		$run = $this->scan_until( 'report' )['run'];
+
+		$this->assertSame( 'swapping', $this->swap( $run )['phase'] );
+
+		$late = $this->dispatch(
+			'POST',
+			'/choice',
+			array(
+				'run'     => $run,
+				'post'    => $bakery,
+				'embed'   => 1,
+				'episode' => self::BAKERY,
+			)
+		);
+		$this->assertSame( 409, $late->get_status() );
+		$this->assertSame( 'swapped', $late->get_data()['data']['reason'] );
+
+		// Even a pick written behind the route's back after the start is ignored.
+		update_option( 'showfm_migration_' . $run . '_choices', array( $bakery => array( 1 => self::BAKERY ) ), false );
+		$done = $this->swap( $run );
+
+		$this->assertSame( 'results', $done['phase'] );
+		$this->assertSame( 5, $done['swap']['posts'] );
+		$this->assertStringNotContainsString( 'showfm/player', get_post( $bakery )->post_content );
+	}
+
+	public function test_a_post_the_admin_cannot_edit_is_a_failure_row_and_the_swap_goes_on(): void {
+		$locked = $this->post( '[powerpress url="https://media.example/Hello.mp3"]', 'Hello' );
+		$open   = $this->post( '[powerpress url="https://media.example/Hello.mp3"]', 'Hello' );
+		$this->catalogue();
+		$run  = $this->scan_until( 'report' )['run'];
+		$deny = static function ( $caps, $cap, $user_id, $args ) use ( $locked ) {
+			return 'edit_post' === $cap && (int) ( $args[0] ?? 0 ) === $locked ? array( 'do_not_allow' ) : $caps;
+		};
+		add_filter( 'map_meta_cap', $deny, 10, 4 );
+
+		$view = $this->swap( $run );
+		remove_filter( 'map_meta_cap', $deny, 10 );
+
+		$this->assertSame( 'results', $view['phase'] );
+		$this->assertSame( 1, $view['swap']['posts'] );
+		$this->assertSame( 1, $view['swap']['failed'] );
+		$failed = $this->rows( $run, 'failed' )['rows'][0];
+		$this->assertSame( $locked, $failed['post']['id'] );
+		$this->assertSame( 'You can’t edit this post, so it wasn’t changed.', $failed['reason'] );
+		$this->assertStringContainsString( 'showfm/player', get_post( $open )->post_content );
+	}
+
+	public function test_stop_says_so_when_the_run_cannot_be_given_back(): void {
+		for ( $i = 0; $i < 51; ++$i ) {
+			$this->post( 'Words ' . $i, 'Post ' . $i );
+		}
+		$this->catalogue();
+		$this->dispatch( 'POST', '/scan' );
+
+		$response = Migration_Store::locked(
+			function () {
+				return $this->dispatch( 'POST', '/stop' );
+			}
+		);
+
+		$this->assertSame( 409, $response->get_status() );
+		$this->assertSame( 'busy', $response->get_data()['data']['reason'] );
+		$this->assertSame( $this->admin, get_option( Migration_Admin::LEASE )['user'] );
+	}
+
+	public function test_the_lease_is_per_site(): void {
+		if ( ! is_multisite() ) {
+			$this->markTestSkipped( 'Multisite only.' );
+		}
+		for ( $i = 0; $i < 51; ++$i ) {
+			$this->post( 'Words ' . $i, 'Post ' . $i );
+		}
+		$this->catalogue();
+		$this->dispatch( 'POST', '/scan' );
+		$blog  = self::factory()->blog->create();
+		$other = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		wp_set_current_user( $other );
+
+		switch_to_blog( $blog );
+		$elsewhere = Migration_Admin::claim();
+		$lease     = get_option( Migration_Admin::LEASE );
+		restore_current_blog();
+
+		$this->assertTrue( $elsewhere, 'Another site has its own lease.' );
+		$this->assertSame( $other, $lease['user'] );
+		$here = Migration_Admin::claim();
+		$this->assertWPError( $here );
+		$this->assertSame( 'showfm_migration_busy', $here->get_error_code() );
+	}
+
+	public function test_wp_cli_reset_waits_while_another_admin_runs_the_tab(): void {
+		$this->post( '[powerpress url="https://media.example/Hello.mp3"]', 'Hello' );
+		$this->http->respond( 503 );
+		$this->dispatch( 'POST', '/scan' );
+		$pending = get_option( Migration_Catalogue::PENDING );
+		$this->assertNotEmpty( $pending );
+
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
+		try {
+			( new Migration_Cli( new Migrator( Plugin::connection(), Plugin::api_client() ) ) )( array(), array( 'reset' => true ) );
+			$this->fail( 'WP-CLI must not reset the admin\'s live scan.' );
+		} catch ( ShowFM_Cli_Halt $halt ) {
+			$this->assertStringContainsString( 'Maya Lindgren is already running a scan or swap', $halt->getMessage() );
+		}
+		$this->assertSame( $pending, get_option( Migration_Catalogue::PENDING ) );
+		$this->assertSame( $this->admin, get_option( Migration_Admin::LEASE )['user'] );
+	}
+
+	public function test_wp_cli_takes_the_lease_and_gives_it_back_on_success_and_failure(): void {
+		$this->post( '[powerpress url="https://media.example/Hello.mp3"]', 'Hello' );
+		$this->catalogue();
+		$cli    = new Migration_Cli( new Migrator( Plugin::connection(), Plugin::api_client() ) );
+		$leases = array();
+		$spy    = static function ( $value ) use ( &$leases ) {
+			$leases[] = $value['user'] ?? null;
+			return $value;
+		};
+		add_filter( 'pre_update_option_' . Migration_Admin::LEASE, $spy );
+
+		$cli( array(), array( 'dry-run' => true ) );
+		$this->assertContains( $this->admin, $leases, 'The run held the lease.' );
+		$this->assertFalse( get_option( Migration_Admin::LEASE ) );
+
+		Migration_Store::clear();
+		try {
+			$cli( array(), array( 'yes' => true ) );
+			$this->fail( 'Applying needs a finished dry run.' );
+		} catch ( ShowFM_Cli_Halt $halt ) {
+			$this->assertStringContainsString( 'Complete a dry run', $halt->getMessage() );
+		}
+		remove_filter( 'pre_update_option_' . Migration_Admin::LEASE, $spy );
+		$this->assertFalse( get_option( Migration_Admin::LEASE ), 'A failed run gives the lease back too.' );
 	}
 
 	/**
@@ -747,6 +946,25 @@ class Test_Migrate_Endpoint extends WP_UnitTestCase {
 			}
 		}
 		$this->fail( 'The scan never reached ' . $phase . ': ' . wp_json_encode( $view ) );
+	}
+
+	/**
+	 * One confirmed swap step.
+	 *
+	 * @param string $run Run.
+	 * @return array<string,mixed> View.
+	 */
+	private function swap( string $run ): array {
+		$response = $this->dispatch(
+			'POST',
+			'/swap',
+			array(
+				'run'     => $run,
+				'confirm' => true,
+			)
+		);
+		$this->assertSame( 200, $response->get_status(), wp_json_encode( $response->get_data() ) );
+		return $response->get_data();
 	}
 
 	/**

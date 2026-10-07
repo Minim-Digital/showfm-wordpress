@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-07T22:45:28+00:00\n"
+"POT-Creation-Date: 2026-10-07T23:11:05+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: showfm\n"
@@ -21,7 +21,7 @@ msgstr ""
 #: includes/class-admin.php:88
 #: includes/class-admin.php:216
 #: includes/class-privacy.php:27
-#: build/admin.js:49
+#: build/admin.js:52
 #: build/index.js:20
 msgid "show.fm"
 msgstr ""
@@ -407,118 +407,136 @@ msgstr ""
 msgid "No blocking configuration or server contract problem is recorded for this connection."
 msgstr ""
 
-#: includes/class-migration-admin.php:230
+#. translators: %s: the name of the admin who started the swap.
+#: includes/class-migration-admin.php:177
+#, php-format
+msgid "%s started this swap. Confirm to carry it on."
+msgstr ""
+
+#: includes/class-migration-admin.php:178
+msgid "Confirm the swap first."
+msgstr ""
+
+#: includes/class-migration-admin.php:224
+msgid "You can’t edit this post, so it wasn’t changed."
+msgstr ""
+
+#: includes/class-migration-admin.php:265
 msgid "The swap has started, so choices can’t change. Scan again to review the rest."
 msgstr ""
 
-#: includes/class-migration-admin.php:240
+#: includes/class-migration-admin.php:275
 msgid "Choose one of the episodes listed for this embed."
 msgstr ""
 
-#: includes/class-migration-admin.php:447
+#: includes/class-migration-admin.php:485
 msgid "The connection to show.fm was lost part way through. Nothing else has changed. Reconnect, then carry on."
 msgstr ""
 
-#: includes/class-migration-admin.php:447
+#: includes/class-migration-admin.php:485
 msgid "Connect this site to show.fm to swap old embeds. Matching needs your connected shows."
 msgstr ""
 
-#: includes/class-migration-admin.php:449
+#: includes/class-migration-admin.php:487
 msgid "Only a site administrator who can edit these posts can migrate embeds."
 msgstr ""
 
-#: includes/class-migration-admin.php:451
+#: includes/class-migration-admin.php:489
 msgid "Another scan or swap is running on this site, perhaps from WP-CLI. Try again when it finishes."
 msgstr ""
 
-#: includes/class-migration-admin.php:460
+#: includes/class-migration-admin.php:498
 msgid "show.fm no longer accepts this site’s key. Reconnect, then scan again."
 msgstr ""
 
 #. translators: %s: time of day, for example "10:42".
-#: includes/class-migration-admin.php:467
+#: includes/class-migration-admin.php:505
 #, php-format
 msgid "show.fm is limiting requests from this site. Your progress is saved. Try again after %s."
 msgstr ""
 
-#: includes/class-migration-admin.php:471
+#: includes/class-migration-admin.php:509
 msgid "We couldn’t reach show.fm to list your episodes. Your progress is saved. Try again in a moment."
 msgstr ""
 
 #. translators: %s: the name of the admin running the scan or swap.
-#: includes/class-migration-admin.php:508
+#: includes/class-migration-admin.php:556
 #, php-format
 msgid "%s is already running a scan or swap. Try again when it finishes."
 msgstr ""
 
-#: includes/class-migration-admin.php:628
+#: includes/class-migration-admin.php:597
+msgid "Done, but another request held the site lock, so other admins may have to wait up to two minutes to start a scan."
+msgstr ""
+
+#: includes/class-migration-admin.php:689
 msgid "Audio file"
 msgstr ""
 
-#: includes/class-migration-admin.php:629
+#: includes/class-migration-admin.php:690
 msgid "Episode ID"
 msgstr ""
 
-#: includes/class-migration-admin.php:630
+#: includes/class-migration-admin.php:691
 msgid "Title and date"
 msgstr ""
 
-#: includes/class-migration-admin.php:632
-#: includes/class-migration-admin.php:655
-#: build/admin.js:48
+#: includes/class-migration-admin.php:693
+#: includes/class-migration-admin.php:716
+#: build/admin.js:51
 msgid "None"
 msgstr ""
 
-#: includes/class-migration-admin.php:645
-#: build/admin.js:32
+#: includes/class-migration-admin.php:706
+#: build/admin.js:33
 msgid "Ready"
 msgstr ""
 
-#: includes/class-migration-admin.php:646
-#: build/admin.js:32
+#: includes/class-migration-admin.php:707
+#: build/admin.js:33
 msgid "Choose one"
 msgstr ""
 
-#: includes/class-migration-admin.php:647
-#: build/admin.js:32
+#: includes/class-migration-admin.php:708
+#: build/admin.js:33
 msgid "Left as is"
 msgstr ""
 
-#: includes/class-migration-admin.php:648
-#: build/admin.js:32
+#: includes/class-migration-admin.php:709
+#: build/admin.js:33
 msgid "Nothing to do"
 msgstr ""
 
-#: includes/class-migration-admin.php:649
-#: includes/class-migration-cli.php:229
-#: build/admin.js:32
-#: build/admin.js:34
+#: includes/class-migration-admin.php:710
+#: includes/class-migration-cli.php:286
+#: build/admin.js:33
+#: build/admin.js:35
 msgid "Check by hand"
 msgstr ""
 
-#: includes/class-migration-admin.php:653
+#: includes/class-migration-admin.php:714
 msgid "show.fm block"
 msgstr ""
 
-#: includes/class-migration-admin.php:654
-#: build/admin.js:32
+#: includes/class-migration-admin.php:715
+#: build/admin.js:33
 msgid "Swapped"
 msgstr ""
 
-#: includes/class-migration-admin.php:670
+#: includes/class-migration-admin.php:731
 msgid "You can’t edit this post."
 msgstr ""
 
-#: includes/class-migration-admin.php:670
+#: includes/class-migration-admin.php:731
 msgid "This post couldn’t be checked."
 msgstr ""
 
-#: includes/class-migration-admin.php:699
+#: includes/class-migration-admin.php:760
 msgid "Two players share one block, so this post needs editing by hand."
 msgstr ""
 
 #. translators: %d: number of embeds, always more than one.
-#: includes/class-migration-admin.php:732
+#: includes/class-migration-admin.php:793
 #, php-format
 msgid "%d embed → show.fm Player"
 msgid_plural "%d embeds → show.fm Player"
@@ -526,65 +544,65 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %s: podcast host, for example "PowerPress".
-#: includes/class-migration-admin.php:739
+#: includes/class-migration-admin.php:800
 #, php-format
 msgid "%s episode file → show.fm Player"
 msgstr ""
 
 #. translators: %s: podcast host, for example "PowerPress".
-#: includes/class-migration-admin.php:743
+#: includes/class-migration-admin.php:804
 #, php-format
 msgid "%s shortcode → show.fm Player"
 msgstr ""
 
 #. translators: %s: podcast host, for example "Seriously Simple Podcasting".
-#: includes/class-migration-admin.php:747
+#: includes/class-migration-admin.php:808
 #, php-format
 msgid "%s player → show.fm Player"
 msgstr ""
 
 #. translators: %s: podcast host, for example "Buzzsprout".
-#: includes/class-migration-admin.php:750
+#: includes/class-migration-admin.php:811
 #, php-format
 msgid "%s embed → show.fm Player"
 msgstr ""
 
-#: includes/class-migration-admin.php:753
+#: includes/class-migration-admin.php:814
 msgid "Embed → show.fm Player"
 msgstr ""
 
 #. translators: %s: post field name, for example "enclosure".
-#: includes/class-migration-admin.php:768
+#: includes/class-migration-admin.php:829
 #, php-format
 msgid "%s field"
 msgstr ""
 
 #. translators: %d: post ID.
-#: includes/class-migration-admin.php:818
+#: includes/class-migration-admin.php:879
 #, php-format
 msgid "Deleted post %d"
 msgstr ""
 
 #. translators: %d: post ID.
-#: includes/class-migration-admin.php:827
+#: includes/class-migration-admin.php:888
 #, php-format
 msgid "Untitled post %d"
 msgstr ""
 
-#: includes/class-migration-admin.php:839
+#: includes/class-migration-admin.php:900
 msgctxt "migration report date"
 msgid "j M Y"
 msgstr ""
 
-#: includes/class-migration-admin.php:937
+#: includes/class-migration-admin.php:999
 msgid "The scan changed in another tab or by another admin. This is the latest."
 msgstr ""
 
-#: includes/class-migration-admin.php:942
+#: includes/class-migration-admin.php:1004
 msgid "This site reconnected to show.fm after the scan. Scan again before swapping."
 msgstr ""
 
-#: includes/class-migration-admin.php:952
+#: includes/class-migration-admin.php:1014
 msgid "Another admin"
 msgstr ""
 
@@ -600,51 +618,55 @@ msgstr ""
 msgid "The catalogue is incomplete. The episode list must expose provenance fingerprints. Saved pages and the previous report are retained; resume the dry run after backoff."
 msgstr ""
 
-#: includes/class-migration-cli.php:83
+#: includes/class-migration-cli.php:90
 msgid "Use --reset alone or with --dry-run; it cannot apply or resume an existing report."
 msgstr ""
 
-#: includes/class-migration-cli.php:92
+#: includes/class-migration-cli.php:104
 msgid "Pending catalogue pages discarded. The active report, posts and revisions are unchanged."
 msgstr ""
 
-#: includes/class-migration-cli.php:102
-msgid "Use --dry-run to review or --yes to replace matched embeds."
-msgstr ""
-
-#: includes/class-migration-cli.php:107
-msgid "Use --format=table or --format=json."
-msgstr ""
-
-#: includes/class-migration-cli.php:112
-msgid "Post and batch limits must be positive integers."
-msgstr ""
-
-#: includes/class-migration-cli.php:125
-msgid "Complete a dry run before using --yes. Only that saved report can be applied."
-msgstr ""
-
-#: includes/class-migration-cli.php:136
-msgid "There is no scan to resume."
-msgstr ""
-
-#: includes/class-migration-cli.php:140
-msgid "The post restriction differs from the saved scan. Start a new scan."
-msgstr ""
-
-#: includes/class-migration-cli.php:162
-msgid "Each choice must name an ambiguous embed and one of its reported candidates."
-msgstr ""
-
-#: includes/class-migration-cli.php:197
-msgid "Scan paused. Continue with --resume; no posts have been changed."
-msgstr ""
-
-#: includes/class-migration-cli.php:200
+#: includes/class-migration-cli.php:118
 msgid "Some posts could not be migrated. Review the report."
 msgstr ""
 
-#: includes/class-migration-cli.php:215
+#: includes/class-migration-cli.php:129
+msgid "Use --dry-run to review or --yes to replace matched embeds."
+msgstr ""
+
+#: includes/class-migration-cli.php:134
+msgid "Use --format=table or --format=json."
+msgstr ""
+
+#: includes/class-migration-cli.php:139
+msgid "Post and batch limits must be positive integers."
+msgstr ""
+
+#: includes/class-migration-cli.php:152
+msgid "Complete a dry run before using --yes. Only that saved report can be applied."
+msgstr ""
+
+#: includes/class-migration-cli.php:163
+msgid "There is no scan to resume."
+msgstr ""
+
+#: includes/class-migration-cli.php:167
+msgid "The post restriction differs from the saved scan. Start a new scan."
+msgstr ""
+
+#: includes/class-migration-cli.php:190
+msgid "Each choice must name an ambiguous embed and one of its reported candidates."
+msgstr ""
+
+#: includes/class-migration-cli.php:226
+msgid "Scan paused. Continue with --resume; no posts have been changed."
+msgstr ""
+
+#: includes/class-migration-cli.php:246
+msgid "Couldn’t give the run back because another request held the site lock. Other admins may wait up to two minutes."
+msgstr ""
+
+#: includes/class-migration-cli.php:272
 msgid "Use --choose=post:embed:episode-uuid, with one choice per ambiguous embed."
 msgstr ""
 
@@ -660,7 +682,7 @@ msgstr ""
 msgid "Matching failed safely. Check the content encoding and PHP regular expression limits."
 msgstr ""
 
-#: includes/class-migration-store.php:170
+#: includes/class-migration-store.php:171
 msgid "Another migration request is active. Resume when it finishes."
 msgstr ""
 
@@ -839,7 +861,7 @@ msgstr ""
 
 #: includes/class-publishing.php:78
 #: build/admin.js:15
-#: build/admin.js:49
+#: build/admin.js:52
 msgid "The settings couldn’t be saved. Try again."
 msgstr ""
 
@@ -1028,7 +1050,7 @@ msgid "Blocks keep playing public episodes. You can reconnect at any time."
 msgstr ""
 
 #: build/admin.js:3
-#: build/admin.js:36
+#: build/admin.js:37
 #: build/index.js:13
 msgid "Cancel"
 msgstr ""
@@ -1059,7 +1081,7 @@ msgid "Any public show. Type its address into the block."
 msgstr ""
 
 #: build/admin.js:3
-#: build/admin.js:29
+#: build/admin.js:30
 #: build/index.js:10
 msgid "Connect to show.fm"
 msgstr ""
@@ -1198,7 +1220,7 @@ msgid "show.fm tells this site straight away when an episode changes."
 msgstr ""
 
 #: build/admin.js:10
-#: build/admin.js:49
+#: build/admin.js:52
 msgid "Connection"
 msgstr ""
 
@@ -1231,7 +1253,7 @@ msgid "Open Connected sites in show.fm"
 msgstr ""
 
 #: build/admin.js:10
-#: build/admin.js:46
+#: build/admin.js:47
 #: build/index.js:9
 #: build/index.js:11
 #: build/index.js:12
@@ -1344,17 +1366,17 @@ msgid "Applies to every show.fm block. Colours set on a block still win."
 msgstr ""
 
 #: build/admin.js:15
-#: build/admin.js:49
+#: build/admin.js:52
 msgid "Settings saved."
 msgstr ""
 
 #: build/admin.js:15
-#: build/admin.js:49
+#: build/admin.js:52
 msgid "Save changes"
 msgstr ""
 
 #: build/admin.js:15
-#: build/admin.js:34
+#: build/admin.js:35
 msgid "Ready to swap"
 msgstr ""
 
@@ -1363,12 +1385,12 @@ msgid "Need your choice"
 msgstr ""
 
 #: build/admin.js:15
-#: build/admin.js:34
+#: build/admin.js:35
 msgid "No match"
 msgstr ""
 
 #: build/admin.js:15
-#: build/admin.js:34
+#: build/admin.js:35
 msgid "Already show.fm"
 msgstr ""
 
@@ -1468,206 +1490,220 @@ msgstr ""
 msgid "Something went wrong. Your progress is saved. Try again."
 msgstr ""
 
-#: build/admin.js:28
+#. translators: 1: the admin who started the swap, 2: posts left, 3: posts in the swap.
+#: build/admin.js:29
+#, js-format
+msgid "%1$s started this swap. %2$s of %3$s posts are still to change."
+msgstr ""
+
+#: build/admin.js:29
 msgid "Embeds we detect"
 msgstr ""
 
-#: build/admin.js:28
+#: build/admin.js:29
 msgid "Swap old podcast embeds for show.fm blocks"
 msgstr ""
 
-#: build/admin.js:28
+#: build/admin.js:29
 msgid "We scan your posts and pages for players from other podcast hosts, then match each one to an episode on your connected shows. You review the matches before anything changes."
 msgstr ""
 
-#: build/admin.js:28
+#: build/admin.js:29
 msgid "Nothing changes until you confirm."
 msgstr ""
 
-#: build/admin.js:28
+#: build/admin.js:29
 msgid "Connect this site to show.fm to swap old embeds. Matching needs your connected shows, so it can’t run without a connection."
 msgstr ""
 
-#: build/admin.js:28
+#: build/admin.js:29
 msgid "Scan posts"
 msgstr ""
 
 #. translators: %s: number of posts and pages.
-#: build/admin.js:29
+#: build/admin.js:30
 #, js-format
 msgid "Checks %s published post or page. Usually takes under a minute."
 msgid_plural "Checks %s published posts and pages. Usually takes under a minute."
 msgstr[0] ""
 msgstr[1] ""
 
-#: build/admin.js:29
-#: build/admin.js:46
+#: build/admin.js:30
+#: build/admin.js:47
 msgid "Reconnect to show.fm"
 msgstr ""
 
-#: build/admin.js:29
+#: build/admin.js:30
 msgid "You’ll sign in on show.fm, then come back here."
 msgstr ""
 
-#: build/admin.js:29
+#: build/admin.js:30
 msgid "Scanning your posts"
 msgstr ""
 
-#: build/admin.js:29
+#: build/admin.js:30
 msgid "Scan paused"
 msgstr ""
 
-#: build/admin.js:29
+#: build/admin.js:30
 msgid "Scan progress"
 msgstr ""
 
-#: build/admin.js:29
+#: build/admin.js:30
 msgid "Stop scanning"
 msgstr ""
 
-#: build/admin.js:29
+#: build/admin.js:30
 msgid "Resume scanning"
 msgstr ""
 
-#: build/admin.js:29
+#: build/admin.js:30
 msgid "Swapping embeds"
 msgstr ""
 
-#: build/admin.js:29
+#: build/admin.js:30
 msgid "Swap progress"
 msgstr ""
 
-#: build/admin.js:29
+#: build/admin.js:30
 msgid "WordPress saves a revision of each post before we change it. If you leave this page, the swap carries on from here when you come back."
 msgstr ""
 
-#: build/admin.js:29
+#: build/admin.js:30
 msgid "Resume swapping"
 msgstr ""
 
-#: build/admin.js:29
+#: build/admin.js:30
 #: build/index.js:20
 msgid "Choose an episode"
 msgstr ""
 
 #. translators: 1: episode title, 2: date published.
-#: build/admin.js:30
+#: build/admin.js:31
 #, js-format
 msgid "%1$s (%2$s)"
 msgstr ""
 
 #. translators: %s: post title.
-#: build/admin.js:31
+#: build/admin.js:32
 #, js-format
 msgid "Episode for “%s”"
 msgstr ""
 
 #. translators: %s: number of episodes.
-#: build/admin.js:32
+#: build/admin.js:33
 #, js-format
 msgid "%s possible match"
 msgid_plural "%s possible matches"
 msgstr[0] ""
 msgstr[1] ""
 
-#: build/admin.js:32
+#: build/admin.js:33
 msgid "Already a show.fm block"
 msgstr ""
 
-#: build/admin.js:32
+#: build/admin.js:33
 msgid "No matching episode"
 msgstr ""
 
 #. translators: %s: how long ago, for example "2 minutes ago".
-#: build/admin.js:33
+#: build/admin.js:34
 #, js-format
 msgid "Scanned %s"
 msgstr ""
 
 #. translators: %s: how long ago, for example "2 minutes ago".
-#: build/admin.js:34
+#: build/admin.js:35
 #, js-format
 msgid "Scanned %s · nothing has changed yet"
 msgstr ""
 
-#: build/admin.js:34
-#: build/admin.js:42
-#: build/admin.js:44
-#: build/admin.js:48
+#: build/admin.js:35
+#: build/admin.js:43
+#: build/admin.js:45
+#: build/admin.js:51
 msgid "Post"
 msgstr ""
 
-#: build/admin.js:34
+#: build/admin.js:35
 msgid "Current embed"
 msgstr ""
 
-#: build/admin.js:34
+#: build/admin.js:35
 msgid "Matched episode"
 msgstr ""
 
-#: build/admin.js:34
+#: build/admin.js:35
 msgid "How it matched"
 msgstr ""
 
-#: build/admin.js:34
+#: build/admin.js:35
 msgid "Status"
 msgstr ""
 
-#: build/admin.js:34
+#: build/admin.js:35
 msgid "One clear match each."
 msgstr ""
 
-#: build/admin.js:34
+#: build/admin.js:35
 msgid "Needs your choice"
 msgstr ""
 
-#: build/admin.js:34
+#: build/admin.js:35
 msgid "More than one episode could match. Pick one, or leave it and it’s skipped."
 msgstr ""
 
-#: build/admin.js:34
+#: build/admin.js:35
 msgid "We couldn’t find these episodes on your connected shows. They stay as they are."
 msgstr ""
 
-#: build/admin.js:34
+#: build/admin.js:35
 msgid "These already use a show.fm block."
 msgstr ""
 
-#: build/admin.js:34
+#: build/admin.js:35
 msgid "We couldn’t check these safely, so they stay as they are."
 msgstr ""
 
 #. translators: %s: number of rows.
-#: build/admin.js:35
-#: build/admin.js:44
+#: build/admin.js:36
 #: build/admin.js:45
+#: build/admin.js:46
 #, js-format
 msgid "Show %s more"
 msgstr ""
 
-#: build/admin.js:35
+#: build/admin.js:36
 msgid "Back to the results"
 msgstr ""
 
-#: build/admin.js:35
-#: build/admin.js:46
+#: build/admin.js:36
+#: build/admin.js:47
 msgid "Scan again"
 msgstr ""
 
 #. translators: %s: number of posts.
-#: build/admin.js:36
+#: build/admin.js:37
 #, js-format
 msgid "We’ll replace them with show.fm Player blocks in %s post. Nothing else in it changes, and it stays published."
 msgid_plural "We’ll replace them with show.fm Player blocks in %s posts. Nothing else in those posts changes, and they stay published."
 msgstr[0] ""
 msgstr[1] ""
 
-#: build/admin.js:36
+#: build/admin.js:37
 msgid "WordPress keeps a revision of every post we change, so you can restore any of them."
 msgstr ""
 
-#. translators: %s: number of embeds.
 #: build/admin.js:37
+msgid "Carry on swapping?"
+msgstr ""
+
+#: build/admin.js:37
+msgid "Carry on swapping"
+msgstr ""
+
+#. translators: %s: number of embeds.
+#: build/admin.js:38
 #, js-format
 msgid "%s embed that needed a choice"
 msgid_plural "%s embeds that needed a choice"
@@ -1675,257 +1711,269 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %s: number of embeds.
-#: build/admin.js:38
+#: build/admin.js:39
 #, js-format
 msgid "%s with no match"
 msgstr ""
 
 #. translators: %s: number of embeds.
-#: build/admin.js:39
+#: build/admin.js:40
 #, js-format
 msgid "%s already on show.fm"
 msgstr ""
 
 #. translators: %s: number of embeds or posts.
-#: build/admin.js:40
+#: build/admin.js:41
 #, js-format
 msgid "%s to check by hand"
 msgstr ""
 
 #. translators: %s: list, for example "3 embeds that needed a choice, 2 with no match and 6 already on show.fm".
-#: build/admin.js:41
+#: build/admin.js:42
 #, js-format
 msgid "Not changed: %s."
 msgstr ""
 
-#: build/admin.js:41
+#: build/admin.js:42
 msgid "WordPress keeps a revision of every post we change."
 msgstr ""
 
 #. translators: %s: number of posts.
-#: build/admin.js:42
+#: build/admin.js:43
 #, js-format
 msgid "%s post couldn’t be changed. It’s listed below with the reason."
 msgid_plural "%s posts couldn’t be changed. They’re listed below with the reasons."
 msgstr[0] ""
 msgstr[1] ""
 
-#: build/admin.js:42
+#: build/admin.js:43
 msgid "What changed"
 msgstr ""
 
-#: build/admin.js:42
+#: build/admin.js:43
 #: build/index.js:12
 msgid "Change"
 msgstr ""
 
-#: build/admin.js:42
+#: build/admin.js:43
 msgid "Revision"
 msgstr ""
 
-#: build/admin.js:42
+#: build/admin.js:43
 msgid "Compare revisions"
 msgstr ""
 
 #. translators: %s: number of posts.
-#: build/admin.js:43
+#: build/admin.js:44
 #, js-format
 msgid "Show all %s posts"
 msgstr ""
 
-#: build/admin.js:44
+#: build/admin.js:45
 msgid "No posts were changed."
 msgstr ""
 
-#: build/admin.js:44
+#: build/admin.js:45
 msgid "Review them"
 msgstr ""
 
-#: build/admin.js:44
+#: build/admin.js:45
 msgid "Not changed"
 msgstr ""
 
-#: build/admin.js:44
+#: build/admin.js:45
 msgid "Why it wasn’t changed"
 msgstr ""
 
-#: build/admin.js:45
+#: build/admin.js:46
 msgid "Nothing to migrate."
 msgstr ""
 
 #. translators: %s: number of posts and pages.
-#: build/admin.js:46
+#: build/admin.js:47
 #, js-format
 msgid "We checked %s published post or page and didn’t find embeds from other podcast hosts."
 msgid_plural "We checked %s published posts and pages and didn’t find embeds from other podcast hosts."
 msgstr[0] ""
 msgstr[1] ""
 
-#: build/admin.js:46
+#: build/admin.js:47
 msgid "Check again"
 msgstr ""
 
-#: build/admin.js:46
+#. translators: 1: per cent done, 2: posts changed so far.
+#: build/admin.js:48
+#, js-format
+msgid "Swap %1$s%% done. %2$s posts changed so far."
+msgstr ""
+
+#. translators: 1: per cent done, 2: embeds found so far.
+#: build/admin.js:49
+#, js-format
+msgid "Scan %1$s%% done. %2$s embeds found so far."
+msgstr ""
+
+#: build/admin.js:49
 msgid "The migration couldn’t be loaded. Reload the page to try again."
 msgstr ""
 
 #. translators: %s: the name of the admin running the scan or swap.
-#: build/admin.js:47
+#: build/admin.js:50
 #, js-format
 msgid "%s is running a scan or swap. This page follows their progress."
 msgstr ""
 
-#: build/admin.js:47
+#: build/admin.js:50
 msgid "Post type"
 msgstr ""
 
-#: build/admin.js:47
+#: build/admin.js:50
 msgid "Any public post type that supports the block editor."
 msgstr ""
 
-#: build/admin.js:47
+#: build/admin.js:50
 msgid "Category"
 msgstr ""
 
-#: build/admin.js:47
+#: build/admin.js:50
 msgid "Added to every new episode post."
 msgstr ""
 
 #. translators: %s: post type name, for example "Pages".
-#: build/admin.js:48
+#: build/admin.js:51
 #, js-format
 msgid "%s don’t have categories."
 msgstr ""
 
-#: build/admin.js:48
+#: build/admin.js:51
 msgid "Default category"
 msgstr ""
 
-#: build/admin.js:48
+#: build/admin.js:51
 msgid "Author"
 msgstr ""
 
-#: build/admin.js:48
+#: build/admin.js:51
 msgid "Shown as the post’s author."
 msgstr ""
 
-#: build/admin.js:48
+#: build/admin.js:51
 msgid "Nobody on this site can publish this post type."
 msgstr ""
 
-#: build/admin.js:48
+#: build/admin.js:51
 msgid "Post template"
 msgstr ""
 
-#: build/admin.js:48
+#: build/admin.js:51
 msgid "From your theme. Default uses the normal post template."
 msgstr ""
 
-#: build/admin.js:48
+#: build/admin.js:51
 msgid "Recent activity"
 msgstr ""
 
-#: build/admin.js:48
+#: build/admin.js:51
 msgid "Last 20 events"
 msgstr ""
 
-#: build/admin.js:48
+#: build/admin.js:51
 msgid "Time"
 msgstr ""
 
-#: build/admin.js:48
+#: build/admin.js:51
 #: build/index.js:13
 #: build/index.js:16
 msgid "Episode"
 msgstr ""
 
-#: build/admin.js:48
+#: build/admin.js:51
 msgid "What happened"
 msgstr ""
 
-#: build/admin.js:48
+#: build/admin.js:51
 msgid "No episodes posted yet."
 msgstr ""
 
-#: build/admin.js:48
+#: build/admin.js:51
 msgid "The next episode you publish on show.fm will appear here, with a link to its post."
 msgstr ""
 
-#: build/admin.js:48
+#: build/admin.js:51
 msgid "Sync is one way, from show.fm to WordPress."
 msgstr ""
 
-#: build/admin.js:48
+#: build/admin.js:51
 msgid "If you edit a synced post here, show.fm then only updates its date and status."
 msgstr ""
 
-#: build/admin.js:48
+#: build/admin.js:51
 msgid "Unpublished episodes go back to draft."
 msgstr ""
 
-#: build/admin.js:48
+#: build/admin.js:51
 msgid "Deleted episodes go to the bin."
 msgstr ""
 
-#: build/admin.js:48
+#: build/admin.js:51
 msgid "How sync works"
 msgstr ""
 
-#: build/admin.js:48
+#: build/admin.js:51
 msgid "The publishing settings couldn’t be loaded. Reload the page to try again."
 msgstr ""
 
-#: build/admin.js:48
+#: build/admin.js:51
 msgid "Auto-posting"
 msgstr ""
 
 #. translators: %s: show names, for example "The Long Table and Second Helpings".
-#: build/admin.js:49
+#: build/admin.js:52
 #, js-format
 msgid "Applies to %s."
 msgstr ""
 
-#: build/admin.js:49
+#: build/admin.js:52
 msgid "Post new episodes automatically"
 msgstr ""
 
-#: build/admin.js:49
+#: build/admin.js:52
 msgid "When an episode is published on show.fm, a post is created here. Scheduled episodes become scheduled posts."
 msgstr ""
 
-#: build/admin.js:49
+#: build/admin.js:52
 msgid "New episodes aren’t posted here. Posts that already exist keep updating."
 msgstr ""
 
-#: build/admin.js:49
+#: build/admin.js:52
 msgid "Include the transcript"
 msgstr ""
 
-#: build/admin.js:49
+#: build/admin.js:52
 msgid "Adds the transcript under the player, so search engines and screen readers can use it."
 msgstr ""
 
-#: build/admin.js:49
+#: build/admin.js:52
 msgid "Use the episode artwork as the featured image"
 msgstr ""
 
-#: build/admin.js:49
+#: build/admin.js:52
 msgid "Falls back to the show artwork when an episode has none."
 msgstr ""
 
-#: build/admin.js:49
+#: build/admin.js:52
 msgid "Publishing"
 msgstr ""
 
-#: build/admin.js:49
+#: build/admin.js:52
 msgid "Display"
 msgstr ""
 
-#: build/admin.js:49
+#: build/admin.js:52
 msgid "Migrate"
 msgstr ""
 
-#: build/admin.js:49
+#: build/admin.js:52
 msgid "The show.fm settings couldn’t be loaded. Reload the page to try again."
 msgstr ""
 

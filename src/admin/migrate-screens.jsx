@@ -29,6 +29,7 @@ import {
 	percent,
 	problemAction,
 	reportTitle,
+	resumeText,
 	rowStatus,
 	scanLine,
 	scanNote,
@@ -591,6 +592,7 @@ function remaining( list ) {
  * @param {() => void}                           props.onScanAgain Starts a new scan.
  * @param {() => void}                           props.onBack      Back to the results.
  * @param {Object}                               props.headingRef  Ref the tab focuses.
+ * @param {boolean}                              props.saving      Whether a pick is saving; Swap waits.
  */
 export function Report( {
 	view,
@@ -603,6 +605,7 @@ export function Report( {
 	onScanAgain,
 	onBack,
 	headingRef,
+	saving = false,
 } ) {
 	const { report } = view;
 	const groups = GROUPS.filter( ( group ) => report.counts[ group ] > 0 );
@@ -792,7 +795,8 @@ export function Report( {
 						<Button
 							variant="primary"
 							onClick={ onSwap }
-							disabled={ report.swap.embeds < 1 }
+							disabled={ report.swap.embeds < 1 || saving }
+							isBusy={ saving }
 							accessibleWhenDisabled
 							__next40pxDefaultSize
 						>
@@ -856,6 +860,51 @@ export function ConfirmSwap( { report, onCancel, onConfirm } ) {
 					__next40pxDefaultSize
 				>
 					{ swapLabel( report.swap.embeds ) }
+				</Button>
+			</div>
+		</Modal>
+	);
+}
+
+/**
+ * Confirm carrying on a swap another admin started and left.
+ *
+ * @param {Object}     props
+ * @param {Object}     props.swap      The view's swap.
+ * @param {() => void} props.onCancel  Closes.
+ * @param {() => void} props.onConfirm Carries on the swap.
+ */
+export function ConfirmResume( { swap, onCancel, onConfirm } ) {
+	return (
+		<Modal
+			className="showfm-modal"
+			title={ __( 'Carry on swapping?', 'showfm' ) }
+			onRequestClose={ onCancel }
+			size="medium"
+		>
+			<div className="showfm-modal__body">
+				<p>{ resumeText( swap ) }</p>
+				<p>
+					{ __(
+						'WordPress keeps a revision of every post we change, so you can restore any of them.',
+						'showfm'
+					) }
+				</p>
+			</div>
+			<div className="showfm-modal__actions">
+				<Button
+					variant="tertiary"
+					onClick={ onCancel }
+					__next40pxDefaultSize
+				>
+					{ __( 'Cancel', 'showfm' ) }
+				</Button>
+				<Button
+					variant="primary"
+					onClick={ onConfirm }
+					__next40pxDefaultSize
+				>
+					{ __( 'Carry on swapping', 'showfm' ) }
 				</Button>
 			</div>
 		</Modal>

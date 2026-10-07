@@ -159,14 +159,15 @@ final class Migration_Store {
 	 * Serialise report state transitions on this site, including CLI requests.
 	 *
 	 * @param callable $operation Operation.
+	 * @param int      $wait      Seconds to wait for another request's lock, zero by default.
 	 * @return mixed
 	 */
-	public static function locked( callable $operation ) {
+	public static function locked( callable $operation, int $wait = 0 ) {
 		global $wpdb;
 		$name = 'showfm_migrate_' . hash( 'sha256', $wpdb->dbname . $wpdb->options );
 		$name = substr( $name, 0, 64 );
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Connection-owned advisory lock, released in finally.
-		if ( isset( self::$held[ $name ] ) || '1' !== (string) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 0)', $name ) ) ) {
+		if ( isset( self::$held[ $name ] ) || '1' !== (string) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', $name, max( 0, $wait ) ) ) ) {
 			return new \WP_Error( 'showfm_busy', __( 'Another migration request is active. Resume when it finishes.', 'showfm' ) );
 		}
 		self::$held[ $name ] = true;

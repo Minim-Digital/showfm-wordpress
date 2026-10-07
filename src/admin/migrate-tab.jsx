@@ -6,6 +6,7 @@
  * matched embeds for show.fm Player blocks. Each scan and swap step is one short request;
  * the tab keeps stepping while the page is open, and a reload carries on from the last step.
  */
+import { speak } from '@wordpress/a11y';
 import apiFetch from '@wordpress/api-fetch';
 import { Notice, Spinner } from '@wordpress/components';
 import { useCallback, useEffect, useRef, useState } from '@wordpress/element';
@@ -13,6 +14,7 @@ import { __, sprintf } from '@wordpress/i18n';
 import { addQueryArgs } from '@wordpress/url';
 
 import {
+	ConfirmResume,
 	ConfirmSwap,
 	ConnectForm,
 	Empty,
@@ -28,7 +30,9 @@ import {
 	GROUPS,
 	MIGRATE_PATH,
 	MORE_ROWS,
+	percent,
 	problemFrom,
+	progressText,
 	resumeStep,
 } from './migrate-view';
 
@@ -51,7 +55,13 @@ export default function MigrateTab( { connection } ) {
 	const [ reviewing, setReviewing ] = useState( false );
 	const [ lists, setLists ] = useState( {} );
 	const [ focusRow, setFocusRow ] = useState( '' );
+	const [ resuming, setResuming ] = useState( false );
+	const [ saving, setSaving ] = useState( 0 );
+	const [ refocus, setRefocus ] = useState( 0 );
 	const headingRef = useRef();
+	const picks = useRef( {} );
+	const latest = useRef( null );
+	const announced = useRef( '' );
 	const noticeRef = useRef();
 	const formRef = useRef();
 	const mounted = useRef( true );
@@ -191,6 +201,63 @@ export default function MigrateTab( { connection } ) {
 		}
 	}, [ problem ] );
 
+	// When a button the admin used goes away (Stop, Resume), focus returns to the heading.
+	useEffect( () => {
+		if ( refocus ) {
+			headingRef.current?.focus();
+		}
+	}, [ refocus ] );
+
+	latest.current = view;
+
+	// Progress is read out politely each quarter of the way, not on every step.
+	const quarter = ( () => {
+		if ( ! stepping || ! view ) {
+			return '';
+		}
+		if ( view.phase === 'scanning' && ! view.scan?.catalogue ) {
+			return `scan:${ Math.floor(
+				percent( view.scan.checked, view.scan.total ) / 25
+			) }`;
+		}
+		if ( view.phase === 'swapping' ) {
+			return `swap:${ Math.floor(
+				percent( view.swap.checked, view.swap.total ) / 25
+			) }`;
+		}
+		return '';
+	} )();
+	useEffect( () => {
+		if ( ! quarter || quarter === announced.current ) {
+			return;
+		}
+		const first = ! announced.current.startsWith(
+			quarter.split( ':' )[ 0 ]
+		);
+		announced.current = quarter;
+		if ( ! first ) {
+			speak( progressText( latest.current ), 'polite' );
+		}
+	}, [ quarter ] );
+
+	// A rate limit lifts at its retry time: the notice goes and the scan carries on.
+	useEffect( () => {
+		if ( problem?.reason !== 'rate_limited' || ! problem.retryAt ) {
+			return;
+		}
+		const timer = setTimeout(
+			() => {
+				setProblem( null );
+				const now = latest.current;
+				if ( resumeStep( { ...now, problem: null } ) === 'scan' ) {
+					go( 'scan', { run: now.run } );
+				}
+			},
+			Math.max( 0, problem.retryAt * 1000 - Date.now() ) + 1000
+		);
+		return () => clearTimeout( timer );
+	}, [ problem, go ] );
+
 	// Rows for the report or the results, from the first page of each group.
 	const run = view?.run;
 	const listing = [ 'report', 'review', 'results' ].includes( screen );
@@ -271,45 +338,67 @@ export default function MigrateTab( { connection } ) {
 		loadRows( group, list.items.length, MORE_ROWS );
 	};
 
+	// Shows a pick in its row.
+	const showPick = ( id, choice ) =>
+		setLists( ( current ) => ( {
+			...current,
+			choose: {
+				...current.choose,
+				items: current.choose.items.map( ( item ) =>
+					item.id === id
+						? {
+								...item,
+								choice,
+								status: choice ? 'chosen' : 'choose',
+							}
+						: item
+				),
+			},
+		} ) );
+
+	// Picks are saved one request at a time per row. A change made while one is saving is
+	// sent after it, and the row ends on the pick the server stored last. Swap waits.
 	const choose = async ( row, value ) => {
-		const update = ( choice ) =>
-			setLists( ( current ) => ( {
-				...current,
-				choose: {
-					...current.choose,
-					items: current.choose.items.map( ( item ) =>
-						item.id === row.id
-							? {
-									...item,
-									choice,
-									status: choice ? 'chosen' : 'choose',
-								}
-							: item
-					),
-				},
-			} ) );
-		update( value );
+		showPick( row.id, value );
+		const pending = picks.current[ row.id ];
+		if ( pending ) {
+			pending.wanted = value;
+			return;
+		}
+		const entry = { wanted: value, stored: row.choice };
+		picks.current[ row.id ] = entry;
+		setSaving( ( count ) => count + 1 );
 		try {
-			const next = await apiFetch( {
-				path: `${ MIGRATE_PATH }/choice`,
-				method: 'POST',
-				data: {
-					run: view.run,
-					post: row.post.id,
-					embed: row.embed,
-					episode: value,
-				},
-			} );
-			if ( mounted.current ) {
-				take( next );
-			}
+			let sent;
+			do {
+				sent = entry.wanted;
+				const next = await apiFetch( {
+					path: `${ MIGRATE_PATH }/choice`,
+					method: 'POST',
+					data: {
+						run: view.run,
+						post: row.post.id,
+						embed: row.embed,
+						episode: sent,
+					},
+				} );
+				entry.stored = next.choice;
+				if ( mounted.current ) {
+					take( next );
+				}
+			} while ( entry.wanted !== sent );
 		} catch ( error ) {
 			if ( mounted.current ) {
-				update( row.choice );
 				if ( error?.data?.view ) {
 					setView( error.data.view );
 				}
 				setProblem( problemFrom( error ) );
+			}
+		} finally {
+			delete picks.current[ row.id ];
+			if ( mounted.current ) {
+				showPick( row.id, entry.stored );
+				setSaving( ( count ) => count - 1 );
 			}
 		}
 	};
@@ -334,6 +423,7 @@ export default function MigrateTab( { connection } ) {
 		}
 		if ( mounted.current ) {
 			setStopping( false );
+			setRefocus( ( count ) => count + 1 );
 		}
 	};
 
@@ -342,10 +432,16 @@ export default function MigrateTab( { connection } ) {
 		go( 'scan', { restart: true } );
 	};
 
-	const resume = () =>
-		go( view.phase === 'swapping' ? 'swap' : 'scan', {
-			run: view.run,
-		} );
+	// Resuming keeps focus on the heading, since the button goes. A swap carries on straight
+	// away only for the admin who confirmed it; anyone else confirms first.
+	const resume = () => {
+		if ( view.phase === 'swapping' && ! view.swap?.mine ) {
+			setResuming( true );
+			return;
+		}
+		setRefocus( ( count ) => count + 1 );
+		go( view.phase === 'swapping' ? 'swap' : 'scan', { run: view.run } );
+	};
 
 	const act = ( action ) => {
 		if ( action === 'reconnect' ) {
@@ -450,6 +546,7 @@ export default function MigrateTab( { connection } ) {
 					onMore={ more }
 					onChoose={ choose }
 					onSwap={ () => setConfirming( true ) }
+					saving={ saving > 0 }
 					onScanAgain={ scanAgain }
 					onBack={ () => setReviewing( false ) }
 					headingRef={ headingRef }
@@ -495,7 +592,18 @@ export default function MigrateTab( { connection } ) {
 					onCancel={ () => setConfirming( false ) }
 					onConfirm={ () => {
 						setConfirming( false );
-						go( 'swap', { run: view.run } );
+						go( 'swap', { run: view.run, confirm: true } );
+					} }
+				/>
+			) }
+			{ resuming && view.swap && (
+				<ConfirmResume
+					swap={ view.swap }
+					onCancel={ () => setResuming( false ) }
+					onConfirm={ () => {
+						setResuming( false );
+						setRefocus( ( count ) => count + 1 );
+						go( 'swap', { run: view.run, confirm: true } );
 					} }
 				/>
 			) }

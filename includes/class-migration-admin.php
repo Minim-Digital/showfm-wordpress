@@ -38,6 +38,9 @@ final class Migration_Admin {
 	/** How long a step keeps the run for its admin, in seconds. */
 	const LEASE_TTL = 120;
 
+	/** Seconds a pick or a lease change waits for another request's site lock. */
+	const WAIT = 5;
+
 	/** Catalogue requests per scan step. */
 	const CATALOGUE_REQUESTS = 10;
 
@@ -114,8 +117,7 @@ final class Migration_Admin {
 			return true;
 		}
 		if ( ! empty( $state['complete'] ) ) {
-			self::release();
-			return true;
+			return self::release() ? true : self::unreleased();
 		}
 		$after = (int) $state['after'];
 		$next  = $this->migrator->batch( $state['run'] );
@@ -130,8 +132,8 @@ final class Migration_Admin {
 			}
 		}
 		self::save_progress( $next['run'], $found, $next['complete'] ? time() : 0 );
-		if ( $next['complete'] ) {
-			self::release();
+		if ( $next['complete'] && ! self::release() ) {
+			return self::unreleased();
 		}
 		return true;
 	}
@@ -139,10 +141,16 @@ final class Migration_Admin {
 	/**
 	 * One swap step: applies the next few reviewed posts of the finished scan.
 	 *
-	 * @param string $run The run the screen showed when the admin confirmed.
+	 * The first step freezes the picks into the swap cursor, under the same lock a pick is
+	 * written under, so a pick can't land after the swap has started. The cursor records who
+	 * confirmed the swap. Another admin carries it on only with `$confirm`, after their own
+	 * confirm dialog, and then it is theirs.
+	 *
+	 * @param string $run     The run the screen showed when the admin confirmed.
+	 * @param bool   $confirm Whether the admin confirmed this swap in the dialog.
 	 * @return true|\WP_Error
 	 */
-	public function swap( string $run ) {
+	public function swap( string $run, bool $confirm = false ) {
 		$ready = $this->begin();
 		if ( is_wp_error( $ready ) ) {
 			return $ready;
@@ -154,29 +162,52 @@ final class Migration_Admin {
 		if ( ! $this->migrator->owns( $state ) ) {
 			return self::reconnected();
 		}
-		$choices = self::choices( $run );
-		$cursor  = self::cursor( $run );
-		if ( ! $cursor ) {
-			$total = 0;
-			foreach ( Migration_Store::reports( $run ) as $report ) {
-				$total += self::swappable( $report, $choices[ $report['post_id'] ] ?? array() ) ? 1 : 0;
+		$user   = get_current_user_id();
+		$cursor = Migration_Store::locked(
+			static function () use ( $run, $user, $confirm ) {
+				$cursor = self::cursor( $run );
+				if ( ( $cursor['user'] ?? 0 ) === $user ) {
+					return $cursor;
+				}
+				if ( ! $confirm ) {
+					return $cursor ? self::error(
+						'confirm',
+						409,
+						/* translators: %s: the name of the admin who started the swap. */
+						sprintf( __( '%s started this swap. Confirm to carry it on.', 'showfm' ), self::name( (int) ( $cursor['user'] ?? 0 ) ) )
+					) : self::error( 'confirm', 409, __( 'Confirm the swap first.', 'showfm' ) );
+				}
+				if ( ! $cursor ) {
+					$choices = self::choices( $run );
+					$total   = 0;
+					foreach ( Migration_Store::reports( $run ) as $report ) {
+						$total += self::swappable( $report, $choices[ $report['post_id'] ] ?? array() ) ? 1 : 0;
+					}
+					$cursor = array(
+						'after'    => 0,
+						'done'     => false,
+						'total'    => $total,
+						'checked'  => 0,
+						'posts'    => 0,
+						'embeds'   => 0,
+						'failures' => array(),
+						'choices'  => $choices,
+						'started'  => time(),
+						'finished' => 0,
+					);
+				}
+				$cursor['user'] = $user;
+				self::save_cursor( $run, $cursor );
+				return $cursor;
 			}
-			$cursor = array(
-				'after'    => 0,
-				'done'     => false,
-				'total'    => $total,
-				'checked'  => 0,
-				'posts'    => 0,
-				'embeds'   => 0,
-				'failures' => array(),
-				'started'  => time(),
-				'finished' => 0,
-			);
+		);
+		if ( is_wp_error( $cursor ) ) {
+			return $cursor;
 		}
 		if ( $cursor['done'] ) {
-			self::release();
-			return true;
+			return self::release() ? true : self::unreleased();
 		}
+		$choices = $cursor['choices'] ?? array();
 		$reports = Migration_Store::after( $run, $cursor['after'], self::SWAP_POSTS );
 		foreach ( $reports as $report ) {
 			$post_id = (int) $report['post_id'];
@@ -184,12 +215,13 @@ final class Migration_Admin {
 			if ( self::swappable( $report, $chosen ) ) {
 				$result = $this->migrator->swap( $post_id, $chosen, $run );
 				if ( is_wp_error( $result ) ) {
-					// Stop the run, without moving on, when it can't go on at all.
-					if ( in_array( $result->get_error_code(), array( 'showfm_not_connected', 'showfm_forbidden', 'showfm_busy', 'showfm_stale_run' ), true ) ) {
+					// Stop the run, without moving on, when it can't go on at all. A post this
+					// admin can't edit is that post's failure; the rest carry on.
+					if ( in_array( $result->get_error_code(), array( 'showfm_not_connected', 'showfm_busy', 'showfm_stale_run' ), true ) || ( 'showfm_forbidden' === $result->get_error_code() && ! current_user_can( 'manage_options' ) ) ) {
 						self::save_cursor( $run, $cursor );
 						return $result;
 					}
-					$cursor['failures'][ $post_id ] = $result->get_error_message();
+					$cursor['failures'][ $post_id ] = 'showfm_forbidden' === $result->get_error_code() ? __( 'You can’t edit this post, so it wasn’t changed.', 'showfm' ) : $result->get_error_message();
 				} elseif ( 'swapped' === ( $result['status'] ?? '' ) ) {
 					++$cursor['posts'];
 					$cursor['embeds'] += count( $result['swapped'] ?? array() );
@@ -203,7 +235,7 @@ final class Migration_Admin {
 			$cursor['done']     = true;
 			$cursor['finished'] = time();
 			self::save_cursor( $run, $cursor );
-			self::release();
+			return self::release() ? true : self::unreleased();
 		}
 		return true;
 	}
@@ -215,32 +247,33 @@ final class Migration_Admin {
 	 * @param int    $post_id Post ID.
 	 * @param int    $embed   One-based embed number in the post.
 	 * @param string $episode Episode UUID from the embed's candidates, or '' to clear.
-	 * @return true|\WP_Error
+	 * @return string|\WP_Error The stored pick, or '' when cleared.
 	 */
 	public function choose( string $run, int $post_id, int $embed, string $episode ) {
 		$access = $this->migrator->access();
 		if ( is_wp_error( $access ) ) {
 			return $access;
 		}
-		$state = Migration_Store::state();
-		if ( ( $state['run'] ?? '' ) !== $run || empty( $state['complete'] ) ) {
-			return self::stale();
-		}
-		if ( self::cursor( $run ) ) {
-			return self::error( 'swapped', 409, __( 'The swap has started, so choices can’t change. Scan again to review the rest.', 'showfm' ) );
-		}
-		$report = Migration_Store::get( $run, $post_id );
-		$valid  = false;
-		foreach ( 'scanned' === ( $report['status'] ?? '' ) ? $report['items'] : array() as $item ) {
-			if ( $embed === $item['embed'] && 'ambiguous' === $item['status'] ) {
-				$valid = '' === $episode || in_array( $episode, array_column( $item['candidates'], 'id' ), true );
-			}
-		}
-		if ( ! $valid ) {
-			return self::error( 'invalid_choice', 400, __( 'Choose one of the episodes listed for this embed.', 'showfm' ) );
-		}
+		// Checked and written under the lock the swap's first step freezes the picks under.
 		return Migration_Store::locked(
 			static function () use ( $run, $post_id, $embed, $episode ) {
+				$state = Migration_Store::state();
+				if ( ( $state['run'] ?? '' ) !== $run || empty( $state['complete'] ) ) {
+					return self::stale();
+				}
+				if ( self::cursor( $run ) ) {
+					return self::error( 'swapped', 409, __( 'The swap has started, so choices can’t change. Scan again to review the rest.', 'showfm' ) );
+				}
+				$report = Migration_Store::get( $run, $post_id );
+				$valid  = false;
+				foreach ( 'scanned' === ( $report['status'] ?? '' ) ? $report['items'] : array() as $item ) {
+					if ( $embed === $item['embed'] && 'ambiguous' === $item['status'] ) {
+						$valid = '' === $episode || in_array( $episode, array_column( $item['candidates'], 'id' ), true );
+					}
+				}
+				if ( ! $valid ) {
+					return self::error( 'invalid_choice', 400, __( 'Choose one of the episodes listed for this embed.', 'showfm' ) );
+				}
 				$choices = self::choices( $run );
 				if ( '' === $episode ) {
 					unset( $choices[ $post_id ][ $embed ] );
@@ -249,19 +282,22 @@ final class Migration_Admin {
 				}
 				update_option( self::choices_key( $run ), array_filter( $choices ), false );
 				wp_cache_delete( self::choices_key( $run ), 'options' );
-				return true;
-			}
+				return $episode;
+			},
+			self::WAIT
 		);
 	}
 
 	/**
 	 * Pauses the scan: gives the run back, so another admin can start one, and remembers the
 	 * pause, so a reload doesn't carry on by itself. Only the admin holding the run can.
+	 *
+	 * @return bool False when the run couldn't be given back (see `release()`).
 	 */
-	public static function stop(): void {
+	public static function stop(): bool {
 		$holder = self::holder();
 		if ( null !== $holder && get_current_user_id() !== $holder['user'] ) {
-			return;
+			return true;
 		}
 		$pending = self::fresh( Migration_Catalogue::PENDING );
 		$run     = (string) ( $pending['run'] ?? Migration_Store::state()['run'] ?? '' );
@@ -269,7 +305,7 @@ final class Migration_Admin {
 			$progress = self::progress( $run );
 			self::save_progress( $run, $progress['found'], $progress['finished'], true );
 		}
-		self::release();
+		return self::release();
 	}
 
 	/**
@@ -335,6 +371,8 @@ final class Migration_Admin {
 				'posts'    => $cursor['posts'],
 				'embeds'   => $cursor['embeds'],
 				'failed'   => count( $cursor['failures'] ),
+				'mine'     => get_current_user_id() === (int) ( $cursor['user'] ?? 0 ),
+				'by'       => self::name( (int) ( $cursor['user'] ?? 0 ) ),
 				'finished' => $cursor['finished'] ? Sync_Activity::when( $cursor['finished'] ) : '',
 			);
 			if ( ! $cursor['done'] ) {
@@ -432,7 +470,7 @@ final class Migration_Admin {
 	/**
 	 * Turns an engine or step error into one the tab can explain, with an HTTP status and a
 	 * `reason`: not_connected, connection_lost, busy, stale, rate_limited, unreachable,
-	 * reconnected, swapped, invalid_choice, forbidden or failed.
+	 * reconnected, swapped, invalid_choice, confirm, unreleased, forbidden or failed.
 	 *
 	 * @param \WP_Error $error   Error.
 	 * @param bool      $running Whether a scan or swap was under way.
@@ -478,18 +516,6 @@ final class Migration_Admin {
 	}
 
 	/**
-	 * Why WP-CLI must wait: another admin's live run in the Migrate tab, or '' when it may go.
-	 */
-	public static function held_by_another(): string {
-		$holder = self::holder();
-		if ( null === $holder || get_current_user_id() === $holder['user'] ) {
-			return '';
-		}
-		/* translators: %s: the name of the admin running the scan or swap. */
-		return sprintf( __( '%s is running a scan or swap in Settings > show.fm > Migrate. Try again when it finishes.', 'showfm' ), self::name( $holder['user'] ) );
-	}
-
-	/**
 	 * Whether a scan or swap is under way, so a lost connection reads as lost mid-run.
 	 */
 	public static function running(): bool {
@@ -508,6 +534,16 @@ final class Migration_Admin {
 		if ( is_wp_error( $access ) ) {
 			return $access;
 		}
+		return self::claim();
+	}
+
+	/**
+	 * Takes or renews the lease for the current user, unless another admin's is live. The
+	 * tab's steps and each WP-CLI batch and swap call this.
+	 *
+	 * @return true|\WP_Error
+	 */
+	public static function claim() {
 		$user = get_current_user_id();
 		return Migration_Store::locked(
 			static function () use ( $user ) {
@@ -530,22 +566,35 @@ final class Migration_Admin {
 				);
 				wp_cache_delete( self::LEASE, 'options' );
 				return true;
-			}
+			},
+			self::WAIT
 		);
 	}
 
-	/** Releases the lease if the current admin holds it. */
-	private static function release(): void {
-		$user = get_current_user_id();
-		Migration_Store::locked(
+	/**
+	 * Gives the lease back if the current user holds it. It waits up to `WAIT` seconds for a
+	 * request holding the site lock.
+	 *
+	 * @return bool False when the lock stayed busy, so the lease still stands until it lapses.
+	 */
+	public static function release(): bool {
+		$user   = get_current_user_id();
+		$result = Migration_Store::locked(
 			static function () use ( $user ) {
 				$holder = self::holder();
 				if ( null !== $holder && $holder['user'] === $user ) {
 					delete_option( self::LEASE );
 				}
 				return true;
-			}
+			},
+			self::WAIT
 		);
+		return true === $result;
+	}
+
+	/** The run finished, but the lease couldn't be given back. */
+	private static function unreleased(): \WP_Error {
+		return self::error( 'unreleased', 503, __( 'Done, but another request held the site lock, so other admins may have to wait up to two minutes to start a scan.', 'showfm' ) );
 	}
 
 	/**
@@ -891,7 +940,8 @@ final class Migration_Admin {
 	 */
 	private static function waiting( array $pending ): ?array {
 		$retry = (int) ( $pending['retry_at'] ?? 0 );
-		if ( $retry <= time() && '' === (string) ( $pending['reason'] ?? '' ) ) {
+		// Once the retry time has passed, the scan may carry on, so there is nothing to say.
+		if ( $retry <= time() ) {
 			return null;
 		}
 		return self::problem(

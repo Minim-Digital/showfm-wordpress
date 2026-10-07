@@ -452,6 +452,8 @@ export function problemAction( reason ) {
 		case 'stale':
 		case 'invalid_choice':
 		case 'swapped':
+		case 'confirm':
+		case 'unreleased':
 			return '';
 		default:
 			return 'retry';
@@ -460,7 +462,8 @@ export function problemAction( reason ) {
 
 /**
  * Whether the tab should carry on a scan or swap by itself: one is under way, this admin
- * may run it, the admin didn't pause it, and nothing is wrong.
+ * may run it, the admin didn't pause it, nothing is wrong, and for a swap, this admin
+ * confirmed it.
  *
  * @param {Object} view The view.
  * @return {string} `scan`, `swap`, or '' to wait.
@@ -475,8 +478,51 @@ export function resumeStep( view ) {
 	if ( view.phase === 'scanning' && ! view.scan?.stopped ) {
 		return 'scan';
 	}
-	if ( view.phase === 'swapping' ) {
+	// Only the admin who confirmed a swap carries it on without confirming again.
+	if ( view.phase === 'swapping' && view.swap?.mine ) {
 		return 'swap';
 	}
 	return '';
+}
+
+/**
+ * What is read out as a scan or swap goes: "Scan 50% done. Found 17 embeds so far."
+ *
+ * @param {Object} view The view.
+ * @return {string} Text.
+ */
+export function progressText( view ) {
+	if ( view.phase === 'swapping' ) {
+		return sprintf(
+			/* translators: 1: per cent done, 2: posts changed so far. */
+			__( 'Swap %1$s%% done. %2$s posts changed so far.', 'showfm' ),
+			percent( view.swap.checked, view.swap.total ),
+			formatCount( view.swap.posts )
+		);
+	}
+	return sprintf(
+		/* translators: 1: per cent done, 2: embeds found so far. */
+		__( 'Scan %1$s%% done. %2$s embeds found so far.', 'showfm' ),
+		percent( view.scan.checked, view.scan.total ),
+		formatCount( view.scan.found )
+	);
+}
+
+/**
+ * The confirm text for carrying on a swap another admin started.
+ *
+ * @param {Object} swap The view's swap.
+ * @return {string} Text.
+ */
+export function resumeText( swap ) {
+	return sprintf(
+		/* translators: 1: the admin who started the swap, 2: posts left, 3: posts in the swap. */
+		__(
+			'%1$s started this swap. %2$s of %3$s posts are still to change.',
+			'showfm'
+		),
+		swap.by,
+		formatCount( swap.total - swap.checked ),
+		formatCount( swap.total )
+	);
 }

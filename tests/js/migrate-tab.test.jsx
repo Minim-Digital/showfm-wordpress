@@ -1,3 +1,4 @@
+import { speak } from '@wordpress/a11y';
 import apiFetch from '@wordpress/api-fetch';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -15,6 +16,7 @@ import {
 import { view as connection } from './fixtures';
 
 vi.mock( '@wordpress/api-fetch', () => ( { default: vi.fn() } ) );
+vi.mock( '@wordpress/a11y', () => ( { speak: vi.fn() } ) );
 
 const RUN = '12d47293-8beb-44e4-9112-8ccc50b40070';
 const BAKERY = '21111111-2222-4333-8444-555555555555';
@@ -279,6 +281,17 @@ function serve( first, handlers = {} ) {
 }
 
 /**
+ * An answer that arrives on a later tick, so the tab draws each step.
+ *
+ * @param {Object} answer View.
+ * @return {() => Promise<Object>} Handler.
+ */
+function later( answer ) {
+	return () =>
+		new Promise( ( resolve ) => setTimeout( () => resolve( answer ), 5 ) );
+}
+
+/**
  * A refused step, as api-fetch rejects it.
  *
  * @param {string} reason  Reason.
@@ -337,7 +350,14 @@ describe( 'Migrate tab helpers', () => {
 				problem: { reason: 'rate_limited', message: '', retryAt: 1 },
 			} )
 		).toBe( '' );
-		expect( resumeStep( migrate( { phase: 'swapping' } ) ) ).toBe( 'swap' );
+		expect(
+			resumeStep( migrate( { phase: 'swapping', swap: { mine: true } } ) )
+		).toBe( 'swap' );
+		expect(
+			resumeStep(
+				migrate( { phase: 'swapping', swap: { mine: false } } )
+			)
+		).toBe( '' );
 		expect( resumeStep( reported() ) ).toBe( '' );
 		expect( resumeStep( { ...scanning(), connected: false } ) ).toBe( '' );
 	} );
@@ -564,15 +584,16 @@ describe( 'Migrate tab', () => {
 
 	it( 'stores a pick from the candidates and keeps focus on it', async () => {
 		const calls = serve( reported(), {
-			choice: ( { data } ) =>
-				reported( {
+			choice: ( { data } ) => ( {
+				choice: data.episode,
+				...reported( {
 					report: {
 						...reported().report,
 						chosen: 2,
 						swap: { embeds: 33, posts: 30 },
 					},
-					...( data.episode ? {} : {} ),
 				} ),
+			} ),
 		} );
 		render( <MigrateTab connection={ connection() } /> );
 
@@ -684,6 +705,8 @@ describe( 'Migrate tab', () => {
 						embeds: 6,
 						failed: 0,
 						finished: '',
+						mine: true,
+						by: 'Maya',
 					},
 				} ),
 				results(),
@@ -705,7 +728,7 @@ describe( 'Migrate tab', () => {
 		} );
 		await waitFor( () => expect( heading ).toHaveFocus() );
 		expect( steps( calls, 'swap' ).map( ( call ) => call.data ) ).toEqual( [
-			{ run: RUN },
+			{ run: RUN, confirm: true },
 			{ run: RUN },
 		] );
 		expect(
@@ -904,6 +927,12 @@ describe( 'Migrate tab', () => {
 			screen.getByText( 'Checked 462 of 1,280' )
 		).toBeInTheDocument();
 
+		await waitFor( () =>
+			expect(
+				screen.getByRole( 'heading', { name: 'Scan paused' } )
+			).toHaveFocus()
+		);
+
 		await userEvent.click(
 			screen.getByRole( 'button', { name: 'Resume scanning' } )
 		);
@@ -911,6 +940,222 @@ describe( 'Migrate tab', () => {
 			name: 'Dry run · 43 embeds in 39 posts',
 		} );
 		expect( steps( calls, 'scan' ) ).toHaveLength( 3 );
+	} );
+
+	it( 'keeps focus on the heading when Resume scanning goes away', async () => {
+		let release;
+		serve( scanning( { stopped: true } ), {
+			scan: () =>
+				new Promise( ( resolve ) => {
+					release = () => resolve( reported() );
+				} ),
+		} );
+		render( <MigrateTab connection={ connection() } /> );
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Resume scanning' } )
+		);
+
+		const heading = await screen.findByRole( 'heading', {
+			name: 'Scanning your posts',
+		} );
+		await waitFor( () => expect( heading ).toHaveFocus() );
+		await act( async () => release() );
+	} );
+
+	it( 'saves picks one at a time per row and ends on the pick the server stored', async () => {
+		const answers = [];
+		const calls = serve( reported(), {
+			choice: ( { data } ) =>
+				new Promise( ( resolve ) => {
+					answers.push( () =>
+						resolve( {
+							// The second save is stored as cleared, to show the row follows the server.
+							choice: answers.length === 1 ? data.episode : '',
+							...reported(),
+						} )
+					);
+				} ),
+		} );
+		render( <MigrateTab connection={ connection() } /> );
+
+		const pick = await screen.findByRole( 'combobox', {
+			name: 'Episode for “Post 41”',
+		} );
+		await userEvent.selectOptions( pick, BAKERY );
+		await userEvent.selectOptions( pick, BAKERY2 );
+
+		expect( steps( calls, 'choice' ) ).toHaveLength( 1 );
+		expect( pick ).toHaveValue( BAKERY2 );
+		expect(
+			screen.getByRole( 'button', { name: 'Swap 32 embeds' } )
+		).toHaveAttribute( 'aria-disabled', 'true' );
+
+		await act( async () => answers[ 0 ]() );
+		await waitFor( () =>
+			expect( steps( calls, 'choice' ) ).toHaveLength( 2 )
+		);
+		expect(
+			steps( calls, 'choice' ).map( ( call ) => call.data.episode )
+		).toEqual( [ BAKERY, BAKERY2 ] );
+		expect(
+			screen.getByRole( 'button', { name: 'Swap 32 embeds' } )
+		).toHaveAttribute( 'aria-disabled', 'true' );
+
+		await act( async () => answers[ 1 ]() );
+		await waitFor( () => expect( pick ).toHaveValue( '' ) );
+		expect( pick.closest( 'tr' ) ).toHaveTextContent( 'Choose one' );
+		expect(
+			screen.getByRole( 'button', { name: 'Swap 32 embeds' } )
+		).not.toHaveAttribute( 'aria-disabled' );
+	} );
+
+	it( 'carries on the admin’s own swap after a reload', async () => {
+		const calls = serve(
+			migrate( {
+				phase: 'swapping',
+				run: RUN,
+				swap: {
+					total: 29,
+					checked: 10,
+					posts: 10,
+					embeds: 11,
+					failed: 0,
+					finished: '',
+					mine: true,
+					by: 'Maya Lindgren',
+				},
+			} ),
+			{ swap: [ results() ] }
+		);
+		render( <MigrateTab connection={ connection() } /> );
+
+		await screen.findByRole( 'heading', { name: 'What changed' } );
+		expect( steps( calls, 'swap' ).map( ( call ) => call.data ) ).toEqual( [
+			{ run: RUN },
+		] );
+	} );
+
+	it( 'asks before carrying on a swap another admin started and left', async () => {
+		const calls = serve(
+			migrate( {
+				phase: 'swapping',
+				run: RUN,
+				swap: {
+					total: 29,
+					checked: 10,
+					posts: 10,
+					embeds: 11,
+					failed: 0,
+					finished: '',
+					mine: false,
+					by: 'Tom Reyes',
+				},
+			} ),
+			{ swap: [ results() ] }
+		);
+		render( <MigrateTab connection={ connection() } /> );
+
+		const resume = await screen.findByRole( 'button', {
+			name: 'Resume swapping',
+		} );
+		expect( steps( calls, 'swap' ) ).toHaveLength( 0 );
+		await userEvent.click( resume );
+
+		const dialog = screen.getByRole( 'dialog', {
+			name: 'Carry on swapping?',
+		} );
+		expect( dialog ).toHaveTextContent(
+			'Tom Reyes started this swap. 19 of 29 posts are still to change.'
+		);
+		await userEvent.click(
+			within( dialog ).getByRole( 'button', { name: 'Cancel' } )
+		);
+		expect( steps( calls, 'swap' ) ).toHaveLength( 0 );
+
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Resume swapping' } )
+		);
+		await userEvent.click(
+			within( screen.getByRole( 'dialog' ) ).getByRole( 'button', {
+				name: 'Carry on swapping',
+			} )
+		);
+		await screen.findByRole( 'heading', { name: 'What changed' } );
+		expect( steps( calls, 'swap' )[ 0 ].data ).toEqual( {
+			run: RUN,
+			confirm: true,
+		} );
+	} );
+
+	it( 'reads out progress politely each quarter of the way', async () => {
+		serve( migrate(), {
+			scan: [
+				later( scanning( { checked: 100, total: 1000, found: 2 } ) ),
+				later( scanning( { checked: 150, total: 1000, found: 3 } ) ),
+				later( scanning( { checked: 300, total: 1000, found: 9 } ) ),
+				later( scanning( { checked: 320, total: 1000, found: 9 } ) ),
+				later( scanning( { checked: 600, total: 1000, found: 17 } ) ),
+				later( reported() ),
+			],
+		} );
+		render( <MigrateTab connection={ connection() } /> );
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Scan posts' } )
+		);
+		await screen.findByRole( 'heading', {
+			name: 'Dry run · 43 embeds in 39 posts',
+		} );
+
+		const progress = speak.mock.calls.filter( ( [ text ] ) =>
+			text.startsWith( 'Scan ' )
+		);
+		expect( progress ).toEqual( [
+			[ 'Scan 30% done. 9 embeds found so far.', 'polite' ],
+			[ 'Scan 60% done. 17 embeds found so far.', 'polite' ],
+		] );
+	} );
+
+	it( 'clears a rate-limit notice at its retry time and carries on', async () => {
+		vi.useFakeTimers( { shouldAdvanceTime: true } );
+		try {
+			const message =
+				'show.fm is limiting requests from this site. Your progress is saved. Try again after 10:44.';
+			const calls = serve( scanning(), {
+				scan: [
+					{
+						code: 'showfm_migration_rate_limited',
+						message,
+						data: {
+							status: 503,
+							reason: 'rate_limited',
+							retryAt: Math.floor( Date.now() / 1000 ) + 2,
+							view: scanning( { catalogue: true } ),
+						},
+					},
+					reported(),
+				],
+			} );
+			render( <MigrateTab connection={ connection() } /> );
+
+			expect(
+				await screen.findByText( message, { selector: 'p' } )
+			).toBeInTheDocument();
+			expect( steps( calls, 'scan' ) ).toHaveLength( 1 );
+
+			await act( async () => vi.advanceTimersByTime( 4000 ) );
+
+			await screen.findByRole( 'heading', {
+				name: 'Dry run · 43 embeds in 39 posts',
+			} );
+			expect(
+				screen.queryByText( message, { selector: 'p' } )
+			).toBeNull();
+			expect( steps( calls, 'scan' ) ).toHaveLength( 2 );
+		} finally {
+			vi.useRealTimers();
+		}
 	} );
 
 	it( 'leaves a paused scan paused after a reload', async () => {

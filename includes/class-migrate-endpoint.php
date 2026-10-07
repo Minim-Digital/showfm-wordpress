@@ -23,8 +23,11 @@ if ( ! defined( 'ABSPATH' ) ) {
  * - `POST admin/migrate/stop`: pauses the scan and gives the run back.
  * - `GET admin/migrate/rows`: a page of report rows for one group, or of the results.
  * - `POST admin/migrate/choice`: stores or clears a pick for one ambiguous embed. The episode
- *   must be one of that embed's stored candidates.
- * - `POST admin/migrate/swap`: one bounded swap step of the reviewed run.
+ *   must be one of that embed's stored candidates. Answers with the view and `choice`, the
+ *   pick as stored. Refused once the swap has started.
+ * - `POST admin/migrate/swap`: one bounded swap step of the reviewed run. `confirm` says the
+ *   admin confirmed in the dialog; it is needed to start a swap, or to carry on one another
+ *   admin started.
  *
  * Steps answer with the view. A refused step is an error with `data.reason` (see
  * `Migration_Admin::explain()`) and `data.view`, the fresh view to show. Only one admin can
@@ -172,7 +175,11 @@ final class Migrate_Endpoint {
 				'callback'            => array( $this, 'swap' ),
 				'permission_callback' => $manage,
 				'args'                => array(
-					'run' => $needed,
+					'run'     => $needed,
+					'confirm' => array(
+						'type'    => 'boolean',
+						'default' => false,
+					),
 				),
 			)
 		);
@@ -198,9 +205,13 @@ final class Migrate_Endpoint {
 
 	/**
 	 * Pauses the scan.
+	 *
+	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function stop(): \WP_REST_Response {
-		Migration_Admin::stop();
+	public function stop() {
+		if ( ! Migration_Admin::stop() ) {
+			return $this->refuse( new \WP_Error( 'showfm_busy', '' ), false );
+		}
 		return self::response( $this->admin->view() );
 	}
 
@@ -211,7 +222,7 @@ final class Migrate_Endpoint {
 	 * @return \WP_REST_Response|\WP_Error
 	 */
 	public function swap( \WP_REST_Request $request ) {
-		return $this->answer( $this->admin->swap( strtolower( (string) $request['run'] ) ), true );
+		return $this->answer( $this->admin->swap( strtolower( (string) $request['run'] ), (bool) $request['confirm'] ), true );
 	}
 
 	/**
@@ -221,7 +232,12 @@ final class Migrate_Endpoint {
 	 * @return \WP_REST_Response|\WP_Error
 	 */
 	public function choice( \WP_REST_Request $request ) {
-		return $this->answer( $this->admin->choose( strtolower( (string) $request['run'] ), (int) $request['post'], (int) $request['embed'], strtolower( (string) $request['episode'] ) ), false );
+		$stored = $this->admin->choose( strtolower( (string) $request['run'] ), (int) $request['post'], (int) $request['embed'], strtolower( (string) $request['episode'] ) );
+		if ( is_wp_error( $stored ) ) {
+			return $this->refuse( $stored, false );
+		}
+		// The pick as stored, so the tab shows what the swap will use.
+		return self::response( array( 'choice' => $stored ) + $this->admin->view() );
 	}
 
 	/**

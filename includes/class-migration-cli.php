@@ -21,6 +21,13 @@ final class Migration_Cli {
 	private $migrator;
 
 	/**
+	 * Whether a post in the last run failed to migrate.
+	 *
+	 * @var bool
+	 */
+	private $failed = false;
+
+	/**
 	 * Build command.
 	 *
 	 * @param Migrator $migrator Engine.
@@ -84,11 +91,16 @@ final class Migration_Cli {
 				return;
 			}
 			if ( empty( $assoc_args['dry-run'] ) ) {
+				// Without the capability, reset() refuses before anything changes.
+				if ( current_user_can( 'manage_options' ) ) {
+					$this->claim();
+				}
 				$reset = $this->migrator->reset();
 				if ( is_wp_error( $reset ) ) {
-					\WP_CLI::error( self::terminal( $reset->get_error_message() ) );
+					$this->fail( $reset->get_error_message() );
 					return;
 				}
+				$this->release();
 				\WP_CLI::success( __( 'Pending catalogue pages discarded. The active report, posts and revisions are unchanged.', 'showfm' ) );
 				return;
 			}
@@ -98,37 +110,46 @@ final class Migration_Cli {
 			\WP_CLI::error( self::terminal( $access->get_error_message() ) );
 			return;
 		}
-		// The Migrate tab's run belongs to the admin running it until it finishes or lapses.
-		$held = Migration_Admin::held_by_another();
-		if ( '' !== $held ) {
-			\WP_CLI::error( self::terminal( $held ) );
-			return;
+		// The run is this command's, as a scan or swap in the Migrate tab is its admin's.
+		$this->claim();
+		$this->run( $assoc_args );
+		$this->release();
+		if ( $this->failed ) {
+			\WP_CLI::error( __( 'Some posts could not be migrated. Review the report.', 'showfm' ) );
 		}
+	}
+
+	/**
+	 * Everything after access and the lease: validate, scan, apply and print.
+	 *
+	 * @param array<string,string|bool> $assoc_args Named arguments.
+	 */
+	private function run( array $assoc_args ): void {
 		if ( empty( $assoc_args['dry-run'] ) && empty( $assoc_args['yes'] ) ) {
-			\WP_CLI::error( __( 'Use --dry-run to review or --yes to replace matched embeds.', 'showfm' ) );
+			$this->fail( __( 'Use --dry-run to review or --yes to replace matched embeds.', 'showfm' ) );
 			return;
 		}
 		$format = $assoc_args['format'] ?? 'table';
 		if ( ! in_array( $format, array( 'table', 'json' ), true ) ) {
-			\WP_CLI::error( __( 'Use --format=table or --format=json.', 'showfm' ) );
+			$this->fail( __( 'Use --format=table or --format=json.', 'showfm' ) );
 			return;
 		}
 		foreach ( array( 'post', 'batches' ) as $key ) {
 			if ( isset( $assoc_args[ $key ] ) && ( ! ctype_digit( (string) $assoc_args[ $key ] ) || (int) $assoc_args[ $key ] < 1 ) ) {
-				\WP_CLI::error( __( 'Post and batch limits must be positive integers.', 'showfm' ) );
+				$this->fail( __( 'Post and batch limits must be positive integers.', 'showfm' ) );
 				return;
 			}
 		}
 		$choices = self::choices( (string) ( $assoc_args['choose'] ?? '' ) );
 		if ( is_wp_error( $choices ) ) {
-			\WP_CLI::error( self::terminal( $choices->get_error_message() ) );
+			$this->fail( $choices->get_error_message() );
 			return;
 		}
 		$applying = empty( $assoc_args['dry-run'] );
 		$state    = Migration_Store::state();
 		if ( $applying ) {
 			if ( empty( $state['complete'] ) || empty( $state['dry_run'] ) ) {
-				\WP_CLI::error( __( 'Complete a dry run before using --yes. Only that saved report can be applied.', 'showfm' ) );
+				$this->fail( __( 'Complete a dry run before using --yes. Only that saved report can be applied.', 'showfm' ) );
 				return;
 			}
 		} else {
@@ -139,18 +160,19 @@ final class Migration_Cli {
 			}
 		}
 		if ( is_wp_error( $state ) || ! $state ) {
-			\WP_CLI::error( is_wp_error( $state ) ? self::terminal( $state->get_error_message() ) : __( 'There is no scan to resume.', 'showfm' ) );
+			$this->fail( is_wp_error( $state ) ? self::terminal( $state->get_error_message() ) : __( 'There is no scan to resume.', 'showfm' ) );
 			return;
 		}
 		if ( isset( $assoc_args['post'] ) && (int) $assoc_args['post'] !== $state['post_id'] ) {
-			\WP_CLI::error( __( 'The post restriction differs from the saved scan. Start a new scan.', 'showfm' ) );
+			$this->fail( __( 'The post restriction differs from the saved scan. Start a new scan.', 'showfm' ) );
 			return;
 		}
 		$limit = (int) ( $assoc_args['batches'] ?? PHP_INT_MAX );
 		for ( $batch = 0; $batch < $limit && ! $state['complete']; ++$batch ) {
+			$this->claim();
 			$state = $this->migrator->batch( $state['run'] );
 			if ( is_wp_error( $state ) ) {
-				\WP_CLI::error( self::terminal( $state->get_error_message() ) );
+				$this->fail( $state->get_error_message() );
 				return;
 			}
 		}
@@ -165,7 +187,7 @@ final class Migration_Cli {
 					}
 				}
 				if ( ! $valid ) {
-					\WP_CLI::error( __( 'Each choice must name an ambiguous embed and one of its reported candidates.', 'showfm' ) );
+					$this->fail( __( 'Each choice must name an ambiguous embed and one of its reported candidates.', 'showfm' ) );
 					return;
 				}
 			}
@@ -180,6 +202,7 @@ final class Migration_Cli {
 		$failed = false;
 		foreach ( Migration_Store::reports( $state['run'] ) as $report ) {
 			if ( $apply && 'scanned' === $report['status'] ) {
+				$this->claim();
 				$result = $this->migrator->swap( $report['post_id'], $choices[ $report['post_id'] ] ?? array(), $state['run'] );
 				if ( is_wp_error( $result ) ) {
 					$report['error']  = $result->get_error_message();
@@ -202,9 +225,37 @@ final class Migration_Cli {
 		} elseif ( ! $state['complete'] ) {
 			\WP_CLI::line( __( 'Scan paused. Continue with --resume; no posts have been changed.', 'showfm' ) );
 		}
-		if ( $failed ) {
-			\WP_CLI::error( __( 'Some posts could not be migrated. Review the report.', 'showfm' ) );
+		$this->failed = $failed;
+	}
+
+	/**
+	 * Takes or renews the lease, or stops when another admin's run in the Migrate tab is live.
+	 */
+	private function claim(): void {
+		$claim = Migration_Admin::claim();
+		if ( is_wp_error( $claim ) ) {
+			$this->fail( $claim->get_error_message() );
 		}
+	}
+
+	/**
+	 * Gives the lease back, and says so when it couldn't.
+	 */
+	private function release(): void {
+		if ( ! Migration_Admin::release() ) {
+			\WP_CLI::warning( __( 'Couldn’t give the run back because another request held the site lock. Other admins may wait up to two minutes.', 'showfm' ) );
+		}
+	}
+
+	/**
+	 * Gives the lease back, then stops with an error. WP-CLI exits on an error, so nothing
+	 * after it, such as a finally block, would run.
+	 *
+	 * @param string $message Message.
+	 */
+	private function fail( string $message ): void {
+		$this->release();
+		\WP_CLI::error( self::terminal( $message ) );
 	}
 
 	/**
