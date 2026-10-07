@@ -58,3 +58,4 @@ require $showfm_tests_dir . '/includes/bootstrap.php';
 require __DIR__ . '/class-http-mock.php';
 require __DIR__ . '/class-test-redirect.php';
 require __DIR__ . '/../stubs/wp-cli.php';
+require __DIR__ . '/../stubs/cli-prompt.php';

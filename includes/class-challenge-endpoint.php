@@ -16,7 +16,13 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * Public, because show.fm's server calls it. It answers only the S256 challenge stored for
  * that exact state, never the state or the verifier, and 404 for anything else. Answers are
- * never cacheable, and each IP address gets a small budget per minute.
+ * never cacheable.
+ *
+ * While no connection is being started, every request gets a 404 without any lookup or
+ * write. While one is, a right state is always answered, so show.fm's own fetch is never
+ * held back. Wrong states share one global budget per minute: one counter, whatever the
+ * caller's address, so rotating addresses adds no rows and a proxy that hides the client
+ * address changes nothing.
  */
 final class Challenge_Endpoint {
 
@@ -26,14 +32,17 @@ final class Challenge_Endpoint {
 	/** Route. */
 	const ROUTE = '/challenge';
 
-	/** Requests allowed per IP address in one window. */
-	const LIMIT = 30;
+	/** Wrong states answered with 404 in one window, across all callers. */
+	const LIMIT = 60;
 
 	/** Rate-limit window, in seconds. */
 	const WINDOW = 60;
 
-	/** Transient prefix for the per-IP counters. */
-	const COUNTER_PREFIX = 'showfm_rl_challenge_';
+	/** Option holding the one counter: the window number and its misses (autoload off). */
+	const COUNTER_OPTION = 'showfm_challenge_misses';
+
+	/** Object cache group for the counter when a persistent cache is in use. */
+	const CACHE_GROUP = 'showfm';
 
 	/**
 	 * Registers the route. Runs on `rest_api_init`.
@@ -63,7 +72,17 @@ final class Challenge_Endpoint {
 	 * @return \WP_REST_Response
 	 */
 	public static function handle( \WP_REST_Request $request ): \WP_REST_Response {
-		if ( ! self::within_limit() ) {
+		if ( ! Connect::challenge_open() ) {
+			return self::not_found();
+		}
+
+		$state     = $request->get_param( 'state' );
+		$challenge = is_string( $state ) ? Connect::challenge_for_state( $state ) : null;
+		if ( null !== $challenge ) {
+			return self::response( array( 'code_challenge' => $challenge ), 200 );
+		}
+
+		if ( ! self::count_miss() ) {
 			$response = self::response(
 				array(
 					'code'    => 'showfm_rate_limited',
@@ -71,22 +90,23 @@ final class Challenge_Endpoint {
 				),
 				429
 			);
-			$response->header( 'Retry-After', (string) self::WINDOW );
+			$response->header( 'Retry-After', (string) ( self::WINDOW - time() % self::WINDOW ) );
 			return $response;
 		}
+		return self::not_found();
+	}
 
-		$state     = $request->get_param( 'state' );
-		$challenge = is_string( $state ) ? Connect::challenge_for_state( $state ) : null;
-		if ( null === $challenge ) {
-			return self::response(
-				array(
-					'code'    => 'showfm_not_found',
-					'message' => 'Not found.',
-				),
-				404
-			);
-		}
-		return self::response( array( 'code_challenge' => $challenge ), 200 );
+	/**
+	 * The 404 for every unknown, expired or missing state.
+	 */
+	private static function not_found(): \WP_REST_Response {
+		return self::response(
+			array(
+				'code'    => 'showfm_not_found',
+				'message' => 'Not found.',
+			),
+			404
+		);
 	}
 
 	/**
@@ -105,18 +125,34 @@ final class Challenge_Endpoint {
 	}
 
 	/**
-	 * Counts this request against the caller's IP address. Only REMOTE_ADDR is used: a
-	 * forwarded-for header is set by the caller and would let it pick its own budget.
+	 * Counts a wrong state against the one global window. Returns false once the window's
+	 * budget is spent. A persistent object cache counts atomically with one key per window,
+	 * which expires on its own; otherwise one option holds the current window. Either way
+	 * the number of keys never grows with the number of callers.
 	 */
-	private static function within_limit(): bool {
-		$ip  = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
-		$key = self::COUNTER_PREFIX . md5( $ip . '|' . (int) floor( time() / self::WINDOW ) );
+	private static function count_miss(): bool {
+		$window = (int) floor( time() / self::WINDOW );
 
-		$count = (int) get_transient( $key );
+		if ( wp_using_ext_object_cache() ) {
+			$key = 'challenge_misses_' . $window;
+			wp_cache_add( $key, 0, self::CACHE_GROUP, 2 * self::WINDOW );
+			$count = wp_cache_incr( $key, 1, self::CACHE_GROUP );
+			return false === $count || $count <= self::LIMIT;
+		}
+
+		$stored = get_option( self::COUNTER_OPTION );
+		$count  = is_array( $stored ) && ( $stored['window'] ?? null ) === $window ? (int) ( $stored['count'] ?? 0 ) : 0;
 		if ( $count >= self::LIMIT ) {
 			return false;
 		}
-		set_transient( $key, $count + 1, self::WINDOW );
+		update_option(
+			self::COUNTER_OPTION,
+			array(
+				'window' => $window,
+				'count'  => $count + 1,
+			),
+			false
+		);
 		return true;
 	}
 }

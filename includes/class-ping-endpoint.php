@@ -160,6 +160,22 @@ final class Ping_Endpoint {
 	}
 
 	/**
+	 * Deletes every nonce claim. Runs on disconnect, when the ping secret they were signed
+	 * with is gone.
+	 */
+	public static function forget_nonces(): void {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Nonce claims are never read through the options API.
+		$wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s",
+				$wpdb->esc_like( self::NONCE_PREFIX ) . '%'
+			)
+		);
+	}
+
+	/**
 	 * Queues one pull and starts WP-Cron. Ignores the body. Answers 202.
 	 */
 	public function handle(): \WP_REST_Response {

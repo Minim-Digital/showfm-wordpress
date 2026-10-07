@@ -129,31 +129,86 @@ class Test_Challenge_Endpoint extends WP_UnitTestCase {
 		$this->assertSame( 404, $this->fetch( $this->state )->get_status() );
 	}
 
-	public function test_rate_limited_per_ip(): void {
+	public function test_no_open_flow_answers_404_without_counting(): void {
+		update_option( Connect::CHALLENGE_OPEN_OPTION, time() - 1, false );
+
+		for ( $i = 0; $i < Challenge_Endpoint::LIMIT + 5; $i++ ) {
+			$this->assertSame( 404, $this->fetch( 'unknown-' . str_repeat( 'x', 40 ) )->get_status() );
+		}
+		$this->assertSame( 404, $this->fetch( $this->state )->get_status() );
+
+		$this->assertFalse( get_option( Challenge_Endpoint::COUNTER_OPTION ), 'Nothing is written.' );
+	}
+
+	public function test_starting_a_flow_opens_the_route_for_10_minutes(): void {
+		$this->assertTrue( Connect::challenge_open() );
+		$this->assertEqualsWithDelta( time() + Connect::FLOW_TTL, (int) get_option( Connect::CHALLENGE_OPEN_OPTION ), 5 );
+	}
+
+	public function test_wrong_states_share_one_global_budget(): void {
 		for ( $i = 0; $i < Challenge_Endpoint::LIMIT; $i++ ) {
+			$_SERVER['REMOTE_ADDR'] = '2001:db8::' . dechex( $i + 1 );
 			$this->assertSame( 404, $this->fetch( 'unknown-' . str_repeat( 'x', 40 ) )->get_status() );
 		}
 
-		$limited = $this->fetch( $this->state );
-		$this->assertSame( 429, $limited->get_status(), 'Even the right state waits once the budget is spent.' );
+		$_SERVER['REMOTE_ADDR'] = '198.51.100.9';
+		$limited                = $this->fetch( 'unknown-' . str_repeat( 'y', 40 ) );
+		$this->assertSame( 429, $limited->get_status(), 'A new address does not get a new budget.' );
 		$this->assertArrayNotHasKey( 'code_challenge', $limited->get_data() );
-		$this->assertSame( (string) Challenge_Endpoint::WINDOW, $limited->get_headers()['Retry-After'] );
+		$retry = (int) $limited->get_headers()['Retry-After'];
+		$this->assertGreaterThanOrEqual( 1, $retry );
+		$this->assertLessThanOrEqual( Challenge_Endpoint::WINDOW, $retry );
 		$this->assert_not_cacheable( $limited );
-
-		$_SERVER['REMOTE_ADDR']          = '198.51.100.9';
-		$_SERVER['HTTP_X_FORWARDED_FOR'] = '203.0.113.7';
-		$this->assertSame( 200, $this->fetch( $this->state )->get_status(), 'Another address has its own budget.' );
-		unset( $_SERVER['HTTP_X_FORWARDED_FOR'] );
 	}
 
-	public function test_forwarded_for_does_not_reset_the_budget(): void {
-		for ( $i = 0; $i < Challenge_Endpoint::LIMIT; $i++ ) {
+	public function test_the_right_state_is_answered_even_when_the_budget_is_spent(): void {
+		for ( $i = 0; $i <= Challenge_Endpoint::LIMIT; $i++ ) {
 			$this->fetch( null );
 		}
-		$_SERVER['HTTP_X_FORWARDED_FOR'] = '192.0.2.1';
+		$this->assertSame( 429, $this->fetch( null )->get_status() );
 
-		$this->assertSame( 429, $this->fetch( $this->state )->get_status() );
-		unset( $_SERVER['HTTP_X_FORWARDED_FOR'] );
+		$this->assertSame( 200, $this->fetch( $this->state )->get_status(), 'show.fm\'s own fetch is never held back.' );
+	}
+
+	public function test_rotating_addresses_add_no_rows(): void {
+		global $wpdb;
+		$this->fetch( null );
+		$before = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->options}" );
+
+		for ( $i = 0; $i < 40; $i++ ) {
+			$_SERVER['REMOTE_ADDR'] = '2001:db8:' . dechex( $i + 1 ) . '::1';
+			$this->fetch( null );
+		}
+
+		$this->assertSame( $before, (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->options}" ) );
+	}
+
+	public function test_a_new_window_starts_a_new_budget(): void {
+		update_option(
+			Challenge_Endpoint::COUNTER_OPTION,
+			array(
+				'window' => (int) floor( time() / Challenge_Endpoint::WINDOW ) - 1,
+				'count'  => Challenge_Endpoint::LIMIT,
+			),
+			false
+		);
+
+		$this->assertSame( 404, $this->fetch( null )->get_status() );
+		$this->assertSame( 1, get_option( Challenge_Endpoint::COUNTER_OPTION )['count'] );
+	}
+
+	public function test_a_persistent_object_cache_counts_without_the_database(): void {
+		$previous = wp_using_ext_object_cache( true );
+		try {
+			for ( $i = 0; $i < Challenge_Endpoint::LIMIT; $i++ ) {
+				$this->assertSame( 404, $this->fetch( null )->get_status() );
+			}
+			$this->assertSame( 429, $this->fetch( null )->get_status() );
+		} finally {
+			wp_using_ext_object_cache( (bool) $previous );
+		}
+
+		$this->assertFalse( get_option( Challenge_Endpoint::COUNTER_OPTION ) );
 	}
 
 	/**

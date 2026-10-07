@@ -48,7 +48,8 @@ screens land. Blocks, the shortcode and the sync come in later pull requests.
 - `Connection` stores the site key, ping secret, site id and expiry encrypted with libsodium
   secretbox, keyed from `wp_salt( 'auth' )`, in options with autoload off. If the salts
   change, the state becomes "reconnect needed" without errors. `masked_key()` shows the last
-  four characters only.
+  four characters only. Set the salts in `wp-config.php`: without them WordPress keeps a
+  generated salt in the same database, and a database dump alone would then be enough.
 - `Uninstaller` does the uninstall cleanup, on every site of a multisite network.
 - `Connect` runs the connect protocol (below). Its outcomes are typed (`Connect::ERROR_*`)
   and kept per user for the settings screen, with `Connect::message()` for the text.
@@ -72,8 +73,11 @@ Plan sections 5.2.2, 5.2.6 and 5.3.5 (show.fm issue #731). Every admin action ne
 2. **Challenge.** show.fm fetches `GET /wp-json/showfm/v1/challenge?state=…`. The route is
    public, answers `{"code_challenge": "…"}` for that exact state only (the transient is
    named by the state's SHA-256 and the stored hash is compared with `hash_equals`), 404
-   for anything else, never cacheable, and limited to 30 requests a minute per
-   `REMOTE_ADDR`.
+   for anything else and never cacheable. While no connection has been started in the last
+   10 minutes (`showfm_challenge_open_until`), every request gets a 404 with no lookup or
+   write. While one has, the right state is always answered, and wrong states share one
+   global budget of 60 a minute (one option, or one object cache key per minute), so the
+   caller's address plays no part and rotating addresses add no rows.
 3. **Return.** On the settings page load the plugin checks `state` against the user's flow
    (single use), keeps the code server-side and redirects to the clean URL at once.
 4. **Exchange.** On the clean load it POSTs `{code, code_verifier}` to
@@ -81,13 +85,17 @@ Plan sections 5.2.2, 5.2.6 and 5.3.5 (show.fm issue #731). Every admin action ne
    `expires_at` with `Connection` (encrypted), then POSTs `/v1/me/sites/{id}/verify` with the
    plugin, WordPress and PHP versions and the site name. A reconnect keeps the old
    credentials until the new ones are stored.
-5. **WP-CLI** (`wp showfm connect --key=…`). The plugin makes a state and challenge and
+5. **WP-CLI** (`wp showfm connect`). The key comes from `--key=-` (standard input), then
+   `--key=<key>`, then the `SHOWFM_KEY` environment variable, then a hidden prompt when
+   standard input is a terminal. Prefer `SHOWFM_KEY` or `--key=-`: a key typed as
+   `--key=<key>` stays in shell history and shows in `ps`, and the command warns about it.
+   The plugin makes a state and challenge and
    POSTs `/v1/me/sites` with `site_url`, `rest_root`, `state` and `code_challenge`; show.fm
    fetches the challenge back inside that request, then returns the site id and ping
    secret. Then it verifies. `wp showfm status` shows the state, the masked key, the
    expiry, the last sync and the last ping. `wp showfm disconnect [--yes]` removes the local
-   credentials and unschedules the plugin's events; the key stays live in show.fm until it
-   is revoked there.
+   credentials and ping nonce claims and unschedules the plugin's events; the key stays live
+   in show.fm until it is revoked there.
 6. **Ping** (`POST /wp-json/showfm/v1/ping`). The permission callback checks
    `X-Showfm-Signature: v1={hex HMAC-SHA256(ping_secret, "v1.{site_id}.{timestamp}.{nonce}")}`
    with `X-Showfm-Site`, `X-Showfm-Timestamp` (within 300 seconds) and `X-Showfm-Nonce`

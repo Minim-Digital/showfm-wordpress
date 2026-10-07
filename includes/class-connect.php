@@ -67,6 +67,9 @@ final class Connect {
 	/** How long an outcome is kept for the settings screen. */
 	const RESULT_TTL = 3600;
 
+	/** Option holding when the last challenge stored expires (autoload off). */
+	const CHALLENGE_OPEN_OPTION = 'showfm_challenge_open_until';
+
 	/** Option set while the site still has to report in with verify (autoload off). */
 	const VERIFY_PENDING_OPTION = 'showfm_verify_pending';
 
@@ -276,6 +279,14 @@ final class Connect {
 	}
 
 	/**
+	 * Whether any connection was started in the last 10 minutes, so a challenge may exist.
+	 * One option read; the challenge route answers 404 without a lookup otherwise.
+	 */
+	public static function challenge_open(): bool {
+		return (int) get_option( self::CHALLENGE_OPEN_OPTION, 0 ) > time();
+	}
+
+	/**
 	 * Handles the browser coming back with `code` and `state`. Returns the clean settings URL
 	 * to redirect to, or null when the request carries neither (nothing to do).
 	 *
@@ -296,13 +307,14 @@ final class Connect {
 		$state = is_string( $query['state'] ?? null ) ? $query['state'] : '';
 		$flow  = get_transient( self::FLOW_PREFIX . $user_id );
 
+		// A stray or crafted link neither cancels the flow in progress nor replaces a notice
+		// the admin has not seen yet.
 		if ( ! is_array( $flow ) || ! is_string( $flow['state'] ?? null ) || ! is_string( $flow['verifier'] ?? null ) ) {
-			$this->fail( $user_id, self::ERROR_EXPIRED );
+			$this->fail_unless_noted( $user_id, self::ERROR_EXPIRED );
 			return $clean;
 		}
 		if ( ! hash_equals( $flow['state'], $state ) ) {
-			// The flow in progress stays, so a stray link cannot cancel a real connection.
-			$this->fail( $user_id, self::ERROR_STATE_MISMATCH );
+			$this->fail_unless_noted( $user_id, self::ERROR_STATE_MISMATCH );
 			return $clean;
 		}
 
@@ -458,6 +470,7 @@ final class Connect {
 		delete_option( self::VERIFY_PENDING_OPTION );
 		delete_option( Api_Client::RATE_LIMIT_OPTION );
 		delete_option( Ping_Endpoint::LAST_PING_OPTION );
+		Ping_Endpoint::forget_nonces();
 	}
 
 	/**
@@ -644,6 +657,18 @@ final class Connect {
 	}
 
 	/**
+	 * Records a failure only when no outcome is waiting to be shown.
+	 *
+	 * @param int    $user_id The admin.
+	 * @param string $error   Error type.
+	 */
+	private function fail_unless_noted( int $user_id, string $error ): void {
+		if ( null === self::result( $user_id ) ) {
+			$this->fail( $user_id, $error );
+		}
+	}
+
+	/**
 	 * Records an outcome for the settings screen.
 	 *
 	 * @param int                                                             $user_id The admin.
@@ -673,6 +698,11 @@ final class Connect {
 	 * @param string $challenge S256 challenge.
 	 */
 	private static function store_challenge( string $state, string $challenge ): void {
+		$until = time() + self::FLOW_TTL;
+		if ( (int) get_option( self::CHALLENGE_OPEN_OPTION, 0 ) < $until ) {
+			update_option( self::CHALLENGE_OPEN_OPTION, $until, false );
+		}
+
 		$hash = hash( 'sha256', $state );
 		set_transient(
 			self::CHALLENGE_PREFIX . $hash,

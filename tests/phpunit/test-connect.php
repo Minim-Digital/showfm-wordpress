@@ -268,6 +268,52 @@ class Test_Connect extends WP_UnitTestCase {
 		$this->assertSame( 0, $this->http->count() );
 	}
 
+	/**
+	 * @dataProvider stray_returns
+	 *
+	 * @param bool $flow_exists Whether a flow is in progress.
+	 */
+	public function test_a_stray_return_keeps_the_notice_waiting( bool $flow_exists ): void {
+		$state = $this->started_state();
+		set_transient(
+			Connect::RESULT_PREFIX . $this->user_id,
+			array(
+				'status'      => Connect::STATUS_CONNECTED,
+				'error'       => '',
+				'retry_after' => 0,
+				'reason'      => '',
+			),
+			60
+		);
+		if ( ! $flow_exists ) {
+			delete_transient( Connect::FLOW_PREFIX . $this->user_id );
+		}
+
+		$this->connect->handle_return(
+			$this->user_id,
+			array(
+				'code'  => self::CODE,
+				'state' => str_repeat( 'x', 43 ),
+			)
+		);
+
+		$this->assertSame( Connect::STATUS_CONNECTED, Connect::result( $this->user_id )['status'] );
+		$this->assertSame( '', Connect::result( $this->user_id )['error'] );
+		if ( $flow_exists ) {
+			$this->assertSame( $state, get_transient( Connect::FLOW_PREFIX . $this->user_id )['state'] );
+		}
+	}
+
+	/**
+	 * @return array<string,array{0:bool}>
+	 */
+	public function stray_returns(): array {
+		return array(
+			'wrong state' => array( true ),
+			'no flow'     => array( false ),
+		);
+	}
+
 	public function test_another_users_state_is_refused(): void {
 		$state = $this->started_state();
 		$other = self::factory()->user->create( array( 'role' => 'administrator' ) );

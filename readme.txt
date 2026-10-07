@@ -37,7 +37,7 @@ This plugin relies on show.fm, a podcast hosting service run by show.fm Ltd. It 
 
 * Used only after an administrator connects the site to a show.fm account.
 * Connecting (code exchange): once, when the administrator returns from my.show.fm after approving the connection. Sent: the one-time code from my.show.fm and the matching verifier this site created, in the body of a request to api.show.fm/v1/sites/exchange. show.fm answers with the site key and ping secret, which the plugin stores encrypted.
-* Connecting with WP-CLI: once, when someone runs `wp showfm connect --key=...`. Sent: the site key, your site's address and REST API address, and a one-time state and challenge, to api.show.fm/v1/me/sites.
+* Connecting with WP-CLI: once, when someone runs `wp showfm connect`. Sent: the site key, your site's address and REST API address, and a one-time state and challenge, to api.show.fm/v1/me/sites.
 * Reporting in (verify): right after connecting. If that fails, it is retried with the next health report. Sent: the site key, the plugin, WordPress and PHP versions, and the site's name.
 * Health report: once a day while connected. Sent: the site key, the plugin, WordPress and PHP versions, the time of the last sync and the number of sync errors.
 * Sync: to sync episodes into posts (every 15 minutes, and when show.fm signals that an episode changed), and to tell show.fm the address of each post created for an episode. Sent: the site key, the plugin version, sync status, and the post addresses and post IDs of synced posts.
@@ -74,7 +74,11 @@ Not for the player and episode lists of a public show. Publish to WordPress need
 
 = Can I connect from the command line? =
 
-Yes. Create a site key in show.fm under Connected sites, then Add a site with WP-CLI, and run `wp showfm connect --key=...`. `wp showfm status` shows the connection and `wp showfm disconnect` removes it. On a multisite network, add `--url=` to pick the site: each site connects separately.
+Yes. Create a site key in show.fm under Connected sites, then Add a site with WP-CLI, and run `wp showfm connect`. It asks for the key with the input hidden, or reads it from the `SHOWFM_KEY` environment variable, or from standard input with `--key=-` (for example `pass show showfm/site-key | wp showfm connect --key=-`). `--key=<key>` also works, but the key then stays in your shell history and shows in the process list. `wp showfm status` shows the connection and `wp showfm disconnect` removes it. On a multisite network, add `--url=` to pick the site: each site connects separately.
+
+= How is the connection stored? =
+
+The site key and ping secret are encrypted with a key derived from your WordPress salts. Set the salts in `wp-config.php`: without them WordPress keeps a generated salt in the database, so a copy of the database alone would be enough to read the key. Changing the salts means you connect again.
 
 == Changelog ==
 

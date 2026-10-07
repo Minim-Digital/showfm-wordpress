@@ -61,7 +61,10 @@ class Test_Cli extends WP_UnitTestCase {
 		$this->http       = new ShowFM_Http_Mock();
 		$this->connection = new Connection();
 		$this->connection->disconnect();
-		$this->cli = new Cli( new Connect( $this->connection, new Api_Client( $this->connection ) ), $this->connection );
+		$this->cli = $this->cli();
+		putenv( Cli::KEY_ENV );
+		ShowFM_Cli_Prompt::$answer = '';
+		ShowFM_Cli_Prompt::$calls  = array();
 		delete_option( Api_Client::RATE_LIMIT_OPTION );
 		delete_option( Connect::VERIFY_PENDING_OPTION );
 		wp_clear_scheduled_hook( Health::HOOK );
@@ -72,6 +75,7 @@ class Test_Cli extends WP_UnitTestCase {
 	}
 
 	public function tear_down(): void {
+		putenv( Cli::KEY_ENV );
 		ini_set( 'error_log', (string) $this->previous_log );
 		$log = (string) file_get_contents( $this->log_file );
 		unlink( $this->log_file );
@@ -136,6 +140,75 @@ class Test_Cli extends WP_UnitTestCase {
 			}
 		);
 		$this->assertSame( 0, $this->http->count() );
+		$this->assertStringContainsString( 'SHOWFM_KEY', end( WP_CLI::$output )[1] );
+		$this->assertSame( array(), ShowFM_Cli_Prompt::$calls, 'No prompt without a terminal.' );
+	}
+
+	public function test_key_from_the_environment(): void {
+		putenv( Cli::KEY_ENV . '=' . self::KEY );
+		$this->respond_connected();
+
+		$this->cli->connect( array(), array() );
+
+		$this->assertSame( self::KEY, $this->connection->key() );
+		$this->assertSame( array(), $this->warnings() );
+	}
+
+	public function test_key_from_standard_input(): void {
+		putenv( Cli::KEY_ENV . '=showfm_live_ENVKEYabcdefghijklmnopqrstuvw' );
+		$stdin = wp_tempnam( 'showfm-stdin' );
+		file_put_contents( $stdin, self::KEY . "\nignored second line\n" );
+		$this->respond_connected();
+
+		$this->cli( $stdin )->connect( array(), array( 'key' => '-' ) );
+		unlink( $stdin );
+
+		$this->assertSame( self::KEY, $this->connection->key(), '--key=- wins over SHOWFM_KEY.' );
+		$this->assertSame( array(), $this->warnings() );
+	}
+
+	public function test_empty_standard_input_stops(): void {
+		$stdin = wp_tempnam( 'showfm-stdin' );
+		$cli   = $this->cli( $stdin );
+
+		$this->assert_halts(
+			static function () use ( $cli ) {
+				$cli->connect( array(), array( 'key' => '-' ) );
+			}
+		);
+		unlink( $stdin );
+		$this->assertSame( 0, $this->http->count() );
+	}
+
+	public function test_key_from_a_hidden_prompt_in_a_terminal(): void {
+		ShowFM_Cli_Prompt::$answer = self::KEY . "\n";
+		$this->respond_connected();
+
+		$this->cli( 'php://stdin', true )->connect( array(), array() );
+
+		$this->assertSame( self::KEY, $this->connection->key() );
+		$this->assertCount( 1, ShowFM_Cli_Prompt::$calls );
+		$this->assertTrue( ShowFM_Cli_Prompt::$calls[0][1], 'The key is not echoed.' );
+	}
+
+	public function test_the_environment_is_used_before_a_prompt(): void {
+		putenv( Cli::KEY_ENV . '=' . self::KEY );
+		$this->respond_connected();
+
+		$this->cli( 'php://stdin', true )->connect( array(), array() );
+
+		$this->assertSame( self::KEY, $this->connection->key() );
+		$this->assertSame( array(), ShowFM_Cli_Prompt::$calls );
+	}
+
+	public function test_key_on_the_command_line_still_works_with_a_warning(): void {
+		$this->respond_connected();
+
+		$this->cli->connect( array(), array( 'key' => self::KEY ) );
+
+		$this->assertSame( self::KEY, $this->connection->key() );
+		$this->assertCount( 1, $this->warnings() );
+		$this->assertStringContainsString( 'shell history', $this->warnings()[0] );
 	}
 
 	public function test_connect_with_a_malformed_key_sends_nothing(): void {
@@ -353,6 +426,46 @@ class Test_Cli extends WP_UnitTestCase {
 	 *
 	 * @param string $site_id Site id.
 	 */
+	/**
+	 * Commands with a given standard input and terminal.
+	 *
+	 * @param string $stdin       Stream for `--key=-`.
+	 * @param bool   $interactive Whether a person is at the terminal.
+	 */
+	private function cli( string $stdin = 'php://stdin', bool $interactive = false ): Cli {
+		return new Cli(
+			new Connect( $this->connection, new Api_Client( $this->connection ) ),
+			$this->connection,
+			$stdin,
+			static function () use ( $interactive ): bool {
+				return $interactive;
+			}
+		);
+	}
+
+	/**
+	 * Queues a successful registration and verify.
+	 */
+	private function respond_connected(): void {
+		$this->http->respond( 201, $this->registration_body() );
+		$this->http->respond( 200, '{"data":{"status":"active"}}' );
+	}
+
+	/**
+	 * Warnings printed so far.
+	 *
+	 * @return string[]
+	 */
+	private function warnings(): array {
+		$warnings = array();
+		foreach ( WP_CLI::$output as $line ) {
+			if ( 'warning' === $line[0] ) {
+				$warnings[] = $line[1];
+			}
+		}
+		return $warnings;
+	}
+
 	private function registration_body( string $site_id = self::SITE_ID ): string {
 		return (string) wp_json_encode(
 			array(

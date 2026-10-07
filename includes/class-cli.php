@@ -19,6 +19,12 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class Cli {
 
+	/** Environment variable that can hold the site key. */
+	const KEY_ENV = 'SHOWFM_KEY';
+
+	/** Most bytes read for a key from standard input. */
+	const MAX_KEY_BYTES = 1024;
+
 	/**
 	 * Connect service.
 	 *
@@ -34,14 +40,34 @@ final class Cli {
 	private $connection;
 
 	/**
+	 * Stream `--key=-` reads from.
+	 *
+	 * @var string
+	 */
+	private $stdin;
+
+	/**
+	 * Whether a person is at the terminal to be asked for the key.
+	 *
+	 * @var callable(): bool
+	 */
+	private $interactive;
+
+	/**
 	 * Builds the commands.
 	 *
-	 * @param Connect    $connect    Connect service.
-	 * @param Connection $connection Connection store.
+	 * @param Connect               $connect     Connect service.
+	 * @param Connection            $connection  Connection store.
+	 * @param string                $stdin       Stream `--key=-` reads from.
+	 * @param callable(): bool|null $interactive Whether to prompt; defaults to "STDIN is a terminal".
 	 */
-	public function __construct( Connect $connect, Connection $connection ) {
-		$this->connect    = $connect;
-		$this->connection = $connection;
+	public function __construct( Connect $connect, Connection $connection, string $stdin = 'php://stdin', ?callable $interactive = null ) {
+		$this->connect     = $connect;
+		$this->connection  = $connection;
+		$this->stdin       = $stdin;
+		$this->interactive = $interactive ?? static function (): bool {
+			return defined( 'STDIN' ) && function_exists( 'stream_isatty' ) && stream_isatty( STDIN );
+		};
 	}
 
 	/**
@@ -61,22 +87,31 @@ final class Cli {
 	 * site must be public, use https and have the plugin active. An existing connection is
 	 * kept until the new one succeeds.
 	 *
+	 * The key is a live credential. Give it in the SHOWFM_KEY environment variable, pipe it
+	 * in with `--key=-`, or run the command in a terminal without --key to be asked for it
+	 * with the input hidden. `--key=<key>` still works, but the key then stays in your shell
+	 * history and shows in the process list.
+	 *
 	 * ## OPTIONS
 	 *
-	 * --key=<key>
-	 * : The site key from show.fm.
+	 * [--key=<key>]
+	 * : The site key, or `-` to read it from standard input. Prefer SHOWFM_KEY or `-`.
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     wp showfm connect --key=showfm_live_...
+	 *     # Uses SHOWFM_KEY if it is set, otherwise asks for the key (input hidden).
+	 *     wp showfm connect
+	 *
+	 *     # Reads the key from standard input, for example from a password manager.
+	 *     pass show showfm/site-key | wp showfm connect --key=-
 	 *
 	 * @param string[]             $args       Positional arguments.
 	 * @param array<string,string> $assoc_args Named arguments.
 	 */
 	public function connect( array $args, array $assoc_args ): void {
-		$key = isset( $assoc_args['key'] ) ? trim( (string) $assoc_args['key'] ) : '';
+		$key = $this->read_key( $assoc_args );
 		if ( '' === $key ) {
-			\WP_CLI::error( __( 'Pass the site key from show.fm with --key=.', 'showfm' ) );
+			\WP_CLI::error( __( 'Give the site key from show.fm: set SHOWFM_KEY, pipe it in with --key=-, or run this in a terminal to be asked for it.', 'showfm' ) );
 			return;
 		}
 
@@ -175,6 +210,47 @@ final class Cli {
 
 		$this->connect->disconnect();
 		\WP_CLI::success( __( 'Disconnected. Revoke the key in show.fm under Connected sites if you no longer need it.', 'showfm' ) );
+	}
+
+	/**
+	 * The key from --key=-, --key=VALUE, SHOWFM_KEY or a hidden prompt, in that order.
+	 *
+	 * @param array<string,string|bool> $assoc_args Named arguments; a bare --key is true.
+	 */
+	private function read_key( array $assoc_args ): string {
+		if ( array_key_exists( 'key', $assoc_args ) ) {
+			$value = is_string( $assoc_args['key'] ) ? $assoc_args['key'] : '';
+			if ( '-' === $value ) {
+				return $this->read_stdin();
+			}
+			\WP_CLI::warning( __( 'A key given as --key=VALUE stays in your shell history and shows in the process list. Use SHOWFM_KEY or --key=- next time.', 'showfm' ) );
+			return trim( $value );
+		}
+
+		$env = getenv( self::KEY_ENV );
+		if ( is_string( $env ) && '' !== trim( $env ) ) {
+			return trim( $env );
+		}
+
+		if ( ( $this->interactive )() ) {
+			return trim( (string) \cli\prompt( __( 'Site key from show.fm (input hidden)', 'showfm' ), '', ': ', true ) );
+		}
+		return '';
+	}
+
+	/**
+	 * The first line of standard input, trimmed.
+	 */
+	private function read_stdin(): string {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- Reading standard input, not a file.
+		$handle = fopen( $this->stdin, 'rb' );
+		if ( false === $handle ) {
+			return '';
+		}
+		$line = fgets( $handle, self::MAX_KEY_BYTES );
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Pairs with the fopen above.
+		fclose( $handle );
+		return false === $line ? '' : trim( $line );
 	}
 
 	/**

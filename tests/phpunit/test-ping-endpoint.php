@@ -5,6 +5,8 @@
  * @package ShowFM
  */
 
+use ShowFM\Api_Client;
+use ShowFM\Connect;
 use ShowFM\Connection;
 use ShowFM\Ping_Endpoint;
 
@@ -214,6 +216,16 @@ class Test_Ping_Endpoint extends WP_UnitTestCase {
 
 		$this->assertNull( $this->nonce_row( $old ) );
 		$this->assertSame( 202, $this->ping( $this->signed( array( 'nonce' => $old ) ) )->get_status(), 'An expired claim does not block the nonce.' );
+	}
+
+	public function test_disconnect_forgets_the_nonces(): void {
+		$headers = $this->signed();
+		$this->ping( $headers );
+		$this->assertNotNull( $this->nonce_row( $headers['x-showfm-nonce'] ) );
+
+		( new Connect( $this->connection, new Api_Client( $this->connection ) ) )->disconnect();
+
+		$this->assertNull( $this->nonce_row( $headers['x-showfm-nonce'] ) );
 	}
 
 	public function test_a_failed_claim_is_refused(): void {
