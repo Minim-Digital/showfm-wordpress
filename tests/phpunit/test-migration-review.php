@@ -488,11 +488,62 @@ class Test_Migration_Review extends WP_UnitTestCase {
 	}
 
 	public function test_unclosed_letter_prefixed_less_than_text_is_prose(): void {
-		foreach ( array( 'x<y', 'a<b then', 'x<a', '<p>ok' ) as $text ) {
+		foreach ( array( 'x<y', 'a<b then', '<p>ok' ) as $text ) {
 			$report = $this->scan( $this->post( $text ) );
 			$this->assertSame( 'scanned', $report['status'], $text );
 			$this->assertSame( array(), $report['items'], $text );
 		}
+	}
+
+	public function test_long_unclosed_comparisons_are_prose_and_keep_later_embeds(): void {
+		$padding = str_repeat( 'plain text ', 1700 );
+		foreach ( array( 'x<y ', 'x<division ', 'x<y "' ) as $comparison ) {
+			$prefix = $comparison . $padding;
+			foreach ( array( '', '[powerpress url="https://media.example/a.mp3"]', '<iframe src="https://www.buzzsprout.com/1/episodes/10"></iframe>' ) as $embed ) {
+				$post   = $this->post( $prefix . $embed );
+				$report = $this->scan( $post );
+				$this->assertSame( 'scanned', $report['status'], $comparison );
+				if ( '' === $embed ) {
+					$this->assertSame( array(), $report['items'] );
+					continue;
+				}
+				$this->assertCount( 1, $report['items'] );
+				$this->assertSame( strlen( $prefix ), $report['items'][0]['offset'] );
+				$this->assertSame( strlen( $embed ), $report['items'][0]['length'] );
+				$choices = 'ambiguous' === $report['items'][0]['status'] ? array( 1 => self::EPISODE ) : array();
+				$result  = Migration_Swap::apply( $this->connection, $report, $choices );
+				$this->assertNotWPError( $result );
+				$this->assertStringStartsWith( $prefix . '<!-- wp:showfm/player', get_post( $post->ID )->post_content );
+				$this->assertSame( $post->post_content, get_post( $result['revision_id'] )->post_content );
+			}
+		}
+	}
+
+	public function test_depended_on_tags_still_fail_closed_at_eof_and_the_tag_budget(): void {
+		foreach ( array( 'iframe', 'script', 'pre', 'code', 'a', 'div', 'figure', 'figcaption', 'p', 'span', 'IFRAME' ) as $tag ) {
+			foreach ( array( '', str_repeat( 'x', ShowFM\Migration_Tokens::MAX_TAG + 1 ) ) as $tail ) {
+				foreach ( array( '', '<!-- wp:html -->' ) as $wrapper ) {
+					$content  = $wrapper . '<' . $tag . ' ' . $tail;
+					$content .= $wrapper ? '<!-- /wp:html -->' : '';
+					$report   = $this->scan( $this->post( $content ) );
+					$this->assertSame( 'error', $report['status'], $tag );
+					$this->assertSame( array(), $report['items'] );
+				}
+			}
+		}
+	}
+
+	public function test_missing_report_evidence_index_refuses_without_a_notice_or_write(): void {
+		$post            = $this->post( '<!-- wp:html --><figure>[powerpress url="https://media.example/a.mp3"]<figcaption>Caption</figcaption></figure><!-- /wp:html -->' );
+		$report          = $this->scan( $post );
+		$report['items'] = array( 7 => $report['items'][0] );
+		$revisions       = wp_get_post_revisions( $post->ID );
+		$result          = Migration_Swap::apply( $this->connection, $report );
+		$this->assertWPError( $result );
+		$this->assertSame( 'showfm_unsafe_report', $result->get_error_code() );
+		$this->assertStringContainsString( 'evidence', $result->get_error_message() );
+		$this->assertSame( $post->post_content, get_post( $post->ID )->post_content );
+		$this->assertEquals( $revisions, wp_get_post_revisions( $post->ID ) );
 	}
 
 	public function test_unclosed_less_than_text_before_iframe_keeps_the_embed(): void {

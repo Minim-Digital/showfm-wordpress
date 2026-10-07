@@ -107,9 +107,9 @@ final class Migration_Tokens {
 					continue;
 				}
 				// An incomplete letter-prefixed candidate can be prose (for example x<y).
-				// Recognisable markup inside a block wrapper must still fail closed.
+				// Tags used by detection, literal exclusion or wrapper expansion stay strict.
 				$text = self::match( '~\A<[a-z]~i', substr( $content, $start, 2 ) )
-					&& ! ( $stack && self::match( '~\A<(?:iframe|script|pre|code|a|div|figure|figcaption|p|span)(?=[\s>/]|\z)~i', substr( $content, $start, self::MAX_TAG ) ) );
+					&& ! self::match( '~\A<(?:iframe|script|pre|code|a|div|figure|figcaption|p|span)(?=[\s>/]|\z)~i', substr( $content, $start, self::MAX_TAG ) );
 				$end  = self::tag_end( $content, $start, $text );
 				if ( null === $end ) {
 					++$cursor;
@@ -269,7 +269,8 @@ final class Migration_Tokens {
 				break;
 			}
 		}
-		if ( $allow_text && ( $i < $limit || strlen( $content ) === $limit ) ) {
+		// Exhausting the tag budget cannot turn an otherwise unknown prose name into markup.
+		if ( $allow_text ) {
 			return null;
 		}
 		throw new \RuntimeException( 'Unclosed or oversized HTML tag.' );

@@ -42,7 +42,10 @@ final class Migration_Swap {
 			return new \WP_Error( 'showfm_stale_report', __( 'The post or source player changed after scanning. Start a new scan.', 'showfm' ) );
 		}
 		$occupied = array();
-		foreach ( $report['items'] as $item ) {
+		foreach ( $report['items'] as $index => $item ) {
+			if ( ! isset( $report['evidence'][ $index ] ) || ! is_array( $report['evidence'][ $index ] ) ) {
+				return new \WP_Error( 'showfm_unsafe_report', __( 'This embed has no matching scan evidence. Start a new scan.', 'showfm' ) );
+			}
 			if ( $item['offset'] < 0 || $item['length'] < 0 || $item['offset'] + $item['length'] > strlen( $post->post_content ) || ! hash_equals( $item['range_hash'], hash( 'sha256', substr( $post->post_content, $item['offset'], $item['length'] ) ) ) || Migration_Tokens::overlap( $item, $occupied ) || ! empty( $item['range_ambiguous'] ) ) {
 				return new \WP_Error( 'showfm_unsafe_ranges', __( 'The embed ranges overlap or changed. This post needs manual review.', 'showfm' ) );
 			}
