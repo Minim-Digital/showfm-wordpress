@@ -14,15 +14,19 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Read-only routes under `showfm/v1/editor/` for people who can edit posts.
  *
- * - Unconnected sites read the public API. Connected sites also read the keyed API, so the
- *   editor sees the account's shows and scheduled episodes. The site key stays on the server:
- *   responses carry only the normalised fields below, never a key, secret or raw body.
+ * - Unconnected sites read the public API. On a connected site, people who can publish
+ *   posts also read the keyed API, so they see the account's shows and its scheduled and
+ *   unpublished episodes. Contributors and other `edit_posts`-only users get public data
+ *   only. The site key stays on the server: responses carry only the normalised fields
+ *   below, never a key, secret or raw body.
  * - Requests need `edit_posts` and, from the browser, the `wp_rest` nonce (core cookie auth).
- * - Answers are cached in transients: 5 minutes for data, 1 minute for "not there".
- *   Errors are not cached. A 429 from the public API holds every editor call until its
- *   Retry-After has passed; keyed calls already wait in `Api_Client`. A 401 on a keyed
- *   call marks the connection for reconnecting, and the editor falls back to public data.
- * - Every answer is a 200 with a `state`, so the editor shows the matching message.
+ * - Answers are cached in transients: 5 minutes for data, 1 minute for "not there", 15
+ *   seconds for errors. Each user may send at most 30 uncached requests a minute. A 429
+ *   from the public API holds every editor call until its Retry-After has passed; keyed
+ *   calls already wait in `Api_Client`. A 401 on a keyed call marks the connection for
+ *   reconnecting.
+ * - Every answer is a 200 with a `state`, so the editor shows the matching message. When a
+ *   keyed read fails and public data is used instead, the answer says so in `warning`.
  */
 final class Editor_Api {
 
@@ -35,11 +39,20 @@ final class Editor_Api {
 	/** Seconds a 403 or 404 is reused. */
 	const MISS_TTL = 60;
 
+	/** Seconds an error (network, 5xx, unexpected answer) is reused. */
+	const ERROR_TTL = 15;
+
 	/** Transient holding the time until which public editor calls wait after a 429. */
 	const HOLD = 'showfm_editor_hold';
 
-	/** Most shows enriched with public details in one answer. */
-	const MAX_SHOWS = 20;
+	/** Uncached requests one user may send to show.fm in a window. */
+	const USER_LIMIT = 30;
+
+	/** The per-user window, in seconds. */
+	const USER_WINDOW = 60;
+
+	/** Prefix of the per-user counters (one transient per user, expiring with the window). */
+	const USER_COUNTER = 'showfm_editor_rate_';
 
 	/** Registers the routes on `rest_api_init`. */
 	public static function register(): void {
@@ -80,6 +93,14 @@ final class Editor_Api {
 	}
 
 	/**
+	 * Whether this user may see the connected account's data that is not public: its show
+	 * list, and scheduled or unpublished episodes. Only people who can publish.
+	 */
+	public static function can_see_private(): bool {
+		return current_user_can( 'publish_posts' ) && Plugin::connection()->is_connected();
+	}
+
+	/**
 	 * A podcast slug or UUID.
 	 *
 	 * @param mixed $value Parameter.
@@ -105,44 +126,33 @@ final class Editor_Api {
 	public static function settings(): array {
 		$state = Plugin::connection()->state();
 		return array(
-			'connected'  => Connection::STATE_CONNECTED === $state,
-			'reconnect'  => Connection::STATE_RECONNECT_NEEDED === $state,
-			'canConnect' => current_user_can( Admin::CAPABILITY ),
-			'connectUrl' => admin_url( 'admin.php?page=' . Connect::PAGE ),
-			'appUrl'     => Connect::app_url(),
-			'api'        => Api_Client::base_url(),
+			'connected'   => Connection::STATE_CONNECTED === $state,
+			'privateData' => Connection::STATE_CONNECTED === $state && current_user_can( 'publish_posts' ),
+			'reconnect'   => Connection::STATE_RECONNECT_NEEDED === $state,
+			'canConnect'  => current_user_can( Admin::CAPABILITY ),
+			'connectUrl'  => admin_url( 'admin.php?page=' . Connect::PAGE ),
+			'appUrl'      => Connect::app_url(),
+			'api'         => Api_Client::base_url(),
 		);
 	}
 
 	/**
-	 * The connected account's shows, or none when the site is not connected.
+	 * The connected account's shows, from one cached keyed request. None when the site is
+	 * not connected or the user cannot publish.
 	 *
 	 * @return array<string,mixed>
 	 */
 	public static function shows(): array {
-		$keyed = self::keyed_shows();
-		if ( null === $keyed['shows'] ) {
-			return array(
-				'state'     => $keyed['state'],
-				'connected' => $keyed['connected'],
-				'shows'     => array(),
-			);
-		}
-		$shows = array();
-		foreach ( array_slice( $keyed['shows'], 0, self::MAX_SHOWS ) as $show ) {
-			if ( 'external' !== $show['hosting'] ) {
-				$public = self::fetch( '/v1/podcasts/' . $show['id'], false );
-				if ( Api_Result::SUCCESS === $public['type'] && is_array( $public['data']['data'] ?? null ) ) {
-					$show = array_merge( self::show_payload( $public['data']['data'] ), array( 'hosting' => $show['hosting'] ) );
-				}
-			}
-			$shows[] = $show;
-		}
-		return array(
-			'state'     => 'ok',
-			'connected' => true,
-			'shows'     => $shows,
+		$keyed  = self::keyed_shows();
+		$answer = array(
+			'state'     => $keyed['state'],
+			'connected' => $keyed['connected'],
+			'shows'     => $keyed['shows'] ?? array(),
 		);
+		if ( isset( $keyed['retryAfter'] ) ) {
+			$answer['retryAfter'] = $keyed['retryAfter'];
+		}
+		return $answer;
 	}
 
 	/**
@@ -186,8 +196,10 @@ final class Editor_Api {
 				'episodes' => array(),
 			);
 		}
+		$warning = null;
 		if ( null !== $mine ) {
-			$result = self::fetch( '/v1/me/podcasts/' . $mine['id'] . '/episodes?limit=100', true );
+			$result  = self::fetch( '/v1/me/podcasts/' . $mine['id'] . '/episodes?limit=100', true );
+			$warning = Api_Result::UNAUTHORISED === $result['type'] ? 'reconnect' : self::failure( $result )['state'];
 			if ( Api_Result::SUCCESS === $result['type'] && is_array( $result['data']['data'] ?? null ) ) {
 				$episodes = array();
 				foreach ( $result['data']['data'] as $item ) {
@@ -204,7 +216,7 @@ final class Editor_Api {
 		}
 		$result = self::fetch( '/v1/podcasts/' . rawurlencode( $ref ) . '/episodes?limit=50', false );
 		if ( Api_Result::SUCCESS === $result['type'] && is_array( $result['data']['data'] ?? null ) ) {
-			return array(
+			$answer = array(
 				'state'    => 'ok',
 				'keyed'    => false,
 				'episodes' => array_values(
@@ -216,6 +228,11 @@ final class Editor_Api {
 					)
 				),
 			);
+			// The keyed list failed: say so, so the editor does not pass off public data as all.
+			if ( null !== $warning ) {
+				$answer['warning'] = $warning;
+			}
+			return $answer;
 		}
 		return self::failure( $result );
 	}
@@ -244,18 +261,26 @@ final class Editor_Api {
 			return self::failure( $result );
 		}
 
-		// Only a keyed read can tell a scheduled episode from a deleted one.
+		// Only a keyed read can tell a scheduled episode from a deleted one, and only people
+		// who can publish may see that.
+		if ( ! self::can_see_private() ) {
+			return array( 'state' => 'not_public' );
+		}
 		$podcast = is_string( $request['podcast'] ) ? strtolower( $request['podcast'] ) : '';
 		$mine    = '' === $podcast ? null : self::my_show( $podcast );
 		if ( null === $mine ) {
-			return array( 'state' => Plugin::connection()->is_connected() ? 'not_found' : 'not_public' );
+			return array( 'state' => 'not_found' );
 		}
 		$keyed = self::fetch( '/v1/me/episodes/' . $id, true );
 		if ( Api_Result::UNAVAILABLE === $keyed['type'] ) {
 			return array( 'state' => 'deleted' );
 		}
 		if ( Api_Result::SUCCESS !== $keyed['type'] || ! is_array( $keyed['data']['data'] ?? null ) ) {
-			return array( 'state' => 'not_public' );
+			return Api_Result::UNAUTHORISED === $keyed['type'] ? array( 'state' => 'not_public' ) : self::failure( $keyed );
+		}
+		// An episode of another show is not this show's episode.
+		if ( ( $keyed['data']['data']['podcast_id'] ?? null ) !== $mine['id'] ) {
+			return array( 'state' => 'not_found' );
 		}
 		$episode            = self::episode_item( $keyed['data']['data'], true );
 		$episode['podcast'] = array(
@@ -285,10 +310,10 @@ final class Editor_Api {
 	/**
 	 * The connected account's shows from the keyed API, or null with the reason.
 	 *
-	 * @return array{state:string,connected:bool,shows:array<int,array<string,mixed>>|null}
+	 * @return array{state:string,connected:bool,shows:array<int,array<string,mixed>>|null,retryAfter?:int}
 	 */
 	private static function keyed_shows(): array {
-		if ( ! Plugin::connection()->is_connected() ) {
+		if ( ! self::can_see_private() ) {
 			return array(
 				'state'     => 'ok',
 				'connected' => false,
@@ -298,10 +323,12 @@ final class Editor_Api {
 		$result = self::fetch( '/v1/me/podcasts?limit=50', true );
 		if ( Api_Result::SUCCESS !== $result['type'] || ! is_array( $result['data']['data'] ?? null ) ) {
 			$connected = Api_Result::UNAUTHORISED !== $result['type'];
-			return array(
-				'state'     => $connected ? self::failure( $result )['state'] : 'ok',
-				'connected' => $connected,
-				'shows'     => null,
+			return array_merge(
+				$connected ? self::failure( $result ) : array( 'state' => 'ok' ),
+				array(
+					'connected' => $connected,
+					'shows'     => null,
+				)
 			);
 		}
 		$shows = array();
@@ -312,9 +339,10 @@ final class Editor_Api {
 					'slug'     => self::text( $item['slug'] ?? '' ),
 					'title'    => self::text( $item['title'] ?? '' ),
 					'hosting'  => 'external' === ( $item['hosting_type'] ?? '' ) ? 'external' : 'showfm',
+					// The keyed list has no artwork or count; the editor shows a plain tile.
 					'artwork'  => null,
 					'episodes' => null,
-					'listen'   => null,
+					'listen'   => Attributes::show_listen_url( (string) ( $item['slug'] ?? '' ) ),
 				);
 			}
 		}
@@ -360,12 +388,11 @@ final class Editor_Api {
 		}
 		$hold = (int) get_transient( self::HOLD );
 		if ( ! $keyed && $hold > time() ) {
-			return array(
-				'type'   => Api_Result::RATE_LIMITED,
-				'status' => 0,
-				'data'   => null,
-				'retry'  => $hold - time(),
-			);
+			return self::held( $hold - time() );
+		}
+		$wait = self::count_user_request();
+		if ( $wait > 0 ) {
+			return self::held( $wait );
 		}
 		$client = Plugin::api_client();
 		$result = $keyed ? $client->get_keyed( $path ) : $client->get( $path );
@@ -379,10 +406,50 @@ final class Editor_Api {
 			set_transient( $key, $answer, self::OK_TTL );
 		} elseif ( Api_Result::UNAVAILABLE === $answer['type'] ) {
 			set_transient( $key, $answer, self::MISS_TTL );
+		} elseif ( in_array( $answer['type'], array( Api_Result::TRANSIENT_FAILURE, Api_Result::FAILED ), true ) ) {
+			// Brief, so an outage does not tie up a PHP worker per editor request.
+			set_transient( $key, $answer, self::ERROR_TTL );
 		} elseif ( Api_Result::RATE_LIMITED === $answer['type'] && ! $keyed ) {
 			set_transient( self::HOLD, time() + $answer['retry'], $answer['retry'] );
 		}
 		return $answer;
+	}
+
+	/**
+	 * An answer for a call that was held back and never sent.
+	 *
+	 * @param int $seconds Seconds to wait.
+	 * @return array{type:string,status:int,data:mixed,retry:int}
+	 */
+	private static function held( int $seconds ): array {
+		return array(
+			'type'   => Api_Result::RATE_LIMITED,
+			'status' => 0,
+			'data'   => null,
+			'retry'  => max( 1, $seconds ),
+		);
+	}
+
+	/**
+	 * Counts one uncached request for the current user. Returns the seconds to wait when the
+	 * user has used up the window, else 0. One counter per user, expiring with the window.
+	 */
+	private static function count_user_request(): int {
+		$key     = self::USER_COUNTER . get_current_user_id();
+		$now     = time();
+		$counter = get_transient( $key );
+		if ( ! is_array( $counter ) || ! isset( $counter['start'], $counter['count'] ) || $now - (int) $counter['start'] >= self::USER_WINDOW ) {
+			$counter = array(
+				'start' => $now,
+				'count' => 0,
+			);
+		}
+		if ( (int) $counter['count'] >= self::USER_LIMIT ) {
+			return self::USER_WINDOW - ( $now - (int) $counter['start'] );
+		}
+		++$counter['count'];
+		set_transient( $key, $counter, self::USER_WINDOW );
+		return 0;
 	}
 
 	/**

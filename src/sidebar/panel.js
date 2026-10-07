@@ -27,18 +27,19 @@ export function useEpisodeOptions( episodeId, enabled = true ) {
 		const current = episodeId
 			? request( 'episode', { id: episodeId } )
 			: Promise.resolve( {} );
-		const shows = settings.connected
-			? request( 'shows' ).then( ( answer ) =>
-					( answer.shows || [] )
-						.filter( ( show ) => show.hosting !== 'external' )
-						.slice( 0, 5 )
-						.map( ( show ) => show.id )
-				)
-			: current.then( ( answer ) =>
-					answer.episode?.podcast?.id
-						? [ answer.episode.podcast.id ]
-						: []
-				);
+		const shows =
+			settings.connected && settings.privateData
+				? request( 'shows' ).then( ( answer ) =>
+						( answer.shows || [] )
+							.filter( ( show ) => show.hosting !== 'external' )
+							.slice( 0, 5 )
+							.map( ( show ) => show.id )
+					)
+				: current.then( ( answer ) =>
+						answer.episode?.podcast?.id
+							? [ answer.episode.podcast.id ]
+							: []
+					);
 		Promise.all( [ current, shows ] )
 			.then( ( [ detail, ids ] ) =>
 				Promise.all(

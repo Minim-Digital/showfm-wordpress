@@ -91,6 +91,7 @@ function showfm_e2e_responses(): array {
 				'data' => array(
 					array(
 						'id'             => SHOWFM_E2E_PUDDING,
+						'podcast_id'     => SHOWFM_E2E_PODCAST,
 						'slug'           => 'pudding',
 						'title'          => 'Bread and butter pudding',
 						'status'         => 'scheduled',
@@ -100,6 +101,7 @@ function showfm_e2e_responses(): array {
 					),
 					array(
 						'id'               => SHOWFM_E2E_EPISODE,
+						'podcast_id'       => SHOWFM_E2E_PODCAST,
 						'slug'             => 'sourdough',
 						'title'            => 'Sourdough, salt and the slow return of the village bakery',
 						'status'           => 'published',
@@ -116,6 +118,7 @@ function showfm_e2e_responses(): array {
 			array(
 				'data' => array(
 					'id'             => SHOWFM_E2E_PUDDING,
+					'podcast_id'     => SHOWFM_E2E_PODCAST,
 					'slug'           => 'pudding',
 					'title'          => 'Bread and butter pudding',
 					'status'         => 'scheduled',

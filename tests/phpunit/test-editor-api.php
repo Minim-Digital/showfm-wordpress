@@ -219,12 +219,37 @@ class Test_Editor_Api extends WP_UnitTestCase {
 		$this->assertSame( array( 'state' => 'paused' ), $this->get( 'show', array( 'ref' => 'suspended' ) )->get_data() );
 	}
 
-	public function test_errors_are_not_cached(): void {
+	public function test_errors_are_cached_briefly(): void {
 		$this->http->respond( 503 );
 		$this->assertSame( array( 'state' => 'error' ), $this->get( 'show', array( 'ref' => 'the-long-table' ) )->get_data() );
+		$this->assertSame( array( 'state' => 'error' ), $this->get( 'show', array( 'ref' => 'the-long-table' ) )->get_data() );
+		$this->assertSame( 1, $this->http->count(), 'An outage costs one request per path, not one per editor request.' );
+		$key     = ShowFM\Cache::key( 'editor:public:/v1/podcasts/the-long-table' );
+		$timeout = (int) get_option( '_transient_timeout_' . $key );
+		$this->assertLessThanOrEqual( time() + Editor_Api::ERROR_TTL, $timeout );
+		$this->assertGreaterThan( time(), $timeout );
+
+		delete_transient( $key );
 		$this->http->fail( 'timeout' );
 		$this->assertSame( array( 'state' => 'error' ), $this->get( 'show', array( 'ref' => 'the-long-table' ) )->get_data() );
-		$this->assertSame( 2, $this->http->count(), 'Each try reaches show.fm again.' );
+		$this->assertSame( 2, $this->http->count(), 'After the brief window show.fm is asked again.' );
+	}
+
+	public function test_each_user_has_a_bounded_number_of_uncached_requests(): void {
+		for ( $i = 0; $i < Editor_Api::USER_LIMIT; $i++ ) {
+			$this->http->respond( 404 );
+			$this->assertSame( 'not_found', $this->get( 'show', array( 'ref' => 'show-' . $i ) )->get_data()['state'] );
+		}
+		$held = $this->get( 'show', array( 'ref' => 'one-more' ) )->get_data();
+		$this->assertSame( 'rate_limited', $held['state'] );
+		$this->assertGreaterThan( 0, $held['retryAfter'] );
+		$this->assertLessThanOrEqual( Editor_Api::USER_WINDOW, $held['retryAfter'] );
+		$this->assertSame( Editor_Api::USER_LIMIT, $this->http->count(), 'The held request is never sent.' );
+		$this->assertSame( 'not_found', $this->get( 'show', array( 'ref' => 'show-0' ) )->get_data()['state'], 'Cached answers still come back.' );
+
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );
+		$this->http->respond( 404 );
+		$this->assertSame( 'not_found', $this->get( 'show', array( 'ref' => 'one-more' ) )->get_data()['state'], 'Each user has their own counter.' );
 	}
 
 	public function test_public_429_holds_every_editor_call_until_retry_after(): void {
@@ -240,24 +265,119 @@ class Test_Editor_Api extends WP_UnitTestCase {
 	public function test_connected_shows_use_the_key_on_the_server_only(): void {
 		$this->connect();
 		$this->http->respond( 200, $this->keyed_shows() );
-		$this->http->respond( 200, $this->json( array( 'data' => $this->public_show() ) ) );
 		$response = $this->get( 'shows' );
 		$data     = $response->get_data();
 		$this->assertSame( 'ok', $data['state'] );
 		$this->assertTrue( $data['connected'] );
 		$this->assertCount( 2, $data['shows'] );
-		$this->assertSame( 'https://m.cdn.media/art.jpg', $data['shows'][0]['artwork'] );
+		$this->assertSame( 'https://the-long-table.show.fm', $data['shows'][0]['listen'] );
+		$this->assertNull( $data['shows'][0]['artwork'] );
 		$this->assertSame( 'external', $data['shows'][1]['hosting'] );
-		$this->assertSame( 2, $this->http->count(), 'An external show is not looked up publicly.' );
+		$this->assertSame( 1, $this->http->count(), 'One request, however many shows the account has.' );
+		$this->assertSame( $data, $this->get( 'shows' )->get_data() );
+		$this->assertSame( 1, $this->http->count(), 'Then from the cache.' );
 
-		$keyed  = $this->http->requests[0];
-		$public = $this->http->requests[1];
+		$keyed = $this->http->requests[0];
 		$this->assertSame( 'https://api.show.fm/v1/me/podcasts?limit=50', $keyed['url'] );
 		$this->assertSame( 'Bearer ' . self::KEY, $keyed['args']['headers']['Authorization'] );
-		$this->assertArrayNotHasKey( 'Authorization', $public['args']['headers'] );
 		$this->assert_no_secrets( $data );
 		$this->assert_no_secrets( Editor_Api::settings() );
 		$this->assertTrue( Editor_Api::settings()['connected'] );
+	}
+
+	public function test_contributors_get_public_data_only_on_a_connected_site(): void {
+		$this->connect();
+		wp_set_current_user( self::factory()->user->create( array( 'role' => 'contributor' ) ) );
+		$this->assertFalse( Editor_Api::settings()['privateData'] );
+		$this->assertTrue( Editor_Api::settings()['connected'] );
+		$this->assertSame(
+			array(
+				'state'     => 'ok',
+				'connected' => false,
+				'shows'     => array(),
+			),
+			$this->get( 'shows' )->get_data()
+		);
+		$this->assertSame( 0, $this->http->count(), 'No keyed request for a Contributor.' );
+
+		$this->http->respond( 200, $this->json( array( 'data' => array() ) ) );
+		$this->assertFalse( $this->get( 'episodes', array( 'podcast' => self::PODCAST ) )->get_data()['keyed'] );
+		$this->http->respond( 404 );
+		$this->assertSame(
+			array( 'state' => 'not_public' ),
+			$this->get(
+				'episode',
+				array(
+					'id'      => self::EPISODE,
+					'podcast' => self::PODCAST,
+				)
+			)->get_data()
+		);
+		$this->assertSame( 2, $this->http->count() );
+		foreach ( $this->http->requests as $request ) {
+			$this->assertArrayNotHasKey( 'Authorization', $request['args']['headers'] );
+			$this->assertStringNotContainsString( '/v1/me/', $request['url'] );
+		}
+	}
+
+	public function test_a_failed_keyed_list_falls_back_to_public_episodes_and_says_so(): void {
+		$this->connect();
+		$this->http->respond( 200, $this->keyed_shows() );
+		$this->http->respond( 503 );
+		$this->http->respond( 200, $this->json( array( 'data' => array( $this->public_episode() ) ) ) );
+		$data = $this->get( 'episodes', array( 'podcast' => self::PODCAST ) )->get_data();
+		$this->assertSame( 'ok', $data['state'] );
+		$this->assertFalse( $data['keyed'] );
+		$this->assertSame( 'error', $data['warning'] );
+		$this->assertCount( 1, $data['episodes'] );
+	}
+
+	public function test_a_failed_keyed_episode_read_is_an_error_not_a_state(): void {
+		$this->connect();
+		$this->http->respond( 404 );
+		$this->http->respond( 200, $this->keyed_shows() );
+		$this->http->respond( 503 );
+		$this->assertSame(
+			array( 'state' => 'error' ),
+			$this->get(
+				'episode',
+				array(
+					'id'      => self::EPISODE,
+					'podcast' => self::PODCAST,
+				)
+			)->get_data()
+		);
+	}
+
+	public function test_an_episode_of_another_show_is_not_found_for_this_show(): void {
+		$this->connect();
+		$this->http->respond( 404 );
+		$this->http->respond( 200, $this->keyed_shows() );
+		$this->http->respond(
+			200,
+			$this->json(
+				array(
+					'data' => array(
+						'id'            => self::EPISODE,
+						'podcast_id'    => self::OTHER,
+						'slug'          => 'elsewhere',
+						'title'         => 'From the other show',
+						'status'        => 'scheduled',
+						'scheduled_for' => '2030-10-14T09:00:00Z',
+					),
+				)
+			)
+		);
+		$this->assertSame(
+			array( 'state' => 'not_found' ),
+			$this->get(
+				'episode',
+				array(
+					'id'      => self::EPISODE,
+					'podcast' => self::PODCAST,
+				)
+			)->get_data()
+		);
 	}
 
 	public function test_external_show_is_refused_by_address(): void {
@@ -382,9 +502,10 @@ class Test_Editor_Api extends WP_UnitTestCase {
 				array(
 					'data' => array_merge(
 						array(
-							'id'    => self::EPISODE,
-							'slug'  => 'pudding',
-							'title' => 'Bread and butter pudding',
+							'id'         => self::EPISODE,
+							'podcast_id' => self::PODCAST,
+							'slug'       => 'pudding',
+							'title'      => 'Bread and butter pudding',
 						),
 						$fields
 					),

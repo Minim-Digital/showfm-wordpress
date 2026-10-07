@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-07T19:07:21+00:00\n"
+"POT-Creation-Date: 2026-10-07T20:24:33+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: showfm\n"
@@ -63,7 +63,7 @@ msgid "Connect this site to your show.fm account to publish episodes as posts."
 msgstr ""
 
 #: includes/class-admin.php:148
-#: src/components/show-placeholder.js:225
+#: src/components/show-placeholder.js:262
 msgid "Connect to show.fm"
 msgstr ""
 
@@ -512,7 +512,7 @@ msgid "Show"
 msgstr ""
 
 #: src/blocks/episodes.js:68
-#: src/components/block-edit.js:291
+#: src/components/block-edit.js:298
 msgid "Change show"
 msgstr ""
 
@@ -611,13 +611,13 @@ msgstr ""
 
 #: src/blocks/play.js:30
 #: src/blocks/player.js:68
-#: src/components/episode-picker.js:203
+#: src/components/episode-picker.js:222
 msgid "Episode"
 msgstr ""
 
 #: src/blocks/play.js:33
 #: src/blocks/player.js:71
-#: src/components/block-edit.js:290
+#: src/components/block-edit.js:297
 msgid "Change episode"
 msgstr ""
 
@@ -639,7 +639,7 @@ msgstr ""
 
 #: src/blocks/play.js:58
 #: src/blocks/player.js:77
-#: src/blocks/transcript.js:152
+#: src/blocks/transcript.js:157
 msgid "Size"
 msgstr ""
 
@@ -669,7 +669,7 @@ msgstr ""
 
 #: src/blocks/play.js:100
 #: src/blocks/player.js:174
-#: src/blocks/transcript.js:276
+#: src/blocks/transcript.js:281
 msgid "Add a public show from show.fm. You’ll choose the episode next."
 msgstr ""
 
@@ -735,7 +735,7 @@ msgid "Episode list"
 msgstr ""
 
 #: src/blocks/transcript.js:43
-#: src/blocks/transcript.js:129
+#: src/blocks/transcript.js:134
 msgid "Player"
 msgstr ""
 
@@ -745,60 +745,60 @@ msgstr ""
 msgid "%1$s %2$d"
 msgstr ""
 
-#: src/blocks/transcript.js:125
+#: src/blocks/transcript.js:130
 msgid "Follows"
 msgstr ""
 
-#: src/blocks/transcript.js:132
+#: src/blocks/transcript.js:137
 msgid "Highlights along with this player. You can pick any Player block on the page."
 msgstr ""
 
-#: src/blocks/transcript.js:139
+#: src/blocks/transcript.js:144
 msgid "This episode only"
 msgstr ""
 
-#: src/blocks/transcript.js:140
+#: src/blocks/transcript.js:145
 msgid "Whatever plays on the page"
 msgstr ""
 
-#: src/blocks/transcript.js:156
+#: src/blocks/transcript.js:161
 msgid "Height"
 msgstr ""
 
-#: src/blocks/transcript.js:157
+#: src/blocks/transcript.js:162
 msgid "In pixels."
 msgstr ""
 
-#: src/blocks/transcript.js:177
-#: src/blocks/transcript.js:233
-#: src/blocks/transcript.js:246
-#: src/blocks/transcript.js:274
+#: src/blocks/transcript.js:182
+#: src/blocks/transcript.js:238
+#: src/blocks/transcript.js:251
+#: src/blocks/transcript.js:279
 msgid "show.fm Transcript"
 msgstr ""
 
-#: src/blocks/transcript.js:178
+#: src/blocks/transcript.js:183
 msgid "Choose the player this transcript follows."
 msgstr ""
 
-#: src/blocks/transcript.js:203
+#: src/blocks/transcript.js:208
 msgid "Show one episode’s transcript instead"
 msgstr ""
 
-#: src/blocks/transcript.js:222
-#: src/blocks/transcript.js:259
+#: src/blocks/transcript.js:227
+#: src/blocks/transcript.js:264
 msgid "Change player"
 msgstr ""
 
-#: src/blocks/transcript.js:247
+#: src/blocks/transcript.js:252
 msgid "The player this transcript followed is no longer on the page."
 msgstr ""
 
-#: src/components/block-edit.js:169
-#: src/components/block-edit.js:210
+#: src/components/block-edit.js:176
+#: src/components/block-edit.js:217
 msgid "Loading show…"
 msgstr ""
 
-#: src/components/block-edit.js:209
+#: src/components/block-edit.js:216
 msgid "Loading episode…"
 msgstr ""
 
@@ -841,28 +841,42 @@ msgstr ""
 msgid "Loading episodes…"
 msgstr ""
 
-#: src/components/episode-picker.js:247
+#: src/components/episode-picker.js:205
+msgid "This site needs reconnecting to show.fm, so only public episodes are listed."
+msgstr ""
+
+#: src/components/episode-picker.js:209
+msgid "Couldn’t load scheduled episodes from show.fm, so only public episodes are listed."
+msgstr ""
+
+#: src/components/episode-picker.js:215
+#: src/components/show-placeholder.js:177
+#: src/components/state-message.js:266
+msgid "Try again"
+msgstr ""
+
+#: src/components/episode-picker.js:266
 msgid "No episodes match."
 msgstr ""
 
-#: src/components/episode-picker.js:248
+#: src/components/episode-picker.js:267
 msgid "This show has no episodes yet."
 msgstr ""
 
-#: src/components/episode-picker.js:263
+#: src/components/episode-picker.js:282
 msgid "Use this episode"
 msgstr ""
 
-#: src/components/episode-picker.js:270
+#: src/components/episode-picker.js:289
 msgid "Cancel"
 msgstr ""
 
-#: src/components/heading-level.js:35
+#: src/components/heading-level.js:36
 msgid "Change level"
 msgstr ""
 
 #. translators: %s: heading level, such as 2.
-#: src/components/heading-level.js:39
+#: src/components/heading-level.js:40
 #, js-format
 msgid "Heading %s"
 msgstr ""
@@ -879,35 +893,47 @@ msgstr[1] ""
 msgid "Hosted outside show.fm"
 msgstr ""
 
-#: src/components/show-placeholder.js:103
+#: src/components/show-placeholder.js:108
 msgid "Enter a show address, such as the-long-table.show.fm, or its slug."
 msgstr ""
 
-#: src/components/show-placeholder.js:135
+#: src/components/show-placeholder.js:140
 msgid "Choose a show."
 msgstr ""
 
-#: src/components/show-placeholder.js:141
+#: src/components/show-placeholder.js:146
 msgid "Loading your shows…"
 msgstr ""
 
-#: src/components/show-placeholder.js:180
+#. translators: %d: seconds to wait.
+#: src/components/show-placeholder.js:159
+#, js-format
+msgid "show.fm is busy. Try again in %d second."
+msgid_plural "show.fm is busy. Try again in %d seconds."
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/components/show-placeholder.js:167
+msgid "Couldn’t reach show.fm to list your shows."
+msgstr ""
+
+#: src/components/show-placeholder.js:217
 msgid "Use the address of another public show"
 msgstr ""
 
-#: src/components/show-placeholder.js:197
+#: src/components/show-placeholder.js:234
 msgid "Show address or slug"
 msgstr ""
 
-#: src/components/show-placeholder.js:209
+#: src/components/show-placeholder.js:246
 msgid "Continue"
 msgstr ""
 
-#: src/components/show-placeholder.js:219
+#: src/components/show-placeholder.js:256
 msgid "Connect this site to show.fm to pick from your own shows and see scheduled episodes."
 msgstr ""
 
-#: src/components/show-placeholder.js:239
+#: src/components/show-placeholder.js:276
 msgid "Choose from your shows"
 msgstr ""
 
@@ -982,10 +1008,6 @@ msgstr ""
 msgid "Visitors won’t see this block until then."
 msgstr ""
 
-#: src/components/state-message.js:266
-msgid "Try again"
-msgstr ""
-
 #. translators: 1: date, such as 14 October. 2: time, such as 09:00.
 #: src/format.js:27
 #, js-format
@@ -1022,19 +1044,19 @@ msgstr ""
 msgid "E%d"
 msgstr ""
 
-#: src/sidebar/panel.js:119
+#: src/sidebar/panel.js:120
 msgid "Episode for this post"
 msgstr ""
 
-#: src/sidebar/panel.js:120
+#: src/sidebar/panel.js:121
 msgid "Choose an episode"
 msgstr ""
 
-#: src/sidebar/panel.js:121
+#: src/sidebar/panel.js:122
 msgid "Heading and Paragraph blocks connected to the episode title or description show this episode."
 msgstr ""
 
-#: src/sidebar/panel.js:141
+#: src/sidebar/panel.js:142
 msgid "Open in show.fm"
 msgstr ""
 

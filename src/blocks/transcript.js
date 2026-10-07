@@ -57,7 +57,12 @@ export function followLabel( block, index ) {
  */
 export function elementIdFor( block, taken ) {
 	const id = block.attributes.id;
-	if ( id && ! taken.includes( id ) ) {
+	// The server keeps only ids with the showfm- prefix (Attributes::ELEMENT_ID).
+	if (
+		typeof id === 'string' &&
+		/^showfm-[A-Za-z0-9_-]{1,57}$/.test( id ) &&
+		! taken.includes( id )
+	) {
 		return id;
 	}
 	const prefix =

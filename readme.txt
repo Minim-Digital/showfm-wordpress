@@ -42,7 +42,7 @@ This plugin relies on show.fm, a podcast hosting service run by show.fm Ltd. It 
 * Reporting in (verify): right after connecting. If that fails, it is retried before the next sync or health report. Sent: the site key, the plugin, WordPress and PHP versions, and the site's name.
 * Health report: once a day while connected. Sent: the site key, the plugin, WordPress and PHP versions, the time of the last sync and the number of sync errors.
 * Sync: a check every 15 minutes (with a staggered start), signed wake-up requests and explicit WP-CLI sync commands pull episode changes in the background. Sent: the site key, the last applied sequence number and page size. Post reports send the episode identifier, post ID, HTTPS post address, publication state and source content hash. Transient report failures are queued and retried; terminal refusals, missing posts and invalid addresses are dropped with a local reason code; no WordPress post text or visitor data is uploaded. A dry run previews one page at the applied cursor (or zero with --from-start), recording contact with show.fm but never acknowledging unapplied changes. It leaves local posts and the saved cursor unchanged.
-* Block editor: while connected, when someone editing a post adds a show.fm block, the site lists the account's shows and their episodes, including scheduled ones, so they can be chosen before they go live. Sent: the site key in the authentication header, and show and episode IDs. Answers are cached for five minutes and only ever reach the browser as titles, dates and links, never the key.
+* Block editor: while connected, when someone who can publish posts adds a show.fm block, the site lists the account's shows and their episodes, including scheduled ones, so they can be chosen before they go live. Sent: the site key in the authentication header, and show and episode IDs. Answers are cached for five minutes and only ever reach the browser as titles, dates and links, never the key. Contributors see public shows and episodes only.
 * Embed migration: when an administrator explicitly runs a migration scan, the plugin lists the connected key's accessible shows and published episodes, including import matching fingerprints. No per-episode detail requests are made. Sent: the site key in the authentication header, pagination cursors, show and episode IDs, and the site address in the User-Agent. Post content and third-party embed URLs stay on the WordPress site.
 * After show.fm refuses the site key, the plugin stops authenticated requests until an administrator reconnects. Public embeds continue to work. When show.fm asks it to slow down, it waits as long as show.fm says.
 
@@ -80,6 +80,10 @@ Not for the player and episode lists of a public show. Publish to WordPress need
 
 Add a show.fm Player, Episode list, Play button or Transcript block. Type the show's address (such as the-long-table.show.fm) or its slug, then choose an episode or "Latest episode". A connected site lists your shows instead, including scheduled episodes, which the editor marks with the date they go live. Visitors see nothing for an episode until it is public.
 
+= Who can see scheduled episodes in the editor? =
+
+On a connected site, only people who can publish posts (Authors, Editors and Administrators) see the account's shows and its scheduled episodes. Contributors can add public shows and episodes by address, and a block with a scheduled episode tells them it isn't public yet. A scheduled episode's title is never saved in the post, and visitors see nothing until the episode is public.
+
 = Can I connect from the command line? =
 
 Yes. Create a site key in show.fm under Connected sites, then Add a site with WP-CLI, and run `wp showfm connect`. It asks for the key with the input hidden, or reads it from the `SHOWFM_KEY` environment variable, or from standard input with `--key=-` (for example `pass show showfm/site-key | wp showfm connect --key=-`). `--key=<key>` also works, but the key then stays in your shell history and shows in the process list. `wp showfm status` shows the connection and `wp showfm disconnect` removes it. On a multisite network, add `--url=` to pick the site: each site connects separately.
@@ -97,6 +101,7 @@ The plugin keeps up to 50 local sync diagnostics containing its own reason codes
 == Changelog ==
 
 = 0.1.0 =
+* In the editor, only people who can publish see the connected account's shows and scheduled episodes, show.fm links in blocks are limited to show.fm hosts, and a scheduled episode's details are never saved in the post.
 * Added the block editor UI: show and episode pickers with search, seasons and Latest episode, inspector controls for every block, the heading level toolbar control, a Transcript that follows a Player, and in-block messages for scheduled, unavailable, paused and unreachable episodes. The blocks preview the real player in the editor.
 * Added the "show.fm" panel to the post sidebar on posts created by show.fm: sync status, the episode for this post and a link to it in show.fm.
 * Updated the bundled embed package to 1.4.0, which adds the episode list, play button with mini-player, and transcript elements.

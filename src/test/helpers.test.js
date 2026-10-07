@@ -122,7 +122,7 @@ describe( 'snapshots', () => {
 				listen: 'https://show.fm/x/e/soon',
 				audio: 'https://m.cdn.media/s.mp3',
 			} )
-		).toEqual( { title: 'Soon' } );
+		).toEqual( {} );
 		expect(
 			episodeSnapshot( {
 				title: 'Bad',
@@ -139,6 +139,50 @@ describe( 'snapshots', () => {
 			title: 'The Long Table',
 			listenUrl: 'https://the-long-table.show.fm',
 		} );
+	} );
+
+	it( 'keeps links on show.fm hosts only, and caps the title', () => {
+		expect(
+			episodeSnapshot( {
+				title: 'x'.repeat( 400 ),
+				listen: 'https://evil.example/e/knives',
+				audio: 'https://evil.example/k.mp3',
+			} )
+		).toEqual( { title: 'x'.repeat( 300 ) } );
+		expect(
+			episodeSnapshot( {
+				title: 'Lookalike',
+				listen: 'https://show.fm.evil.example/e/x',
+				audio: 'https://user@m.cdn.media/k.mp3',
+			} )
+		).toEqual( { title: 'Lookalike' } );
+		expect(
+			episodeSnapshot( {
+				title: 'Staging',
+				listen: 'https://the-long-table.showfm.dev/e/x',
+				audio: 'https://m.showfm.dev/x.mp3',
+			} )
+		).toEqual( { title: 'Staging' } );
+		window.showfmEditor = { api: 'https://api.showfm.dev' };
+		expect(
+			episodeSnapshot( {
+				title: 'Staging',
+				listen: 'https://the-long-table.showfm.dev/e/x',
+				audio: 'https://m.showfm.dev/x.mp3',
+			} )
+		).toEqual( {
+			title: 'Staging',
+			listenUrl: 'https://the-long-table.showfm.dev/e/x',
+			audioUrl: 'https://m.showfm.dev/x.mp3',
+		} );
+		delete window.showfmEditor;
+		expect(
+			episodeSnapshot( {
+				title: 'Legacy host',
+				listen: 'https://show.fm/x/e/y',
+				audio: 'https://media.podcasterplus.com/a.mp3',
+			} ).audioUrl
+		).toBe( 'https://media.podcasterplus.com/a.mp3' );
 	} );
 } );
 
@@ -285,8 +329,12 @@ describe( 'control helpers', () => {
 			)
 		).toBe( 'showfm-player-abcdef12' );
 		expect(
-			elementIdFor( { ...player, attributes: { id: 'mine' } }, [] )
-		).toBe( 'mine' );
+			elementIdFor( { ...player, attributes: { id: 'showfm-mine' } }, [] )
+		).toBe( 'showfm-mine' );
+		// Ids without the prefix (such as wpadminbar) are replaced.
+		expect(
+			elementIdFor( { ...player, attributes: { id: 'wpadminbar' } }, [] )
+		).toBe( 'showfm-player-abcdef12' );
 	} );
 
 	it( 'passes only element attributes to the preview, with the site API', () => {

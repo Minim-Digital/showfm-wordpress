@@ -3,6 +3,7 @@
  */
 const DEFAULTS = {
 	connected: false,
+	privateData: false,
 	reconnect: false,
 	canConnect: false,
 	connectUrl: '',

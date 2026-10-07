@@ -197,6 +197,25 @@ export default function EpisodePicker( {
 					{ __( 'Loading episodes…', 'showfm' ) }
 				</div>
 			) }
+			{ ! loading && data?.warning && (
+				<div className="showfm-strip is-warning" role="status">
+					<Icon icon="update" size={ 20 } />
+					<span className="showfm-strip__text">
+						{ data.warning === 'reconnect'
+							? __(
+									'This site needs reconnecting to show.fm, so only public episodes are listed.',
+									'showfm'
+								)
+							: __(
+									'Couldn’t load scheduled episodes from show.fm, so only public episodes are listed.',
+									'showfm'
+								) }
+					</span>
+					<Button variant="link" onClick={ retry }>
+						{ __( 'Try again', 'showfm' ) }
+					</Button>
+				</div>
+			) }
 			{ ! loading && (
 				<fieldset className="showfm-episodes">
 					<legend className="screen-reader-text">

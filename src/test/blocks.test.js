@@ -105,7 +105,11 @@ beforeEach( () => {
 	request.mockResolvedValue( { state: 'error' } );
 	followable.length = 0;
 	updateBlockAttributes.mockReset();
-	window.showfmEditor = { connected: true, api: 'https://api.show.fm' };
+	window.showfmEditor = {
+		connected: true,
+		privateData: true,
+		api: 'https://api.show.fm',
+	};
 } );
 
 afterEach( () => {
@@ -153,6 +157,42 @@ describe( 'block flow', () => {
 			screen.getByRole( 'button', { name: 'Change episode' } )
 		).toBeInTheDocument();
 		expect( screen.getByText( 'inspector' ) ).toBeInTheDocument();
+	} );
+
+	it( 'stores no snapshot for a scheduled episode', async () => {
+		const scheduled = {
+			...EPISODE,
+			id: '66666666-6666-4666-8666-666666666666',
+			title: 'Bread and butter pudding',
+			scheduled: true,
+			date: '2030-10-14T09:00:00+00:00',
+		};
+		answer( {
+			show: { state: 'ok', show: SHOW },
+			episodes: { state: 'ok', keyed: true, episodes: [ scheduled ] },
+			episode: { state: 'scheduled', episode: scheduled },
+		} );
+		const onSet = vi.fn();
+		render( <Harness initial={ { podcast: SHOW.id } } onSet={ onSet } /> );
+		fireEvent.click(
+			await screen.findByRole( 'radio', { name: /Bread and butter/ } )
+		);
+		fireEvent.click(
+			screen.getByRole( 'button', { name: 'Use this episode' } )
+		);
+		expect( onSet ).toHaveBeenCalledWith( {
+			episode: scheduled.id,
+			podcast: SHOW.id,
+			snapshot: {},
+		} );
+		expect(
+			await screen.findByText( /Goes live on 14 October/ )
+		).toBeInTheDocument();
+		expect(
+			onSet.mock.calls.every(
+				( [ next ] ) => ! next.snapshot || ! next.snapshot.title
+			)
+		).toBe( true );
 	} );
 
 	it( 'stores the show for Latest episode', async () => {

@@ -27,7 +27,8 @@ export const LEVELS = {
  * @param {(value: string) => void} props.onChange Called with the new level as a string.
  */
 export default function HeadingLevelDropdown( { value, onChange } ) {
-	const current = LEVELS[ value ] ? value : '3';
+	// The same default as defaultLevel() with no heading above.
+	const current = LEVELS[ value ] ? value : '2';
 	return (
 		<ToolbarDropdownMenu
 			popoverProps={ { className: 'showfm-heading-levels' } }

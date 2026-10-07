@@ -84,16 +84,21 @@ export default function ShowPlaceholder( {
 	onSelect,
 } ) {
 	const settings = getSettings();
-	const [ mode, setMode ] = useState(
-		settings.connected ? 'list' : 'address'
-	);
+	// Only people who can publish see the connected account's show list.
+	const ownShows = settings.connected && settings.privateData;
+	const [ mode, setMode ] = useState( ownShows ? 'list' : 'address' );
 	const [ address, setAddress ] = useState( '' );
 	const [ problem, setProblem ] = useState( null );
 	const [ busy, setBusy ] = useState( false );
 	const shows = useEditorData( 'shows', {}, mode === 'list' );
 	const list = shows.data?.shows || [];
+	const listState = shows.data?.state;
+	// show.fm could not be asked: say so, with Try again, rather than dropping to the address.
+	const listError = listState === 'error' || listState === 'rate_limited';
 	const listFailed =
-		shows.data && ( ! shows.data.connected || ! list.length );
+		!! shows.data &&
+		! listError &&
+		( ! shows.data.connected || ! list.length );
 
 	const lookUp = ( event ) => {
 		event.preventDefault();
@@ -141,7 +146,39 @@ export default function ShowPlaceholder( {
 						{ __( 'Loading your shows…', 'showfm' ) }
 					</div>
 				) }
-				{ ! shows.loading && (
+				{ ! shows.loading && listError && (
+					<div
+						className="showfm-state__message is-warning"
+						role="alert"
+					>
+						<Icon icon="update" size={ 20 } />
+						<p>
+							{ listState === 'rate_limited'
+								? sprintf(
+										/* translators: %d: seconds to wait. */
+										_n(
+											'show.fm is busy. Try again in %d second.',
+											'show.fm is busy. Try again in %d seconds.',
+											shows.data.retryAfter || 60,
+											'showfm'
+										),
+										shows.data.retryAfter || 60
+									)
+								: __(
+										'Couldn’t reach show.fm to list your shows.',
+										'showfm'
+									) }
+						</p>
+						<Button
+							variant="secondary"
+							size="compact"
+							onClick={ shows.retry }
+						>
+							{ __( 'Try again', 'showfm' ) }
+						</Button>
+					</div>
+				) }
+				{ ! shows.loading && ! listError && (
 					<div className="showfm-shows">
 						{ list.map( ( show ) => (
 							<button
@@ -227,7 +264,7 @@ export default function ShowPlaceholder( {
 					) }
 				</p>
 			) }
-			{ settings.connected && ! listFailed && (
+			{ ownShows && ! listFailed && (
 				<Button
 					variant="link"
 					className="showfm-switch"

@@ -129,7 +129,7 @@ describe( 'ShowPlaceholder', () => {
 	} );
 
 	it( 'lists the connected account’s shows and refuses external ones', async () => {
-		settings( { connected: true } );
+		settings( { connected: true, privateData: true } );
 		request.mockResolvedValue( {
 			state: 'ok',
 			connected: true,
@@ -164,6 +164,73 @@ describe( 'ShowPlaceholder', () => {
 		expect(
 			screen.getByLabelText( 'Show address or slug' )
 		).toBeInTheDocument();
+	} );
+} );
+
+describe( 'ShowPlaceholder errors and permissions', () => {
+	it( 'keeps the show list with Try again when show.fm cannot be reached', async () => {
+		settings( { connected: true, privateData: true } );
+		request
+			.mockResolvedValueOnce( {
+				state: 'error',
+				connected: true,
+				shows: [],
+			} )
+			.mockResolvedValueOnce( {
+				state: 'ok',
+				connected: true,
+				shows: [ SHOW ],
+			} );
+		render(
+			<ShowPlaceholder label="show.fm Player" onSelect={ vi.fn() } />
+		);
+		expect( await screen.findByRole( 'alert' ) ).toHaveTextContent(
+			'Couldn’t reach show.fm to list your shows.'
+		);
+		expect(
+			screen.queryByLabelText( 'Show address or slug' )
+		).not.toBeInTheDocument();
+		fireEvent.click( screen.getByRole( 'button', { name: 'Try again' } ) );
+		expect(
+			await screen.findByText( 'The Long Table' )
+		).toBeInTheDocument();
+		expect( request ).toHaveBeenCalledTimes( 2 );
+	} );
+
+	it( 'says how long to wait when rate limited', async () => {
+		settings( { connected: true, privateData: true } );
+		request.mockResolvedValue( {
+			state: 'rate_limited',
+			retryAfter: 42,
+			connected: true,
+			shows: [],
+		} );
+		render(
+			<ShowPlaceholder label="show.fm Player" onSelect={ vi.fn() } />
+		);
+		expect( await screen.findByRole( 'alert' ) ).toHaveTextContent(
+			'show.fm is busy. Try again in 42 seconds.'
+		);
+		expect(
+			screen.getByRole( 'button', { name: 'Try again' } )
+		).toBeInTheDocument();
+	} );
+
+	it( 'gives a Contributor on a connected site the address field only', () => {
+		settings( { connected: true, privateData: false } );
+		render(
+			<ShowPlaceholder label="show.fm Player" onSelect={ vi.fn() } />
+		);
+		expect(
+			screen.getByLabelText( 'Show address or slug' )
+		).toBeInTheDocument();
+		expect( request ).not.toHaveBeenCalled();
+		expect(
+			screen.queryByRole( 'button', { name: 'Choose from your shows' } )
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole( 'link', { name: 'Connect to show.fm' } )
+		).not.toBeInTheDocument();
 	} );
 } );
 
@@ -246,6 +313,32 @@ describe( 'EpisodePicker', () => {
 		expect( onCancel ).toHaveBeenCalled();
 		fireEvent.click( screen.getByRole( 'button', { name: 'Change' } ) );
 		expect( onChangeShow ).toHaveBeenCalled();
+	} );
+
+	it( 'says when only public episodes could be listed', async () => {
+		request
+			.mockResolvedValueOnce( {
+				state: 'ok',
+				keyed: false,
+				warning: 'error',
+				episodes: [ EPISODES[ 0 ] ],
+			} )
+			.mockResolvedValueOnce( {
+				state: 'ok',
+				keyed: true,
+				episodes: EPISODES,
+			} );
+		renderPicker();
+		expect(
+			await screen.findByText(
+				'Couldn’t load scheduled episodes from show.fm, so only public episodes are listed.'
+			)
+		).toBeInTheDocument();
+		fireEvent.click( screen.getByRole( 'button', { name: 'Try again' } ) );
+		expect( await screen.findByText( 'Scheduled' ) ).toBeInTheDocument();
+		expect(
+			screen.queryByText( /only public episodes are listed/ )
+		).not.toBeInTheDocument();
 	} );
 
 	it( 'has no Latest option for a transcript', async () => {
@@ -394,6 +487,18 @@ describe( 'StateMessage', () => {
 		expect( screen.getByRole( 'status' ) ).toHaveTextContent(
 			'show.fm is busy right now. Showing the last saved copy.'
 		);
+	} );
+} );
+
+describe( 'HeadingLevelDropdown default', () => {
+	it( 'shows H2 without a level, as defaultLevel() does', () => {
+		render( <HeadingLevelDropdown onChange={ vi.fn() } /> );
+		fireEvent.click(
+			screen.getByRole( 'button', { name: 'Change level' } )
+		);
+		expect(
+			screen.getByRole( 'menuitemradio', { name: 'Heading 2' } )
+		).toHaveAttribute( 'aria-checked', 'true' );
 	} );
 } );
 

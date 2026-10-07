@@ -150,6 +150,8 @@ test.describe( 'show.fm blocks in the editor', () => {
 	test.afterAll( async ( { requestUtils } ) => {
 		await setConnection( requestUtils, false );
 		await requestUtils.deleteAllPosts();
+		// Leave no fixture answers behind for other specs.
+		await requestUtils.deactivatePlugin( 'test-fixtures-for-show-fm' );
 	} );
 
 	test.beforeEach( async ( { admin, page } ) => {
@@ -353,6 +355,8 @@ test.describe( 'show.fm post panel', () => {
 	test.afterAll( async ( { requestUtils } ) => {
 		await setConnection( requestUtils, false );
 		await requestUtils.deleteAllPosts();
+		// Leave no fixture answers behind for other specs.
+		await requestUtils.deactivatePlugin( 'test-fixtures-for-show-fm' );
 	} );
 
 	/**
