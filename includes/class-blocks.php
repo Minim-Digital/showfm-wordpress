@@ -1,6 +1,6 @@
 <?php
 /**
- * Server block registration. Editor controls follow in WP-2b.
+ * Block registration: server rendering, and the editor script and style.
  *
  * @package ShowFM
  */
@@ -19,6 +19,8 @@ final class Blocks {
 		$asset = require SHOWFM_DIR . '/build/index.asset.php';
 		wp_register_script( 'showfm-block-editor', plugins_url( 'build/index.js', SHOWFM_FILE ), $asset['dependencies'], $asset['version'], true );
 		wp_set_script_translations( 'showfm-block-editor', 'showfm' );
+		wp_register_style( 'showfm-block-editor', plugins_url( 'build/index.css', SHOWFM_FILE ), array( 'wp-components' ), $asset['version'] );
+		wp_style_add_data( 'showfm-block-editor', 'rtl', 'replace' );
 		foreach ( array( 'player', 'episodes', 'play', 'transcript' ) as $type ) {
 			register_block_type(
 				SHOWFM_DIR . '/blocks/' . $type,

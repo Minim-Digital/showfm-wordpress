@@ -95,6 +95,9 @@ final class Plugin {
 		add_shortcode( 'showfm', array( Shortcode::class, 'render' ) );
 
 		add_action( 'rest_api_init', array( Challenge_Endpoint::class, 'register' ) );
+		add_action( 'rest_api_init', array( Editor_Api::class, 'register' ) );
+		add_action( 'rest_api_init', array( Editor::class, 'register_fields' ) );
+		add_action( 'enqueue_block_editor_assets', array( Editor::class, 'enqueue' ) );
 		add_action( 'rest_api_init', array( new Ping_Endpoint( self::connection() ), 'register' ) );
 		add_action( 'rest_api_init', array( self::class, 'register_admin_routes' ) );
 

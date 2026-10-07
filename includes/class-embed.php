@@ -53,6 +53,10 @@ final class Embed {
 		}
 		$attrs = Attributes::clean( $type, $input, $block );
 		$path  = self::path( $type, $attrs );
+		if ( '' === $path && 'transcript' === $type && isset( $attrs['for'] ) ) {
+			// Following a Latest-episode player: the element finds its episode when it plays.
+			return self::element( $type, $attrs, $input, '', $block );
+		}
 		if ( '' === $path ) {
 			return '';
 		}
@@ -68,8 +72,15 @@ final class Embed {
 			'audio' => array( 'url' => $snapshot['audioUrl'] ?? null ),
 		);
 		$public   = is_array( $data ) && isset( $data['data'] ) && is_array( $data['data'] );
-		$episode  = $public ? $data['data'] : $fallback;
-		$json     = '';
+		// Nothing confirmed public and nothing public saved (a scheduled episode stores no
+		// snapshot): no fallback content at all. The bare element shows nothing, and in the
+		// browser it collapses on the public API's 404 until the episode is public. The cache
+		// read above has scheduled the refresh.
+		if ( ! $public && '' === $fallback['title'] ) {
+			return self::element( $type, $attrs, $input, '', $block );
+		}
+		$episode = $public ? $data['data'] : $fallback;
+		$json    = '';
 		if ( 'episodes' === $type ) {
 			$episodes = $public ? $data['data'] : array();
 			// Refresh stale markers; only newer, fresh public data can supersede them.
@@ -92,6 +103,20 @@ final class Embed {
 				$json = '<script type="application/ld+json">' . Fallback::json_ld( $episode ) . '</script>';
 			}
 		}
+		return self::element( $type, $attrs, $input, $html, $block, $json );
+	}
+
+	/**
+	 * The element around its fallback, inside the block wrapper for blocks.
+	 *
+	 * @param string               $type  Element type.
+	 * @param array<string,string> $attrs Validated attributes.
+	 * @param array<string,mixed>  $input Block or shortcode attributes, for styles.
+	 * @param string               $html  Escaped fallback markup.
+	 * @param bool                 $block Whether this is a block.
+	 * @param string               $json  JSON-LD script, or ''.
+	 */
+	private static function element( string $type, array $attrs, array $input, string $html, bool $block, string $json = '' ): string {
 		$element = '<showfm-' . $type;
 		foreach ( $attrs as $name => $value ) {
 			$element .= ' ' . $name . '="' . esc_attr( $value ) . '"';

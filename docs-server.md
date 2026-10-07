@@ -2,7 +2,7 @@
 
 Run `npm ci`, `npm run build` and `composer install` before starting WordPress.
 `npm run zip` builds the editor entry point and copies every file from the exact
-`@showfm/embed@1.1.0` CDN distribution. `npm run test:assets` compares file lists
+`@showfm/embed@1.4.0` CDN distribution. `npm run test:assets` compares file lists
 and SHA-256 hashes, including locales and future chunks. The package's MIT
 licence is in `assets/showfm-embed-LICENSE`. WordPress supplies the editor's React
 and block libraries through the generated dependency file.
@@ -65,11 +65,10 @@ result; CI regenerates and rejects a diff. PHPUnit compares every output byte,
 including serialised JSON-LD. Run single-site and multisite PHPUnit plus the
 Playwright no-JavaScript fallback test.
 
-The published 1.1.0 package currently registers only `showfm-player` and its
-legacy alias. The other three block elements therefore retain server fallbacks;
-this task does not add or fork their JavaScript implementations. The package
-also does not yet consume all planned CSS variables. A future package release
-must complete those elements and hooks before the full designed interactions
-can be accepted. Public podcast UUID lookup and list filters depend on APP-4
+The pinned 1.4.0 package registers all four elements (`showfm-player`, `showfm-episodes`,
+`showfm-play` and `showfm-transcript`), loading the list, play button and transcript from
+`chunks/` next to `v1.js`. The parity fixtures cover the three functions the PHP port has
+(`renderEpisodeHTML`, `renderEpisodeListHTML`, `episodeJsonLd`); `renderTranscriptHTML` is
+not ported, because the plugin never fetches a transcript in PHP. Public podcast UUID lookup and list filters depend on APP-4
 reaching the selected API environment. No production deployment is part of this
 change.

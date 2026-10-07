@@ -22,9 +22,9 @@ final class Attributes {
 	public static function names( string $type ): array {
 		$common = array( 'theme', 'accent', 'api', 'credit', 'load', 'lang' );
 		$types  = array(
-			'player'     => array( 'episode', 'podcast', 'size', 'wave', 'heading-level', 'transcript', 'mini-player', 'strings' ),
-			'episodes'   => array( 'podcast', 'variant', 'layout', 'count', 'season', 'hide', 'descriptions', 'mini-player', 'heading-level' ),
-			'play'       => array( 'episode', 'variant', 'size', 'mini-player' ),
+			'player'     => array( 'id', 'episode', 'podcast', 'size', 'wave', 'heading-level', 'transcript', 'mini-player', 'strings' ),
+			'episodes'   => array( 'id', 'podcast', 'variant', 'layout', 'count', 'season', 'hide', 'descriptions', 'mini-player', 'heading-level' ),
+			'play'       => array( 'episode', 'podcast', 'variant', 'size', 'mini-player' ),
 			'transcript' => array( 'episode', 'for', 'height' ),
 		);
 		return isset( $types[ $type ] ) ? array_merge( $common, $types[ $type ] ) : array();
@@ -39,21 +39,106 @@ final class Attributes {
 		return is_string( $value ) && 36 === strlen( $value ) && wp_is_uuid( $value ) ? strtolower( $value ) : '';
 	}
 
+	/** A safe element id: the showfm- prefix, then letters, digits, hyphens or underscores. */
+	const ELEMENT_ID = '/\Ashowfm-[a-zA-Z0-9_-]{1,57}\z/';
+
+	/** Longest snapshot title kept, in characters. */
+	const MAX_TITLE = 300;
+
 	/**
-	 * Remove non-HTTPS URLs at both the save and render boundaries.
-	 * Public API fallback URLs retain the pinned package's HTTP(S) contract.
+	 * Whether `SHOWFM_API_URL` selects staging, which adds the staging hosts below.
+	 */
+	private static function staging(): bool {
+		return 'https://api.showfm.dev' === Api_Client::base_url();
+	}
+
+	/**
+	 * Hosts whose subdomains serve show.fm listen pages.
+	 *
+	 * @return string[]
+	 */
+	public static function listen_roots(): array {
+		return self::staging() ? array( 'show.fm', 'showfm.dev' ) : array( 'show.fm' );
+	}
+
+	/**
+	 * Media hosts (show.fm's) a snapshot's audio URL may use.
+	 *
+	 * @return string[]
+	 */
+	public static function audio_hosts(): array {
+		$hosts = array( 'm.cdn.media', 'media.podcasterplus.com' );
+		return self::staging() ? array_merge( $hosts, array( 'm.showfm.dev', 'media.podcasterplus.dev' ) ) : $hosts;
+	}
+
+	/**
+	 * A show's listen page, as the API builds it from the slug, or null.
+	 *
+	 * @param string $slug Show slug.
+	 */
+	public static function show_listen_url( string $slug ): ?string {
+		if ( ! preg_match( '/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/', $slug ) || strlen( $slug ) > 63 ) {
+			return null;
+		}
+		return 'https://' . $slug . '.' . ( self::staging() ? 'showfm.dev' : 'show.fm' );
+	}
+
+	/**
+	 * Keep only what a snapshot may hold, at both the save and render boundaries: a title
+	 * (a string, at most 300 characters), an https listen URL on a show.fm listen host and an
+	 * https audio URL on a show.fm media host. Other keys (such as the migrator's) are kept.
 	 *
 	 * @param array<string,mixed> $snapshot Insertion snapshot.
 	 * @return array<string,mixed>
 	 */
 	public static function snapshot( array $snapshot ): array {
-		foreach ( array( 'listenUrl', 'audioUrl' ) as $key ) {
-			$url = $snapshot[ $key ] ?? null;
-			if ( ! is_string( $url ) || ! preg_match( '~\Ahttps://[^\s]+\z~i', $url ) || ! wp_parse_url( $url, PHP_URL_HOST ) ) {
+		$hosts = array(
+			'listenUrl' => static function ( string $host ): bool {
+				foreach ( self::listen_roots() as $root ) {
+					if ( $host === $root || substr( $host, -strlen( '.' . $root ) ) === '.' . $root ) {
+						return true;
+					}
+				}
+				return false;
+			},
+			'audioUrl'  => static function ( string $host ): bool {
+				return in_array( $host, self::audio_hosts(), true );
+			},
+		);
+		foreach ( $hosts as $key => $allowed ) {
+			$url  = $snapshot[ $key ] ?? null;
+			$host = is_string( $url ) && preg_match( '~\Ahttps://[^\s]+\z~i', $url ) ? wp_parse_url( $url, PHP_URL_HOST ) : null;
+			if ( ! is_string( $host ) || '' === $host || null !== wp_parse_url( $url, PHP_URL_USER ) || null !== wp_parse_url( $url, PHP_URL_PORT ) || ! $allowed( strtolower( $host ) ) ) {
 				unset( $snapshot[ $key ] );
 			}
 		}
+		if ( array_key_exists( 'title', $snapshot ) ) {
+			if ( ! is_string( $snapshot['title'] ) ) {
+				unset( $snapshot['title'] );
+			} else {
+				$snapshot['title'] = self::cap_title( $snapshot['title'] );
+			}
+		}
 		return $snapshot;
+	}
+
+	/**
+	 * Cap a title at MAX_TITLE characters. mbstring is optional in WordPress, so this
+	 * falls back to a UTF-8 aware preg_match when it is missing.
+	 *
+	 * @param string    $title    Title.
+	 * @param bool|null $mbstring Whether to use mbstring; null detects it. Tests pass false.
+	 * @return string At most MAX_TITLE characters.
+	 */
+	public static function cap_title( string $title, ?bool $mbstring = null ): string {
+		if ( $mbstring ?? function_exists( 'mb_substr' ) ) {
+			return mb_substr( $title, 0, self::MAX_TITLE, 'UTF-8' );
+		}
+		if ( preg_match( '/\\A.{0,' . self::MAX_TITLE . '}/su', $title, $match ) ) {
+			return $match[0];
+		}
+		// Invalid UTF-8: keep the bytes up to the cap rather than fail the render.
+		return substr( $title, 0, self::MAX_TITLE );
 	}
 
 	/**
@@ -77,7 +162,7 @@ final class Attributes {
 			'descriptions'  => array( 'on', 'off' ),
 			'mini-player'   => array( 'on', 'off' ),
 			'transcript'    => array( 'on', 'off', 'open' ),
-			'size'          => 'play' === $type ? array( 'small', 'medium', 'large', 'standard', 'compact' ) : array( 'standard', 'compact' ),
+			'size'          => 'play' === $type ? array( 'sm', 'lg' ) : array( 'standard', 'compact' ),
 		);
 		$output = array();
 		foreach ( self::names( $type ) as $name ) {
@@ -113,7 +198,10 @@ final class Attributes {
 				$value = (string) min( (int) $value, 'count' === $name ? 50 : 9999 );
 			} elseif ( 'hide' === $name ) {
 				$value = implode( ',', array_intersect( array( 'trailer', 'bonus' ), explode( ',', $value ) ) );
-			} elseif ( in_array( $name, array( 'for', 'lang' ), true ) && ! preg_match( '/^[a-zA-Z0-9_-]+\z/', $value ) ) {
+			} elseif ( 'lang' === $name && ! preg_match( '/^[a-zA-Z0-9_-]+\z/', $value ) ) {
+				continue;
+			} elseif ( in_array( $name, array( 'id', 'for' ), true ) && ! preg_match( self::ELEMENT_ID, $value ) ) {
+				// Element ids carry the showfm- prefix, so they cannot clobber page ids.
 				continue;
 			}
 			if ( '' !== $value ) {

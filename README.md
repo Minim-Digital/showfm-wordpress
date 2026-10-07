@@ -12,6 +12,8 @@ and uninstall) and the plugin side of connecting a site to show.fm: the browser 
 code exchange, WP-CLI registration, the ownership challenge, the signed ping endpoint and
 the daily health report. Settings > show.fm has the Connection and Display tabs and the
 admin notices. Blocks and the shortcode are available, together with the background sync engine.
+The blocks have their editor UI (pickers, inspector controls, in-block states and the post
+panel); see [docs-editor.md](docs-editor.md).
 
 ## Embed migration
 
@@ -154,6 +156,9 @@ change that arrived through the 15-minute check with no ping after a 10-minute g
 
 - `Cli` is `wp showfm connect`, `status` and `disconnect` (which revokes the key first, as above).
 - `Privacy` adds the suggested privacy policy text.
+- `Editor_Api` is the block editor's read-only REST proxy (`showfm/v1/editor/*`), and
+  `Editor` prints the editor's settings and the post panel's `showfm_sync` field. See
+  [docs-editor.md](docs-editor.md).
 
 ### Connecting a site
 
@@ -316,18 +321,18 @@ composer install            # or: docker run --rm -v "$PWD":/app -w /app compose
 npm run env:start           # WordPress on http://localhost:8888 (user admin, password password)
 ```
 
-| Command                      | What it does                                                               |
-| ---------------------------- | -------------------------------------------------------------------------- |
-| `composer lint`              | PHPCS with WordPress Coding Standards 3 and PHPCompatibilityWP (PHP 7.4+). |
-| `composer analyse`           | PHPStan level 6 with the WordPress extension.                              |
-| `npm run test:php`           | PHPUnit inside `wp-env` (`tests-cli`).                                     |
-| `npm run test:php:multisite` | The same suite as a multisite network.                                     |
-| `npm run test:e2e`           | Playwright tests against the `wp-env` development site.                    |
-| `npm run test:js`            | Vitest (jsdom) unit tests for the settings screen, in `tests/js/`.         |
-| `npm run lint:js`            | ESLint through `@wordpress/scripts`.                                       |
-| `npm run i18n:pot`           | Builds, then regenerates `languages/showfm.pot` with WP-CLI in `wp-env`.   |
-| `npm run format`             | Prettier through `@wordpress/scripts`.                                     |
-| `npm run zip`                | Builds `dist/showfm/` and `dist/showfm-{version}.zip`.                     |
+| Command                      | What it does                                                                              |
+| ---------------------------- | ----------------------------------------------------------------------------------------- |
+| `composer lint`              | PHPCS with WordPress Coding Standards 3 and PHPCompatibilityWP (PHP 7.4+).                |
+| `composer analyse`           | PHPStan level 6 with the WordPress extension.                                             |
+| `npm run test:php`           | PHPUnit inside `wp-env` (`tests-cli`).                                                    |
+| `npm run test:php:multisite` | The same suite as a multisite network.                                                    |
+| `npm run test:e2e`           | Playwright tests against the `wp-env` development site.                                   |
+| `npm run test:js`            | Vitest (jsdom) unit tests: the editor in `src/test/`, the settings screen in `tests/js/`. |
+| `npm run lint:js`            | ESLint through `@wordpress/scripts`.                                                      |
+| `npm run i18n:pot`           | Builds, then regenerates `languages/showfm.pot` with WP-CLI in `wp-env`.                  |
+| `npm run format`             | Prettier through `@wordpress/scripts`.                                                    |
+| `npm run zip`                | Builds `dist/showfm/` and `dist/showfm-{version}.zip`.                                    |
 
 The PHPUnit suite runs the WP-CLI commands against a stand-in for `WP_CLI`
 (`tests/stubs/wp-cli.php`), which PHPStan also reads for the signatures.
@@ -343,6 +348,10 @@ The Playwright settings tests set up each connection state with a test-only plug
 `tests/e2e/plugin/showfm-e2e-states.php`, which `wp-env` maps into the site and the tests
 activate. It stores a local connection without contacting show.fm, and never ships.
 
+The editor tests use a second test-only plugin, `tests/e2e/plugins/showfm-e2e-fixtures`,
+which answers the server's show.fm requests from fixtures and sets up a connection and
+synced posts. It never ships either.
+
 ## Rules
 
 - No HTTP on the render path, on activation or on `init`. Tests hook `pre_http_request` to
@@ -355,8 +364,8 @@ activate. It stores a local connection without contacting show.fm, and never shi
 ## CI
 
 `.github/workflows/ci.yml` runs PHPCS, PHPStan, PHPUnit (single site and multisite) on
-`wp-env`, ESLint, builds the zip, runs Plugin Check (Plugin Repo category) against the
-built zip, and runs the Playwright smoke test.
+`wp-env`, ESLint, the Vitest unit tests, builds the zip, runs Plugin Check (Plugin Repo category) against the
+built zip, and runs the Playwright tests.
 
 `.github/workflows/security-review.yml` runs the Claude security review when a pull request
 has the `security-review` label. See the comments in that file and

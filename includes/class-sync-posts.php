@@ -276,6 +276,7 @@ final class Sync_Posts {
 			( new Sync_Artwork() )->apply( $id, $row['episode_id'] );
 		}
 		self::meta( $id, '_showfm_sync_state', 'synced' );
+		self::meta( $id, '_showfm_synced_at', time() );
 		delete_post_meta( $id, '_showfm_sync_notice' );
 		self::meta( $id, '_showfm_content_hash', $episode['content_hash'] );
 		self::record( $row, $post, $id, $edited, $timestamp );

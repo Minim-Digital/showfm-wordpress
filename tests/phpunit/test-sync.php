@@ -109,6 +109,12 @@ class Test_Sync extends WP_UnitTestCase {
 		delete_option( Api_Client::RATE_LIMIT_OPTION );
 	}
 
+	public function test_applied_rows_record_when_the_post_was_last_synced(): void {
+		$before = time();
+		$id     = $this->apply( $this->row() );
+		$this->assertGreaterThanOrEqual( $before, (int) get_post_meta( $id, '_showfm_synced_at', true ) );
+	}
+
 	public function test_page_receipt_report_and_final_cursor_acknowledgement(): void {
 		$this->page( array( $this->row() ) );
 		$this->http->respond_with(

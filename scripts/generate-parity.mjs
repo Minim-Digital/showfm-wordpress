@@ -1,13 +1,22 @@
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import * as server from '@showfm/embed/server';
 const directory = 'node_modules/@showfm/embed/fixtures/fallback';
+// The functions includes/class-fallback.php ports. renderTranscriptHTML is not ported:
+// the plugin never fetches a transcript in PHP, so it has no cues to render.
+const ported = [
+	'renderEpisodeHTML',
+	'renderEpisodeListHTML',
+	'episodeJsonLd',
+];
 const fixtures = readdirSync( directory )
 	.filter( ( name ) => name.endsWith( '.json' ) )
 	.sort()
-	.map( ( name ) => {
-		const { function: fn, args } = JSON.parse(
-			readFileSync( `${ directory }/${ name }` )
-		);
+	.map( ( name ) => ( {
+		name,
+		...JSON.parse( readFileSync( `${ directory }/${ name }` ) ),
+	} ) )
+	.filter( ( fixture ) => ported.includes( fixture.function ) )
+	.map( ( { name, function: fn, args } ) => {
 		const output = server[ fn ]( ...args );
 		return {
 			name,
