@@ -16,12 +16,14 @@ const QUERY = 'page=showfm';
  * @param {Object} requestUtils Request utilities.
  * @param {string} state        State name.
  * @param {string} result       Optional connect outcome.
+ * @param {string} revoke       How show.fm answers Disconnect's revoke: `revoked`,
+ *                              `refused` or `unreachable` (the default). Nothing leaves the site.
  */
-async function setState( requestUtils, state, result = '' ) {
+async function setState( requestUtils, state, result = '', revoke = '' ) {
 	await requestUtils.rest( {
 		method: 'POST',
 		path: '/showfm-e2e/v1/state',
-		data: { state, result },
+		data: { state, result, revoke: revoke || 'unreachable' },
 	} );
 }
 
@@ -203,13 +205,13 @@ test.describe( 'show.fm settings', () => {
 		await expect( page.locator( '.showfm-notice' ) ).toHaveCount( 0 );
 	} );
 
-	test( 'disconnect asks first, then returns to the connect card', async ( {
+	test( 'disconnect asks first, revokes the key at show.fm, then returns to the connect card', async ( {
 		admin,
 		page,
 		requestUtils,
 	} ) => {
 		// Fresh back from show.fm: the stored "Connected" outcome is showing.
-		await setState( requestUtils, 'connected', 'success' );
+		await setState( requestUtils, 'connected', 'success', 'revoked' );
 		await admin.visitAdminPage( PAGE, QUERY );
 		await expect( page.locator( '.showfm-notice' ) ).toContainText(
 			'Connected to show.fm.'
@@ -221,15 +223,7 @@ test.describe( 'show.fm settings', () => {
 		} );
 		await expect( dialog ).toBeVisible();
 		await expect( dialog ).toContainText(
-			'This site’s key stays valid at show.fm until you disconnect the site there too'
-		);
-		await expect(
-			dialog.getByRole( 'link', {
-				name: /Open Connected sites in show.fm/,
-			} )
-		).toHaveAttribute(
-			'href',
-			'https://my.show.fm/p/the-long-table/settings/sites'
+			'New episodes stop being posted here. Posts that were already created stay as they are.'
 		);
 		await dialog.getByRole( 'button', { name: 'Cancel' } ).click();
 		await expect( dialog ).toBeHidden();
@@ -240,14 +234,67 @@ test.describe( 'show.fm settings', () => {
 			page.getByRole( 'heading', { name: 'Connect to show.fm' } )
 		).toBeFocused();
 		await expect( page.locator( '.showfm-notice' ) ).toContainText(
-			'Disconnected from show.fm. This site’s key stays valid at show.fm until you disconnect the site there too.'
+			'Disconnected from show.fm. This site’s key was revoked at show.fm.'
 		);
+		await expect(
+			page.locator( '.showfm-notice' ).getByRole( 'link' )
+		).toHaveCount( 0 );
 
 		await page.reload();
 		await expect(
 			page.getByRole( 'heading', { name: 'Connect to show.fm' } )
 		).toBeVisible();
 		await expect( page.locator( '.showfm-notice' ) ).toHaveCount( 0 );
+	} );
+
+	test( 'disconnect when show.fm can’t be reached clears the site and links to show.fm', async ( {
+		admin,
+		page,
+		requestUtils,
+	} ) => {
+		await setState( requestUtils, 'connected', '', 'unreachable' );
+		await admin.visitAdminPage( PAGE, QUERY );
+
+		await page.getByRole( 'button', { name: 'Disconnect' } ).click();
+		await page
+			.getByRole( 'dialog' )
+			.getByRole( 'button', { name: 'Disconnect' } )
+			.click();
+
+		const notice = page.locator( '.showfm-notice' );
+		await expect( notice ).toContainText(
+			'show.fm didn’t confirm the key was revoked, so it may still work. Revoke it in show.fm under Connected sites.'
+		);
+		await expect(
+			notice.getByRole( 'link', {
+				name: /Open Connected sites in show.fm/,
+			} )
+		).toHaveAttribute(
+			'href',
+			'https://my.show.fm/p/the-long-table/settings/sites'
+		);
+		await expect(
+			page.getByRole( 'heading', { name: 'Connect to show.fm' } )
+		).toBeVisible();
+	} );
+
+	test( 'disconnect after show.fm already refused the key says so', async ( {
+		admin,
+		page,
+		requestUtils,
+	} ) => {
+		await setState( requestUtils, 'connected', '', 'refused' );
+		await admin.visitAdminPage( PAGE, QUERY );
+
+		await page.getByRole( 'button', { name: 'Disconnect' } ).click();
+		await page
+			.getByRole( 'dialog' )
+			.getByRole( 'button', { name: 'Disconnect' } )
+			.click();
+
+		await expect( page.locator( '.showfm-notice' ) ).toContainText(
+			'nothing left to revoke'
+		);
 	} );
 
 	test( 'display: saves the switches and the front end follows them', async ( {
@@ -392,7 +439,7 @@ test.describe( 'show.fm settings', () => {
 		} ) );
 		expect( widths.scroll ).toBeLessThanOrEqual( widths.view );
 
-		for ( const name of [ 'Connection', 'Display' ] ) {
+		for ( const name of [ 'Connection', 'Publishing', 'Display' ] ) {
 			await expect( page.getByRole( 'tab', { name } ) ).toBeInViewport();
 		}
 		const reconnect = page

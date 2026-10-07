@@ -104,11 +104,54 @@ undo behaviour and the current server contract gaps. No Migrate tab is included 
   of the key they sent. The
   counter of earlier development builds
   (`showfm_connection_generation`) is deleted on `admin_init` and on uninstall.
-- Disconnect removes the local connection only. The show.fm API has no route for a site key to
-  revoke itself, so the key stays valid at show.fm until the site is disconnected there. The
-  dialog and the result say so and link to the first show's Connected sites page
-  (`{app}/p/{slug}/settings/sites`). Afterwards focus moves to the Connect card's heading and
-  one polite message is spoken.
+- Disconnect (the REST route and `wp showfm disconnect`) first asks show.fm to revoke the site
+  key with `Connect::revoke()`: one `POST /v1/me/sites/{id}/disconnect` with `{}`, the pinned
+  key and a 3-second timeout, made before the connection lock is taken and never retried. Then
+  it removes the local connection through `Connection::mutate()` whatever the answer. The
+  outcome is `revoked` (200), `refused` (a 401, or a key show.fm had already refused or that
+  has expired: nothing is sent then) or `not_revoked` (no answer, a server error, a rate limit,
+  or a key that can't be read after the salts changed). The answer's `disconnected` carries the
+  outcome, its message and the first show's Connected sites page
+  (`{app}/p/{slug}/settings/sites`), which the notice links to when the key must be revoked
+  there. A 401 here never flags the stored state, since it is removed next. If the revoke
+  succeeded but the local clear finds the lock busy or lost (503, `data.revoke`), the message
+  says the key was revoked and that Disconnect again finishes: the retry's revoke gets a 401,
+  which counts as nothing left to revoke, and the clear goes through. The teardown itself is
+  resumable: `Connect::disconnect()` writes a marker (`showfm_disconnect_teardown`, with the
+  revoke outcome) before the swap and removes it after the last step. If the lease is lost
+  after the swap, the site is disconnected and the message says the clean-up finishes on the
+  next admin page or Disconnect. `Connect::finish_teardown()` runs on `admin_init`, at the start
+  of every sync, first in the REST disconnect (without needing the old state id) and in
+  `wp showfm disconnect` (which does not stop at "not connected" while it is pending). It runs
+  the idempotent teardown only while no credentials are stored, so a connection saved since
+  keeps its jobs. Afterwards focus
+  moves to the Connect card's heading and one polite message is spoken.
+- `Publishing` holds the Publishing tab's settings (`showfm_publishing`, autoload off): auto-post
+  (on), post type (`post`), category, author (0 means the first user who can publish the type),
+  theme template, transcript (on) and featured image (on). It checks them: the post type must be
+  public, in the REST API and support the editor; the author must exist, belong to the site and
+  be able to publish that type; the category must exist (and is dropped for a type without
+  categories); the template must be one the theme offers for the type. The sync reads them only
+  when it creates a post. A post keeps its type, author, category and template, and the
+  transcript and featured image choices are stored on it (`_showfm_post_options`), so changing a
+  setting never rewrites an existing post. The template is set as `_wp_page_template` meta after
+  checking it, never as `page_template`, which would fail the insert after the row exists.
+- `Publishing_Endpoint` is `showfm/v1/admin/publishing` (GET and POST), for `manage_options`
+  with the `wp_rest` nonce. The GET answers with the settings, the choices for each field, the
+  connected shows, a fixable sync problem (`row_post_type` or `row_author`) and the recent
+  activity. The POST type-checks and sanitises the fields, then `Publishing::validate()` refuses
+  a bad one with a 400 naming it (`data.field`). When the sync was held on the post type or
+  author, saving records a retry request (`Sync::RETRY_OPTION`, a counter) and queues a pull
+  (`Sync::retry_now()`). The request is durable: a pull already running on the old settings
+  persists no back-off once it sees it, and the next pull drops any back-off.
+- `Sync_Activity` keeps the last 20 things the sync did (`showfm_sync_activity`, autoload off):
+  posted, scheduled, updated (title, description or date), updated after an edit here (date and
+  status only), moved to draft, moved to the bin, no longer synced, paused by the plan, and not
+  posted because auto-posting is off (recorded once per episode until another event for it,
+  tracked in `showfm_sync_skipped`, a map of up to 1,000 episode ids kept apart from the 20
+  events, so an entry pushed out of them is not recorded again).
+  It stores plugin event codes, the episode title, the show
+  and post ids, never remote error text. Re-applying a row that changes nothing records nothing.
 - `Notices` shows at most one admin notice on the Dashboard and Plugins screens (the settings
   screen shows it on every tab except Connection): refused key, plan pause, sync configuration
   problem, expiry within 7 days, within 30 days. Reconnect is a form that POSTs to
@@ -127,7 +170,7 @@ change that arrived through the 15-minute check with no ping after a 10-minute g
 `showfm_return={token}`, a random token kept with the flow. With the flow's own token and no
 `code` or `state`, it means the admin cancelled; any other value changes nothing.
 
-- `Cli` is `wp showfm connect`, `status` and `disconnect`.
+- `Cli` is `wp showfm connect`, `status` and `disconnect` (which revokes the key first, as above).
 - `Privacy` adds the suggested privacy policy text.
 - `Editor_Api` is the block editor's read-only REST proxy (`showfm/v1/editor/*`), and
   `Editor` prints the editor's settings and the post panel's `showfm_sync` field. See
@@ -167,9 +210,10 @@ Plan sections 5.2.2, 5.2.6 and 5.3.5 (show.fm issue #731). Every admin action ne
    POSTs `/v1/me/sites` with `site_url`, `rest_root`, `state` and `code_challenge`; show.fm
    fetches the challenge back inside that request, then returns the site id and ping
    secret. Then it verifies. `wp showfm status` shows the state, the masked key, the
-   expiry, the last sync and the last ping. `wp showfm disconnect [--yes]` removes the local
-   credentials and ping nonce claims and unschedules the plugin's events; the key stays live
-   in show.fm until it is revoked there.
+   expiry, the last sync and the last ping. `wp showfm disconnect [--yes]` asks show.fm to revoke
+   the key (best effort), then removes the local credentials and ping nonce claims and
+   unschedules the plugin's events. When the key could not be revoked, it warns with the
+   Connected sites link.
 6. **Ping** (`POST /wp-json/showfm/v1/ping`). The permission callback checks
    `X-Showfm-Signature: v1={hex HMAC-SHA256(ping_secret, "v1.{site_id}.{timestamp}.{nonce}")}`
    with `X-Showfm-Site`, `X-Showfm-Timestamp` (within 300 seconds) and `X-Showfm-Nonce`
@@ -223,11 +267,12 @@ post from the bin keeps that detachment; automatic reattachment is not supported
 The player is the WP-2a `showfm/player` block. Description/show notes are sanitised,
 saved block HTML, rather than a live binding that would bypass edit protection.
 
-The per-blog `showfm_publishing` option accepts `post_type` (default `post`), `author`
-(default first site member who can publish the post type), `categories` (array of IDs) and `featured_image`
-(default false). WP-4b will add the Publishing tab and post panel. The default template
-is a player followed by show notes, falling back to the plain description. Transcript
-insertion and template controls are not exposed by this engine. Public artwork is
+The per-blog `showfm_publishing` option is the Publishing tab's (see `Publishing` above):
+`auto_post`, `post_type`, `category`, `author`, `template`, `transcript` and
+`featured_image`. With auto-posting off, an episode without a post is skipped (and shows as
+"Not posted" in the recent activity); existing posts keep updating. A new post is a player,
+then the `showfm/transcript` block when the transcript setting is on, then show notes,
+falling back to the plain description. Public artwork is
 sideloaded once from the exact show.fm media hosts `m.cdn.media`, `m.showfm.dev`,
 `media.podcasterplus.com` or `media.podcasterplus.dev`. Downloads require HTTPS, no
 credentials, explicit ports or redirects, and safe HTTP validation. Limits are 10 MB,

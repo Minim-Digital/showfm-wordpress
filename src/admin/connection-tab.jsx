@@ -397,9 +397,9 @@ export default function ConnectionTab( { view, onDisconnect } ) {
 		if ( announce && ! confirming && view.state === 'not_connected' ) {
 			setAnnounce( false );
 			headingRef.current?.focus();
-			speak( disconnectedMessage(), 'polite' );
+			speak( disconnectedMessage( view.disconnected ), 'polite' );
 		}
-	}, [ announce, confirming, view.state ] );
+	}, [ announce, confirming, view.state, view.disconnected ] );
 
 	return (
 		<div className="showfm-tab">
@@ -426,7 +426,6 @@ export default function ConnectionTab( { view, onDisconnect } ) {
 			) }
 			{ confirming && (
 				<DisconnectModal
-					sitesUrl={ view.sitesUrl }
 					onCancel={ () => setConfirming( false ) }
 					onConfirm={ onDisconnect }
 					onDone={ () => {

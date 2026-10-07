@@ -186,10 +186,14 @@ final class Notices {
 				'key'    => 'sync:' . $problem . ':' . $this->connection->site_id(),
 				'type'   => 'warning',
 				'text'   => $texts[ $problem ],
-				'action' => array(
+				'action' => 'invalid_feed' === $problem ? array(
 					'type'  => 'link',
 					'label' => __( 'See what to fix', 'showfm' ),
 					'url'   => admin_url( 'site-health.php' ),
+				) : array(
+					'type'  => 'link',
+					'label' => __( 'Check the Publishing settings', 'showfm' ),
+					'url'   => add_query_arg( 'tab', 'publishing', Connect::settings_url() ),
 				),
 			);
 		}

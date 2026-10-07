@@ -13,8 +13,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /** One-way post writer. All entry points are called under the sync lock. */
 final class Sync_Posts {
-	/** Publishing settings, per blog, ready for the Publishing tab. */
-	const SETTINGS = 'showfm_publishing';
+	/** Publishing settings, per blog (see `Publishing`). */
+	const SETTINGS = Publishing::OPTION;
 	/**
 	 * Posts the sync itself is moving to the bin.
 	 *
@@ -143,14 +143,22 @@ final class Sync_Posts {
 		}
 
 		if ( 'tombstone' === $row['action'] ) {
+			$reason = $row['reason'];
 			if ( ! $post ) {
+				if ( 'plan_or_policy' === $reason ) {
+					Sync_Activity::record( Sync_Activity::PAUSED, $row, 0 );
+				}
 				return 0;
 			}
-			$reason = $row['reason'];
 			if ( 'access_removed' === $reason || 'plan_or_policy' === $reason ) {
-				self::meta( $id, '_showfm_sync_state', 'access_removed' === $reason ? 'detached' : 'paused' );
+				$sync_state = 'access_removed' === $reason ? 'detached' : 'paused';
+				$was        = get_post_meta( $id, '_showfm_sync_state', true );
+				self::meta( $id, '_showfm_sync_state', $sync_state );
 				if ( 'access_removed' === $reason ) {
 					self::meta( $id, '_showfm_sync_notice', __( 'No longer synced from show.fm', 'showfm' ) );
+				}
+				if ( $was !== $sync_state ) {
+					Sync_Activity::record( 'detached' === $sync_state ? Sync_Activity::DETACHED : Sync_Activity::PAUSED, $row, $id );
 				}
 				return $id;
 			}
@@ -178,24 +186,35 @@ final class Sync_Posts {
 				} finally {
 					unset( self::$writing[ $id ] );
 				}
+				$events = array(
+					'deleted' => Sync_Activity::TRASHED,
+					'removed' => Sync_Activity::REMOVED,
+				);
+				Sync_Activity::record( $events[ $reason ] ?? Sync_Activity::DRAFTED, $row, $id );
 			}
 			self::meta( $id, '_showfm_sync_state', $reason );
 			return $id;
 		}
 
-		$episode   = $row['episode'];
-		$settings  = (array) get_option( self::SETTINGS, array() );
+		$episode  = $row['episode'];
+		$settings = Publishing::settings();
+		if ( ! $post && ! $settings['auto_post'] ) {
+			Sync_Activity::record( Sync_Activity::SKIPPED, $row, 0 );
+			return 0;
+		}
+		// A post keeps the choices it was created with, so changing a setting never rewrites it.
+		$options   = $post ? Publishing::options_of( $id ) : Publishing::post_options( $settings );
 		$edited    = $post && $this->edited( $post );
 		$timestamp = strtotime( 'scheduled' === $episode['status'] ? $episode['scheduled_for'] : $episode['published_at'] );
 		$date      = gmdate( 'Y-m-d H:i:s', $timestamp );
 		// Match core's handling of a future date less than a minute away or already past.
 		$status        = 'scheduled' === $episode['status'] && $timestamp >= time() + MINUTE_IN_SECONDS ? 'future' : 'publish';
-		$needs_artwork = 'published' === $episode['status'] && ! empty( $settings['featured_image'] ) && ! $edited && ! get_post_meta( $id, '_showfm_artwork_done', true );
-		$type          = $post ? $post->post_type : ( $settings['post_type'] ?? 'post' );
-		if ( ! is_string( $type ) || ! post_type_exists( $type ) || ! is_post_type_viewable( $type ) ) {
+		$needs_artwork = 'published' === $episode['status'] && $options['featured_image'] && ! $edited && ! get_post_meta( $id, '_showfm_artwork_done', true );
+		$type          = $post ? $post->post_type : $settings['post_type'];
+		if ( ! post_type_exists( $type ) || ! is_post_type_viewable( $type ) || ( ! $post && ! Publishing::is_eligible_type( $type ) ) ) {
 			return new \WP_Error( 'showfm_post_type' );
 		}
-		$author = self::author( $type, $post ? (int) $post->post_author : absint( $settings['author'] ?? 0 ) );
+		$author = self::author( $type, $post ? (int) $post->post_author : $settings['author'] );
 		if ( ! $author ) {
 			return new \WP_Error( 'showfm_author' );
 		}
@@ -217,17 +236,25 @@ final class Sync_Posts {
 		if ( ! $edited ) {
 			$fields['post_title']   = wp_strip_all_tags( $episode['title'] );
 			$fields['post_excerpt'] = wp_strip_all_tags( $episode['description'] ?? '' );
-			$fields['post_content'] = self::content( $episode );
+			$fields['post_content'] = self::content( $episode, $options['transcript'] );
 		}
 		if ( ! $post ) {
 			$fields['post_type'] = $type;
 			Sync_Identity::prepare( $guid );
-			$fields['post_category'] = array_map( 'absint', (array) ( $settings['categories'] ?? array() ) );
-			$fields['guid']          = self::guid( $site, $row['episode_id'] );
-			$fields['meta_input']    = array(
-				'_showfm_episode_id' => $row['episode_id'],
-				'_showfm_site_id'    => $site,
+			if ( $settings['category'] > 0 && Publishing::has_categories( $type ) && term_exists( $settings['category'], 'category' ) ) {
+				$fields['post_category'] = array( $settings['category'] );
+			}
+			$fields['guid']       = self::guid( $site, $row['episode_id'] );
+			$fields['meta_input'] = array(
+				'_showfm_episode_id'   => $row['episode_id'],
+				'_showfm_site_id'      => $site,
+				'_showfm_post_options' => $options,
 			);
+			// Set as meta, not `page_template`: core would refuse the whole insert after the
+			// post row exists if the theme dropped the template, so it is checked here first.
+			if ( '' !== $settings['template'] && isset( Publishing::theme_templates( $type )[ $settings['template'] ] ) ) {
+				$fields['meta_input']['_wp_page_template'] = $settings['template'];
+			}
 		}
 		if ( $post && ! $edited ) {
 			// A crash after the post UPDATE but before its receipt must not look like an edit.
@@ -252,7 +279,56 @@ final class Sync_Posts {
 		self::meta( $id, '_showfm_synced_at', time() );
 		delete_post_meta( $id, '_showfm_sync_notice' );
 		self::meta( $id, '_showfm_content_hash', $episode['content_hash'] );
+		self::record( $row, $post, $id, $edited, $timestamp );
 		return $id;
+	}
+
+	/**
+	 * Records what an applied upsert did, for the Publishing tab's recent activity.
+	 *
+	 * @param array<string,mixed> $row       Feed row.
+	 * @param \WP_Post|null       $before    The post before the write, or null for a new post.
+	 * @param int                 $id        The post.
+	 * @param bool                $edited    Whether the post was edited in WordPress.
+	 * @param int                 $timestamp The episode's publish or schedule time.
+	 */
+	private static function record( array $row, ?\WP_Post $before, int $id, bool $edited, int $timestamp ): void {
+		$after = get_post( $id );
+		if ( ! $after instanceof \WP_Post ) {
+			return;
+		}
+		$scheduled = array( 'date' => $timestamp );
+		if ( ! $before ) {
+			if ( 'future' === $after->post_status ) {
+				Sync_Activity::record( Sync_Activity::SCHEDULED, $row, $id, $scheduled );
+			} else {
+				Sync_Activity::record( Sync_Activity::POSTED, $row, $id );
+			}
+			return;
+		}
+		if ( $edited ) {
+			Sync_Activity::record( Sync_Activity::UPDATED_EDITED, $row, $id );
+			return;
+		}
+		if ( 'publish' === $after->post_status && 'publish' !== $before->post_status ) {
+			Sync_Activity::record( Sync_Activity::POSTED, $row, $id );
+			return;
+		}
+		if ( 'future' === $after->post_status && ( 'future' !== $before->post_status || $before->post_date_gmt !== $after->post_date_gmt ) ) {
+			Sync_Activity::record( Sync_Activity::SCHEDULED, $row, $id, $scheduled );
+			return;
+		}
+		$changes = array();
+		if ( $before->post_title !== $after->post_title ) {
+			$changes[] = 'title';
+		}
+		if ( $before->post_content !== $after->post_content || $before->post_excerpt !== $after->post_excerpt ) {
+			$changes[] = 'description';
+		}
+		if ( $before->post_date_gmt !== $after->post_date_gmt ) {
+			$changes[] = 'date';
+		}
+		Sync_Activity::record( Sync_Activity::UPDATED, $row, $id, array( 'changes' => $changes ) );
 	}
 
 	/**
@@ -262,27 +338,15 @@ final class Sync_Posts {
 	 * @param int    $preferred Configured or existing author.
 	 */
 	private static function author( string $type, int $preferred ): int {
-		$object = get_post_type_object( $type );
-		if ( ! $object ) {
-			return 0;
-		}
-		$capability = $object->cap->publish_posts;
-		if ( $preferred && get_userdata( $preferred ) && user_can( $preferred, $capability ) && ( ! is_multisite() || is_user_member_of_blog( $preferred ) ) ) {
+		if ( Publishing::can_author( $preferred, $type ) ) {
 			return $preferred;
 		}
 		if ( $preferred ) {
 			Sync_Log::record( 'author_invalid' );
 		}
-		$authors = get_users(
-			array(
-				'capability' => $capability,
-				'number'     => 1,
-				'fields'     => 'ID',
-				'orderby'    => 'ID',
-			)
-		);
-		return isset( $authors[0] ) && user_can( (int) $authors[0], $capability ) ? (int) $authors[0] : 0;
+		return Publishing::default_author( $type );
 	}
+
 
 	/**
 	 * Write a receipt or fail the row. A false return can also mean unchanged metadata.
@@ -335,12 +399,14 @@ final class Sync_Posts {
 	}
 
 	/**
-	 * Player plus a saved description. Static text honours one-way edits; live bindings
+	 * Player, then the Transcript block when the post was created with it, then a saved
+	 * description. Static text honours one-way edits; live bindings
 	 * would overwrite the reader's view after WordPress editing.
 	 *
-	 * @param array<string,mixed> $episode Episode content.
+	 * @param array<string,mixed> $episode    Episode content.
+	 * @param bool                $transcript Whether to add the Transcript block under the player.
 	 */
-	private static function content( array $episode ): string {
+	private static function content( array $episode, bool $transcript ): string {
 		$player      = get_comment_delimited_block_content( 'showfm/player', array( 'episode' => $episode['id'] ), '' );
 		$description = $episode['show_notes_html'] ?? '';
 		do {
@@ -350,6 +416,9 @@ final class Sync_Posts {
 		$description = wp_kses_post( $description );
 		if ( '' === $description ) {
 			$description = wpautop( esc_html( $episode['description'] ?? '' ) );
+		}
+		if ( $transcript ) {
+			$player .= "\n\n" . get_comment_delimited_block_content( 'showfm/transcript', array( 'episode' => $episode['id'] ), '' );
 		}
 		return $player . "\n\n" . get_comment_delimited_block_content( 'core/html', array(), $description );
 	}

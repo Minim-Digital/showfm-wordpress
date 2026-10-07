@@ -418,6 +418,7 @@ class Test_Cli extends WP_UnitTestCase {
 		update_option( Ping_Endpoint::LAST_PING_OPTION, time() );
 		update_option( Connect::VERIFY_PENDING_OPTION, 1 );
 
+		$this->http->respond( 200, '{"data":{"disconnected":true}}' );
 		$this->cli->disconnect( array(), array( 'yes' => true ) );
 
 		$this->assertSame( Connection::STATE_DISCONNECTED, $this->connection->state() );
@@ -426,8 +427,99 @@ class Test_Cli extends WP_UnitTestCase {
 		$this->assertFalse( wp_next_scheduled( Ping_Endpoint::PULL_HOOK ) );
 		$this->assertFalse( get_option( Ping_Endpoint::LAST_PING_OPTION ) );
 		$this->assertFalse( Connect::verify_pending() );
+		$this->assertSame( array( 'success', 'Disconnected. This site’s key was revoked at show.fm.' ), end( WP_CLI::$output ) );
+		$this->assertSame( 1, $this->http->count() );
+		$this->assertStringEndsWith( '/v1/me/sites/' . self::SITE_ID . '/disconnect', $this->http->last()['url'] );
+	}
+
+	public function test_disconnect_after_a_401_clears_locally_and_says_nothing_was_left_to_revoke(): void {
+		$this->connection->save( self::KEY, self::SECRET, self::SITE_ID, 0 );
+		$this->http->respond( 401 );
+
+		$this->cli->disconnect( array(), array( 'yes' => true ) );
+
+		$this->assertSame( Connection::STATE_DISCONNECTED, $this->connection->state() );
+		$this->assertSame( 1, $this->http->count() );
 		$this->assertSame( 'success', end( WP_CLI::$output )[0] );
-		$this->assertSame( 0, $this->http->count(), 'Disconnecting is local only.' );
+		$this->assertStringContainsString( 'nothing left to revoke', end( WP_CLI::$output )[1] );
+	}
+
+	public function test_a_busy_lock_after_a_revoke_says_the_key_was_revoked_and_running_again_finishes(): void {
+		$this->connection->save( self::KEY, self::SECRET, self::SITE_ID, 0 );
+		$held = new ShowFM\Sync_Lock( Connection::LOCK_OPTION, Connection::LOCK_TTL );
+		$this->assertTrue( $held->acquire() );
+		$short = static function (): int {
+			return 100;
+		};
+		$this->http->respond( 200, '{"data":{"disconnected":true}}' );
+		add_filter( 'showfm_connection_lock_wait_ms', $short );
+		try {
+			$this->assert_halts(
+				function () {
+					$this->cli->disconnect( array(), array( 'yes' => true ) );
+				}
+			);
+		} finally {
+			remove_filter( 'showfm_connection_lock_wait_ms', $short );
+			$held->release();
+		}
+
+		$error = end( WP_CLI::$output );
+		$this->assertSame( 'error', $error[0] );
+		$this->assertStringStartsWith( 'This site’s key was revoked at show.fm', $error[1] );
+		$this->assertStringContainsString( 'Run wp showfm disconnect again to finish.', $error[1] );
+		$this->assertTrue( $this->connection->is_connected() );
+
+		$this->http->respond( 401 );
+		$this->cli->disconnect( array(), array( 'yes' => true ) );
+
+		$this->assertSame( Connection::STATE_DISCONNECTED, $this->connection->state() );
+		$this->assertSame( 'success', end( WP_CLI::$output )[0] );
+	}
+
+	public function test_a_lease_lost_after_the_swap_is_finished_by_running_disconnect_again(): void {
+		$this->connection->save( self::KEY, self::SECRET, self::SITE_ID, 0 );
+		Health::schedule();
+		$this->http->fail( 'Could not resolve host' );
+		$expire = $this->lose_lease_after_swap();
+		try {
+			$this->assert_halts(
+				function () {
+					$this->cli->disconnect( array(), array( 'yes' => true ) );
+				}
+			);
+		} finally {
+			$this->keep_lease( $expire );
+		}
+
+		$error = end( WP_CLI::$output );
+		$this->assertSame( 'error', $error[0] );
+		$this->assertStringContainsString( 'show.fm didn’t confirm the key was revoked', $error[1] );
+		$this->assertStringContainsString( 'This site is disconnected, but another change took over before its clean-up finished. It finishes the next time an admin page loads, or run wp showfm disconnect again.', $error[1] );
+		$this->assertNotFalse( wp_next_scheduled( Health::HOOK ) );
+
+		// The site reads as disconnected, but the command does not stop there while the clean-up is pending.
+		$this->cli->disconnect( array(), array( 'yes' => true ) );
+
+		$this->assertSame( array( 'success', 'This site finished disconnecting. show.fm didn’t confirm the key was revoked, so it may still work. Revoke it in show.fm under Connected sites.' ), end( WP_CLI::$output ) );
+		$this->assertFalse( wp_next_scheduled( Health::HOOK ) );
+
+		$this->cli->disconnect( array(), array() );
+		$this->assertSame( array( 'success', 'This site is not connected to show.fm.' ), end( WP_CLI::$output ) );
+	}
+
+	public function test_disconnect_when_showfm_cannot_be_reached_warns_with_the_connected_sites_link(): void {
+		$this->connection->save( self::KEY, self::SECRET, self::SITE_ID, 0 );
+		$this->http->fail( 'Could not resolve host' );
+
+		$this->cli->disconnect( array(), array( 'yes' => true ) );
+
+		$this->assertSame( Connection::STATE_DISCONNECTED, $this->connection->state(), 'Cleared locally either way.' );
+		$warning = WP_CLI::$output[ count( WP_CLI::$output ) - 2 ];
+		$this->assertSame( 'warning', $warning[0] );
+		$this->assertStringContainsString( 'Revoke it in show.fm under Connected sites.', $warning[1] );
+		$this->assertStringContainsString( 'https://my.show.fm/', $warning[1] );
+		$this->assertSame( array( 'success', 'Disconnected here.' ), end( WP_CLI::$output ) );
 	}
 
 	public function test_disconnect_when_not_connected_is_a_no_op(): void {
@@ -546,5 +638,37 @@ class Test_Cli extends WP_UnitTestCase {
 			return;
 		}
 		$this->fail( 'The command should have stopped.' );
+	}
+
+	/**
+	 * Makes the next disconnect lose its lease straight after the swap, as a slow request
+	 * would. Returns the hook to remove afterwards.
+	 */
+	private function lose_lease_after_swap(): callable {
+		add_filter( 'showfm_sync_use_named_lock', '__return_false' );
+		$expire = static function ( string $option ): void {
+			if ( Connection::OPTION !== $option ) {
+				return;
+			}
+			global $wpdb;
+			$row      = (string) $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", Connection::LOCK_OPTION ) );
+			$parts    = explode( '|', $row );
+			$parts[1] = (string) ( time() - 1 );
+			$wpdb->update( $wpdb->options, array( 'option_value' => implode( '|', $parts ) ), array( 'option_name' => Connection::LOCK_OPTION ) );
+			wp_cache_delete( Connection::LOCK_OPTION, 'options' );
+		};
+		add_action( 'updated_option', $expire );
+		return $expire;
+	}
+
+	/**
+	 * Undoes `lose_lease_after_swap()`.
+	 *
+	 * @param callable $expire The hook it returned.
+	 */
+	private function keep_lease( callable $expire ): void {
+		remove_action( 'updated_option', $expire );
+		remove_filter( 'showfm_sync_use_named_lock', '__return_false' );
+		delete_option( Connection::LOCK_OPTION );
 	}
 }

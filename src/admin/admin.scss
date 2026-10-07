@@ -352,6 +352,207 @@ $showfm-small: 600px;
 	}
 }
 
+// Publishing: settings and recent activity, with How sync works beside them.
+
+.showfm-settings__content.is-wide {
+	max-width: 1060px;
+}
+
+.showfm-card__header.is-baseline {
+	align-items: baseline;
+}
+
+.showfm-publishing {
+	display: grid;
+	grid-template-columns: minmax( 0, 1fr ) 300px;
+	gap: 20px;
+	align-items: start;
+
+	> .showfm-tab {
+		gap: 20px;
+		min-width: 0;
+	}
+
+	.components-toggle-control .components-base-control__help {
+		margin-top: 8px;
+		font-size: 12px;
+		line-height: 1.5;
+		color: $showfm-muted;
+	}
+}
+
+.showfm-publishing__body.components-card__body {
+	display: flex;
+	flex-direction: column;
+	gap: 22px;
+	padding: 20px 24px;
+}
+
+.showfm-publishing__options {
+	display: flex;
+	flex-direction: column;
+	gap: 22px;
+	transition: opacity 0.1s linear;
+
+	&.is-dimmed {
+		opacity: 0.45;
+	}
+}
+
+.showfm-publishing__selects {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 20px 24px;
+
+	.components-base-control__help {
+		margin-top: 8px;
+		font-size: 12px;
+		line-height: 1.5;
+		color: $showfm-muted;
+	}
+}
+
+.showfm-publishing__toggles {
+	display: flex;
+	flex-direction: column;
+	gap: 18px;
+}
+
+.showfm-activity {
+	overflow-x: auto;
+}
+
+.showfm-activity__table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+	color: $showfm-text;
+
+	th {
+		padding: 10px 12px;
+		font-weight: 600;
+		text-align: left;
+		border-bottom: 1px solid #c3c4c7;
+	}
+
+	td {
+		padding: 9px 12px;
+		vertical-align: top;
+	}
+
+	th:first-child,
+	td:first-child {
+		padding-left: 24px;
+	}
+
+	th:last-child,
+	td:last-child {
+		padding-right: 24px;
+	}
+
+	tbody tr:nth-child( odd ) {
+		background: #f6f7f7;
+	}
+
+	.is-time {
+		width: 120px;
+		color: #50575e;
+		white-space: nowrap;
+	}
+
+	th.is-time {
+		color: $showfm-text;
+	}
+
+	.is-post {
+		width: 90px;
+		white-space: nowrap;
+	}
+
+	.is-muted {
+		color: $showfm-muted;
+	}
+}
+
+.showfm-activity__episode {
+	max-width: 240px;
+	overflow: hidden;
+	font-weight: 600;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.showfm-empty.components-card__body {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+	padding: 48px 24px;
+	text-align: center;
+
+	svg {
+		fill: #949494;
+	}
+}
+
+.showfm-empty__title {
+	margin: 6px 0 0;
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.showfm-settings p.showfm-empty__text {
+	max-width: 380px;
+	margin: 0;
+	color: $showfm-muted;
+}
+
+.showfm-rules {
+	.components-card__header,
+	.components-card__body {
+		padding: 16px 20px;
+	}
+
+	ul {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		margin: 0;
+	}
+
+	li {
+		display: flex;
+		gap: 10px;
+		margin: 0;
+		line-height: 1.5;
+	}
+}
+
+.showfm-rules__icon {
+	flex: none;
+	fill: $showfm-muted;
+}
+
+.showfm-snackbar {
+	position: fixed;
+	bottom: 24px;
+	left: 184px;
+	z-index: 100000;
+
+	.folded & {
+		left: 60px;
+	}
+
+	@media ( max-width: 782px ) {
+		right: 12px;
+		left: 12px;
+
+		.folded & {
+			left: 12px;
+		}
+	}
+}
+
 // Disconnect dialog.
 
 .showfm-modal {
@@ -437,6 +638,35 @@ $showfm-small: 600px;
 	.showfm-connect__lists {
 		grid-template-columns: 1fr;
 		gap: 14px;
+	}
+
+	.showfm-publishing,
+	.showfm-publishing__selects {
+		grid-template-columns: minmax( 0, 1fr );
+	}
+
+	.showfm-publishing {
+		gap: 14px;
+
+		> .showfm-tab {
+			gap: 14px;
+		}
+	}
+
+	.showfm-publishing__body.components-card__body {
+		gap: 18px;
+		padding: 16px;
+	}
+
+	.showfm-publishing__selects .components-select-control__input {
+		min-height: 44px;
+	}
+
+	.showfm-rules {
+		.components-card__header,
+		.components-card__body {
+			padding: 14px 16px;
+		}
 	}
 
 	.showfm-row {

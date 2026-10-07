@@ -32,6 +32,9 @@ final class Api_Client {
 	/** Request timeout in seconds. */
 	const TIMEOUT = 5;
 
+	/** Timeout for the best-effort revoke on Disconnect, in seconds. */
+	const DISCONNECT_TIMEOUT = 3;
+
 	/** Responses larger than this are cut off (2 MB). */
 	const MAX_BODY_BYTES = 2097152;
 
@@ -183,6 +186,31 @@ final class Api_Client {
 	}
 
 	/**
+	 * Asks show.fm to revoke this site's own key: `POST /v1/me/sites/{id}/disconnect` with an
+	 * empty JSON object. Best effort, with a short timeout, and sent once: a 401 means show.fm
+	 * no longer accepts the key, so there is nothing to revoke and nothing to retry. Unlike a
+	 * keyed call, a 401 here never flags the stored connection, since Disconnect removes it
+	 * next anyway.
+	 *
+	 * @param string $site_id The connected site's id at show.fm.
+	 * @param string $key     The site key, from the caller's pinned connection.
+	 */
+	public function disconnect_site( string $site_id, string $key ): Api_Result {
+		if ( '' === $key || '' === $site_id ) {
+			return new Api_Result( Api_Result::FAILED, 0, null, null, 0, 'The request could not be built.' );
+		}
+		$waiting = self::rate_limit_remaining();
+		if ( $waiting > 0 ) {
+			return self::rate_limited( $waiting );
+		}
+		$headers = array(
+			'Content-Type'  => 'application/json',
+			'Authorization' => 'Bearer ' . $key,
+		);
+		return $this->request( 'POST', '/v1/me/sites/' . rawurlencode( $site_id ) . '/disconnect', $headers, '{}', array( $key ), self::DISCONNECT_TIMEOUT );
+	}
+
+	/**
 	 * Seconds left before keyed calls may be sent again after a 429, or 0.
 	 */
 	public static function rate_limit_remaining(): int {
@@ -266,15 +294,16 @@ final class Api_Client {
 	 * @param array<string,string> $headers Request headers.
 	 * @param string|null          $body    Request body.
 	 * @param string[]             $secrets Values to scrub from any message.
+	 * @param int                  $timeout Timeout in seconds.
 	 */
-	private function request( string $method, string $path, array $headers, ?string $body, array $secrets = array() ): Api_Result {
+	private function request( string $method, string $path, array $headers, ?string $body, array $secrets = array(), int $timeout = self::TIMEOUT ): Api_Result {
 		if ( ! self::is_valid_path( $path ) ) {
 			return new Api_Result( Api_Result::FAILED, 0, null, null, 0, 'Invalid API path.' );
 		}
 
 		$args = array(
 			'method'              => $method,
-			'timeout'             => self::TIMEOUT,
+			'timeout'             => $timeout,
 			'redirection'         => 0,
 			'user-agent'          => self::user_agent(),
 			'headers'             => array_merge( array( 'Accept' => 'application/json' ), $headers ),
