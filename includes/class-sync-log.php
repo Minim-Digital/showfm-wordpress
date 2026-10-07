@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /** Stores only plugin-owned reason codes, never remote error text or credentials. */
 final class Sync_Log {
 	const OPTION = 'showfm_sync_log';
-	const CODES  = array( 'row_invalid', 'row_apply_failed', 'report_missing_post', 'report_invalid_url', 'report_detached', 'report_400', 'report_403', 'report_404', 'report_terminal', 'report_retry', 'artwork_terminal', 'artwork_retry', 'artwork_exhausted', 'author_invalid', 'internal_error' );
+	const CODES  = array( 'row_invalid', 'row_apply_failed', 'row_post_type', 'row_author', 'row_write_failed', 'row_attempts_exhausted', 'report_missing_post', 'report_invalid_url', 'report_detached', 'report_400', 'report_403', 'report_404', 'report_terminal', 'report_retry', 'artwork_terminal', 'artwork_retry', 'artwork_exhausted', 'author_invalid', 'internal_error' );
 
 	/**
 	 * Record a reason and optional local row sequence. Keep at most 50 entries.

@@ -237,6 +237,9 @@ final class Cli {
 			}
 			\WP_CLI::line( 'pending_reports: ' . count( $state['reports'] ) );
 			\WP_CLI::line( 'pending_artwork: ' . count( (array) get_option( Sync_Artwork::QUEUE, array() ) ) );
+			$status = $this->connection->sync_status();
+			\WP_CLI::line( 'apply_retry: ' . wp_json_encode( $status['retry'] ) );
+			\WP_CLI::line( 'skipped_rows: ' . wp_json_encode( $status['skipped'] ) );
 			$log = (array) get_option( Sync_Log::OPTION, array() );
 			\WP_CLI::line( 'recent_errors: ' . count( $log ) );
 			foreach ( $log as $entry ) {

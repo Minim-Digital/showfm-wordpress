@@ -147,7 +147,7 @@ class Test_Sync extends WP_UnitTestCase {
 		$this->assertSame( 2, Sync::state()['cursor'] );
 		$this->assertSame( 0, Sync_Posts::find( self::SITE, self::EPISODE ) );
 		$this->assertGreaterThan( 0, Sync_Posts::find( self::SITE, $row2['episode_id'] ) );
-		$this->assertSame( 'row_apply_failed', get_option( ShowFM\Sync_Log::OPTION )[0]['code'] );
+		$this->assertSame( 'row_invalid', get_option( ShowFM\Sync_Log::OPTION )[0]['code'] );
 	}
 
 	public function test_schedule_reschedule_publish_unpublish_remove_delete_restore(): void {
@@ -556,17 +556,17 @@ class Test_Sync extends WP_UnitTestCase {
 		$this->assertSame( 0, Sync_Posts::find( self::SITE, self::EPISODE ) );
 	}
 
-	public function test_metadata_failure_is_recorded_without_poisoning_cursor(): void {
+	public function test_metadata_failure_is_retried_without_advancing_cursor(): void {
 		$this->page( array( $this->row() ) );
-		$this->page( array(), 1 );
-		$fail = static function ( $check, $id, $key ) {
-			return '_showfm_content_hash' === $key ? false : $check;
-		};
+				$fail = static function ( $check, $id, $key ) {
+					return '_showfm_content_hash' === $key ? false : $check;
+				};
 		add_filter( 'update_post_metadata', $fail, 10, 3 );
-		$this->assertSame( 'caught_up', $this->sync->pull()['status'] );
+		$this->assertSame( 'row_write_failed', $this->sync->pull()['status'] );
 		remove_filter( 'update_post_metadata', $fail, 10 );
-		$this->assertSame( 1, Sync::state()['cursor'] );
-		$this->assertSame( 'row_apply_failed', get_option( ShowFM\Sync_Log::OPTION )[0]['code'] );
+		$this->assertSame( 0, Sync::state()['cursor'] );
+		$this->assertSame( 'row_write_failed', get_option( 'showfm_connection_sync_status' )['retry']['code'] );
+		$this->assertSame( 'row_write_failed', get_option( ShowFM\Sync_Log::OPTION )[0]['code'] );
 	}
 
 	public function test_unchanged_content_hash_still_applies_lifecycle_changes(): void {
@@ -721,36 +721,38 @@ class Test_Sync extends WP_UnitTestCase {
 		$this->assertSame( 0, Sync::state()['cursor'] );
 	}
 
-	public function test_hook_exception_is_skipped_with_only_our_error_code(): void {
+	public function test_hook_exception_is_retried_with_only_our_error_code(): void {
 		$this->page( array( $this->row() ) );
-		$this->page( array(), 1 );
-		$fail = static function () {
-			throw new RuntimeException( 'secret third party detail' );
-		};
+				$fail = static function () {
+					throw new RuntimeException( 'secret third party detail' );
+				};
 		add_filter( 'wp_insert_post_empty_content', $fail );
-		$this->assertSame( 'caught_up', $this->sync->pull()['status'] );
+		$this->assertSame( 'row_write_failed', $this->sync->pull()['status'] );
 		remove_filter( 'wp_insert_post_empty_content', $fail );
-		$this->assertSame( 1, Sync::state()['cursor'] );
-		$this->assertSame( 'row_apply_failed', get_option( ShowFM\Sync_Log::OPTION )[0]['code'] );
+		$this->assertSame( 0, Sync::state()['cursor'] );
+		$this->assertSame( 'row_write_failed', get_option( 'showfm_connection_sync_status' )['retry']['code'] );
+		$this->assertSame( 'row_write_failed', get_option( ShowFM\Sync_Log::OPTION )[0]['code'] );
 		$this->assertStringNotContainsString( 'secret', wp_json_encode( get_option( ShowFM\Sync_Log::OPTION ) ) );
 	}
 
 	public function test_user_trash_is_sticky_even_when_replaying_from_start(): void {
 		$id = $this->apply( $this->row() );
 		wp_trash_post( $id );
+		$this->http->respond( 200, '{}' );
 		$this->page( array( $this->row( 2 ) ) );
 		$this->page( array(), 2 );
 		$this->assertSame( 'caught_up', $this->sync->pull( false, true )['status'] );
 		$this->assertSame( 'trash', get_post_status( $id ) );
 		$this->assertSame( 'local_detached', get_post_meta( $id, '_showfm_sync_state', true ) );
 		$this->assertSame( array(), Sync::state()['reports'] );
-		$this->assertSame( 2, $this->http->count() );
+		$this->assertSame( 3, $this->http->count() );
 	}
 
 	public function test_user_permanent_deletion_is_never_recreated(): void {
 		$id = $this->apply( $this->row() );
 		wp_delete_post( $id, true );
 		$this->assertNull( get_post( $id ) );
+		$this->http->respond( 200, '{}' );
 		$this->page( array( $this->row( 2 ) ) );
 		$this->page( array(), 2 );
 		$this->assertSame( 'caught_up', $this->sync->pull( false, true )['status'] );
@@ -1006,18 +1008,18 @@ class Test_Sync extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( 'WHERE guid', implode( "\n", $queries ) );
 	}
 
-	public function test_no_publishing_author_skips_row_and_records_reason(): void {
+	public function test_no_publishing_author_retries_row_and_records_reason(): void {
 		$deny = static function ( $caps, $cap ) {
 			return 'publish_posts' === $cap ? array( 'do_not_allow' ) : $caps;
 		};
 		add_filter( 'map_meta_cap', $deny, 10, 2 );
 		$this->page( array( $this->row() ) );
-		$this->page( array(), 1 );
-		$this->assertSame( 'caught_up', $this->sync->pull()['status'] );
+				$this->assertSame( 'row_author', $this->sync->pull()['status'] );
 		remove_filter( 'map_meta_cap', $deny );
-		$this->assertSame( 1, Sync::state()['cursor'] );
+		$this->assertSame( 0, Sync::state()['cursor'] );
+		$this->assertSame( 'row_author', get_option( 'showfm_connection_sync_status' )['retry']['code'] );
 		$this->assertSame( 0, Sync_Posts::find( self::SITE, self::EPISODE ) );
-		$this->assertSame( 'row_apply_failed', get_option( ShowFM\Sync_Log::OPTION )[0]['code'] );
+		$this->assertSame( 'row_author', get_option( ShowFM\Sync_Log::OPTION )[0]['code'] );
 	}
 
 	public function test_multisite_options_locks_are_independent(): void {
@@ -1039,5 +1041,275 @@ class Test_Sync extends WP_UnitTestCase {
 		$this->assertTrue( $main->owned() );
 		$main->release();
 		remove_filter( 'showfm_sync_use_named_lock', '__return_false' );
+	}
+	public function test_review_cursor_boundary_rejects_missing_sequences_before_any_apply(): void {
+		$this->http->respond(
+			200,
+			wp_json_encode(
+				array(
+					'data'   => array( $this->row() ),
+					'cursor' => array(
+						'after'    => 0,
+						'next'     => 100,
+						'latest'   => 100,
+						'has_more' => false,
+					),
+				)
+			)
+		);
+		$this->assertSame( 'invalid_feed', $this->sync->pull()['status'] );
+		$this->assertSame( 0, Sync::state()['cursor'] );
+		$this->assertSame( 0, Sync_Posts::find( self::SITE, self::EPISODE ) );
+		$this->assertSame( 1, $this->http->count() );
+
+		$this->clear_backoff();
+		$this->http->respond(
+			200,
+			wp_json_encode(
+				array(
+					'data'   => array( $this->row( 2 ) ),
+					'cursor' => array(
+						'after'    => 0,
+						'next'     => 1,
+						'latest'   => 2,
+						'has_more' => false,
+					),
+				)
+			)
+		);
+		$this->assertSame( 'invalid_feed', $this->sync->pull()['status'] );
+		$this->assertSame( 0, Sync::state()['cursor'] );
+		$this->clear_backoff();
+		$poison                      = $this->row( 2 );
+		$poison['episode']['status'] = 'new_server_status';
+		$this->page( array( $this->row(), $poison ) );
+		$this->http->respond( 200, '{}' );
+		$this->page( array(), 2 );
+		$this->assertSame( 'caught_up', $this->sync->pull()['status'] );
+		$this->assertSame( 2, Sync::state()['cursor'] );
+		$this->assertSame( 'row_invalid', get_option( ShowFM\Sync_Log::OPTION )[0]['code'] );
+	}
+
+	public function test_review_completed_artwork_entries_are_removed_before_real_retries(): void {
+		update_option( Sync_Posts::SETTINGS, array( 'featured_image' => true ) );
+		$queue = array();
+		for ( $i = 0; $i <= Sync::PAGE_SIZE; ++$i ) {
+			$id = self::factory()->post->create( array( 'post_status' => 'publish' ) );
+			update_post_meta( $id, '_showfm_sync_state', 'synced' );
+			if ( $i < Sync::PAGE_SIZE ) {
+				update_post_meta( $id, '_showfm_artwork_done', $i % 2 ? 'failed' : 1 );
+			}
+			$queue[ $id ] = array(
+				'episode'  => self::EPISODE,
+				'attempts' => 1,
+				'next'     => 0,
+			);
+		}
+		update_option( ShowFM\Sync_Artwork::QUEUE, $queue );
+		$this->page( array() );
+		$this->assertSame( 'caught_up', $this->sync->pull()['status'] );
+		$this->assertCount( 1, get_option( ShowFM\Sync_Artwork::QUEUE ) );
+		$this->page( array() );
+		$this->http->respond( 200, '{"data":{"artwork":{"url":null}}}' );
+		$this->assertSame( 'caught_up', $this->sync->pull()['status'] );
+		$this->assertSame( array(), get_option( ShowFM\Sync_Artwork::QUEUE ) );
+		$this->assertSame( '1', get_post_meta( $id, '_showfm_artwork_done', true ) );
+
+		// Completion cleanup also wins over a future retry timestamp.
+		update_option(
+			ShowFM\Sync_Artwork::QUEUE,
+			array(
+				$id => array(
+					'episode'  => self::EPISODE,
+					'attempts' => 1,
+					'next'     => time() + HOUR_IN_SECONDS,
+				),
+			)
+		);
+		$requests = $this->http->count();
+		( new ShowFM\Sync_Artwork() )->apply( $id, self::EPISODE );
+		$this->assertSame( array(), get_option( ShowFM\Sync_Artwork::QUEUE ) );
+		$this->assertSame( $requests, $this->http->count() );
+	}
+
+	public function test_review_config_failure_keeps_cursor_and_recovers_when_type_returns(): void {
+		update_option( Sync_Posts::SETTINGS, array( 'post_type' => 'unavailable_type' ) );
+		$this->page( array( $this->row() ) );
+		$this->assertSame( 'row_post_type', $this->sync->pull()['status'] );
+		$this->assertSame( 0, Sync::state()['cursor'] );
+		$this->assertSame( 'backoff', $this->sync->pull()['status'] );
+		$this->assertSame( 1, $this->http->count() );
+		$status = get_option( 'showfm_connection_sync_status' );
+		$this->assertSame( 'row_post_type', $status['retry']['code'] );
+		$this->assertSame( 1, $status['retry']['seq'] );
+		$this->assertSame( 1, $status['retry']['attempts'] );
+		WP_CLI::$output = array();
+		( new ShowFM\Cli( Plugin::connect(), Plugin::connection() ) )->sync( array( 'status' ), array() );
+		$this->assertStringContainsString( 'row_post_type', wp_json_encode( WP_CLI::$output ) );
+		delete_option( Sync_Posts::SETTINGS );
+		$this->clear_backoff();
+		$this->page( array( $this->row() ) );
+		$this->http->respond( 200, '{}' );
+		$this->page( array(), 1 );
+		$this->assertSame( 'caught_up', $this->sync->pull()['status'] );
+		$this->assertSame( array(), get_option( 'showfm_connection_sync_status' )['retry'] );
+	}
+
+	public function test_review_write_failure_saves_successful_prefix_and_retries_same_post(): void {
+		$row2                  = $this->row( 2 );
+		$row2['episode_id']    = '44444444-4444-4444-8444-444444444444';
+		$row2['episode']['id'] = $row2['episode_id'];
+		$fail                  = static function ( $check, $id, $key ) use ( $row2 ) {
+			return '_showfm_content_hash' === $key && get_post_meta( $id, '_showfm_episode_id', true ) === $row2['episode_id'] ? false : $check;
+		};
+		add_filter( 'update_post_metadata', $fail, 10, 3 );
+		$this->page( array( $this->row(), $row2 ) );
+		$this->assertSame( 'row_write_failed', $this->sync->pull()['status'] );
+		remove_filter( 'update_post_metadata', $fail, 10 );
+		$this->assertSame( 1, Sync::state()['cursor'] );
+		$this->assertCount( 1, Sync::state()['reports'] );
+		$id = Sync_Posts::find( self::SITE, $row2['episode_id'] );
+		$this->assertGreaterThan( 0, $id );
+		$this->clear_backoff();
+		$this->http->respond( 200, '{}' );
+		$this->page( array( $row2 ), 1 );
+		$this->http->respond( 200, '{}' );
+		$this->page( array(), 2 );
+		$this->assertSame( 'caught_up', $this->sync->pull()['status'] );
+		$this->assertSame( $id, Sync_Posts::find( self::SITE, $row2['episode_id'] ) );
+	}
+
+	public function test_review_apply_attempt_budget_skips_only_after_five_failures(): void {
+		update_option( Sync_Posts::SETTINGS, array( 'post_type' => 'unavailable_type' ) );
+		for ( $attempt = 1; $attempt <= 5; ++$attempt ) {
+			$this->clear_backoff();
+			$this->page( array( $this->row() ) );
+			if ( 5 === $attempt ) {
+				$this->page( array(), 1 );
+			}
+			$this->assertSame( 5 === $attempt ? 'caught_up' : 'row_post_type', $this->sync->pull()['status'] );
+			$this->assertSame( 5 === $attempt ? 1 : 0, Sync::state()['cursor'] );
+		}
+		$status = get_option( 'showfm_connection_sync_status' );
+		$this->assertSame( array(), $status['retry'] );
+		$this->assertSame( 1, $status['skipped'][0]['seq'] );
+		$this->assertSame( 'row_post_type', $status['skipped'][0]['code'] );
+		$this->assertSame( 5, $status['skipped'][0]['attempts'] );
+		$this->page( array( $this->row( 2 ) ), 1 );
+		$this->assertSame( 'row_post_type', $this->sync->pull()['status'] );
+		$this->assertSame( 1, get_option( 'showfm_connection_sync_status' )['retry']['attempts'] );
+		$this->assertSame( 1, Sync::state()['cursor'] );
+	}
+
+	public function test_review_user_trash_queues_one_trashed_report_after_the_write(): void {
+		$id = $this->apply( $this->row() );
+		wp_trash_post( $id );
+		$this->assertSame( 0, $this->http->count() );
+		$this->http->respond_with(
+			function ( $args ) use ( $id ) {
+				$this->assertSame( 'trash', get_post_status( $id ) );
+				$body = json_decode( $args['body'], true );
+				$this->assertSame( $id, $body['wp_post_id'] );
+				$this->assertSame( 'trashed', $body['state'] );
+				$this->assertStringStartsWith( 'https://site.example/show/', $body['post_url'] );
+				return array( 200, '{}' );
+			}
+		);
+		$this->page( array() );
+		$this->assertSame( 'caught_up', $this->sync->pull()['status'] );
+		ShowFM\Sync_Identity::transition( 'trash', 'publish', get_post( $id ) );
+		$this->page( array( $this->row() ) );
+		$this->page( array(), 1 );
+		$this->assertSame( 'caught_up', $this->sync->pull()['status'] );
+		$this->assertSame( 4, $this->http->count() );
+		$this->assertSame( 'trash', get_post_status( $id ) );
+
+		foreach ( array( 400, 403, 404 ) as $status ) {
+			$row                  = $this->row();
+			$row['episode_id']    = sprintf( '44444444-4444-4444-8444-%012d', $status );
+			$row['episode']['id'] = $row['episode_id'];
+			$trashed              = $this->apply( $row );
+			wp_trash_post( $trashed );
+			$this->http->respond( $status, '{}' );
+			$this->page( array(), 1 );
+			$this->assertSame( 'caught_up', $this->sync->pull()['status'] );
+			$this->assertFalse( get_option( ShowFM\Sync_Local_Reports::PREFIX . self::SITE . '_' . $row['episode_id'] ) );
+			$log = get_option( ShowFM\Sync_Log::OPTION );
+			$this->assertSame( 'report_' . $status, end( $log )['code'] );
+		}
+		// Trash followed by permanent deletion still has one terminal report.
+		$count = $this->http->count();
+		wp_delete_post( $id, true );
+		$this->page( array(), 1 );
+		$this->assertSame( 'caught_up', $this->sync->pull()['status'] );
+		$this->assertSame( $count + 1, $this->http->count() );
+	}
+
+	public function test_review_permanent_deletion_reports_saved_identity_after_delete(): void {
+		$id = $this->apply( $this->row() );
+		wp_delete_post( $id, true );
+		$this->assertSame( 0, $this->http->count() );
+		$this->http->respond_with(
+			function ( $args ) use ( $id ) {
+				$this->assertNull( get_post( $id ) );
+				$body = json_decode( $args['body'], true );
+				$this->assertSame( $id, $body['wp_post_id'] );
+				$this->assertSame( 'trashed', $body['state'] );
+				$this->assertStringStartsWith( 'https://site.example/show/', $body['post_url'] );
+				return array( 200, '{}' );
+			}
+		);
+		$this->page( array() );
+		$this->assertSame( 'caught_up', $this->sync->pull()['status'] );
+		$this->page( array() );
+		$this->assertSame( 'caught_up', $this->sync->pull()['status'] );
+		$this->assertSame( 3, $this->http->count() );
+		$this->assertNull( get_post( $id ) );
+
+		$row                  = $this->row( 2 );
+		$row['episode_id']    = '44444444-4444-4444-8444-444444444444';
+		$row['episode']['id'] = $row['episode_id'];
+		$other                = $this->apply( $row );
+		wp_delete_post( $other, true );
+		$key      = ShowFM\Sync_Local_Reports::PREFIX . self::SITE . '_' . $row['episode_id'];
+		$snapshot = get_option( $key )['body'];
+		$this->http->respond( 503, '{}' );
+		$this->page( array() );
+		$this->assertSame( 'caught_up', $this->sync->pull()['status'] );
+		$entry = get_option( $key );
+		$this->assertSame( 1, $entry['attempts'] );
+		$this->assertGreaterThan( time(), $entry['next'] );
+		$this->assertSame( 0, Sync::state()['retry_at'] );
+		$entry['next'] = 0;
+		update_option( $key, $entry );
+		$this->http->respond_with(
+			function ( $args ) use ( $snapshot ) {
+				$this->assertSame( $snapshot, json_decode( $args['body'], true ) );
+				return array( 200, '{}' );
+			}
+		);
+		$this->page( array() );
+		$this->assertSame( 'caught_up', $this->sync->pull()['status'] );
+		$this->assertFalse( get_option( $key ) );
+	}
+
+	public function test_review_artwork_above_sixteen_megapixels_never_reaches_sideload(): void {
+		$processed = 0;
+		$spy       = static function ( $file ) use ( &$processed ) {
+			++$processed;
+			$file['error'] = 'Stop test sideload';
+			return $file;
+		};
+		add_filter( 'wp_handle_sideload_prefilter', $spy );
+		$this->http->respond_with(
+			static function ( $args ) {
+				$png = base64_decode( 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aOuoAAAAASUVORK5CYII=' );
+				file_put_contents( $args['filename'], substr_replace( $png, pack( 'NN', 4001, 4000 ), 16, 8 ) );
+				return array( 200, '' );
+			}
+		);
+		$this->assertWPError( ( new ShowFM\Sync_Artwork() )->import( 'https://m.cdn.media/17mp.png', 0 ) );
+		remove_filter( 'wp_handle_sideload_prefilter', $spy );
+		$this->assertSame( 0, $processed );
 	}
 }

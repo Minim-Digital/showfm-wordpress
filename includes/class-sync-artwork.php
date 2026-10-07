@@ -17,7 +17,7 @@ final class Sync_Artwork {
 	const MAX_BYTES = 10485760;
 
 	const MAX_DIMENSION = 8000;
-	const MAX_PIXELS    = 40000000;
+	const MAX_PIXELS    = 16000000;
 	const MAX_ATTEMPTS  = 3;
 	const QUEUE         = 'showfm_artwork_queue';
 	const HOSTS         = array( 'm.cdn.media', 'm.showfm.dev', 'media.podcasterplus.com', 'media.podcasterplus.dev' );
@@ -35,7 +35,13 @@ final class Sync_Artwork {
 			'attempts' => (int) get_post_meta( $post_id, '_showfm_artwork_attempts', true ),
 			'next'     => 0,
 		);
-		if ( $pending['next'] > time() || get_post_meta( $post_id, '_showfm_artwork_done', true ) ) {
+		if ( get_post_meta( $post_id, '_showfm_artwork_done', true ) ) {
+			Sync::guard();
+			unset( $queue[ $post_id ] );
+			update_option( self::QUEUE, $queue, false );
+			return;
+		}
+		if ( $pending['next'] > time() ) {
 			return;
 		}
 		Sync::guard();
@@ -88,6 +94,10 @@ final class Sync_Artwork {
 			Sync::wake( time() + 15 );
 		}
 		foreach ( array_slice( $queue, 0, Sync::PAGE_SIZE, true ) as $id => $pending ) {
+			if ( get_post_meta( $id, '_showfm_artwork_done', true ) ) {
+				$this->apply( (int) $id, $pending['episode'] );
+				continue;
+			}
 			$post     = get_post( $id );
 			$settings = (array) get_option( Sync_Posts::SETTINGS, array() );
 			if ( ! $post || 'publish' !== $post->post_status || 'synced' !== get_post_meta( $id, '_showfm_sync_state', true ) || empty( $settings['featured_image'] ) || ( new Sync_Posts() )->edited( $post ) ) {

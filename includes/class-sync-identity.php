@@ -99,10 +99,19 @@ final class Sync_Identity {
 		if ( ! $post || 0 !== strpos( $post->guid, 'urn:showfm:' ) || 'attachment' === $post->post_type || Sync_Posts::is_writing( $id ) ) {
 			return;
 		}
+		$receipt = self::get( $post->guid );
+		// Capture while the post still exists; permanent deletion removes all its meta.
+		if ( ! isset( $receipt['local_report'] ) ) {
+			$receipt['local_report'] = array(
+				'wp_post_id' => $id,
+				'post_url'   => Sync::post_url( $post ),
+				'state'      => 'trashed',
+			);
+		}
 		self::save(
 			$post->guid,
 			array_merge(
-				self::get( $post->guid ),
+				$receipt,
 				array(
 					'id'       => $id,
 					'detached' => true,
@@ -123,7 +132,33 @@ final class Sync_Identity {
 	public static function transition( string $new_status, string $old, \WP_Post $post ): void {
 		if ( 'trash' === $new_status && 'trash' !== $old ) {
 			self::detach( $post->ID );
+			self::report_detachment( $post->ID, $post );
 		}
+	}
+
+	/**
+	 * Called only after a successful trash transition or permanent deletion.
+	 *
+	 * @param int      $id Original post ID.
+	 * @param \WP_Post $post Original post, supplied by WordPress after deletion.
+	 */
+	public static function report_detachment( int $id, \WP_Post $post ): void {
+		$receipt = self::get( $post->guid );
+		if ( empty( $receipt['detached'] ) || ! empty( $receipt['report_queued'] ) || empty( $receipt['local_report'] ) || Sync_Posts::is_writing( $id ) ) {
+			return;
+		}
+		$parts = explode( ':', $post->guid );
+		if ( 4 !== count( $parts ) || '' === Attributes::uuid( $parts[2] ) || '' === Attributes::uuid( $parts[3] ) ) {
+			return;
+		}
+		$body = $receipt['local_report'];
+		if ( null === $body['post_url'] ) {
+			Sync_Log::record( 'report_invalid_url' );
+		} else {
+			Sync_Local_Reports::queue( $parts[2], $parts[3], $body );
+		}
+		$receipt['report_queued'] = true;
+		self::save( $post->guid, $receipt );
 	}
 
 	/**

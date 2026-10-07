@@ -13,10 +13,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /** Polls only through cron or an explicit CLI command. */
 final class Sync {
-	const POLL_HOOK = 'showfm_poll';
-	const OPTION    = 'showfm_sync';
-	const PAGE_SIZE = 20;
-	const MAX_PAGES = 10;
+	const POLL_HOOK      = 'showfm_poll';
+	const OPTION         = 'showfm_sync';
+	const PAGE_SIZE      = 20;
+	const MAX_PAGES      = 10;
+	const APPLY_ATTEMPTS = 5;
 	/**
 	 * In-process guard, since MySQL locks are re-entrant.
 	 *
@@ -145,7 +146,10 @@ final class Sync {
 			}
 			for ( $page = 0; $page < self::MAX_PAGES; ++$page ) {
 				if ( ! $dry_run ) {
-					$failure = $this->reports( $state, $deferred );
+					$failure = Sync_Local_Reports::send( $site );
+					if ( ! $failure ) {
+						$failure = $this->reports( $state, $deferred );
+					}
 					if ( $failure ) {
 						return $this->failure( $state, $result, $failure->type(), $failure->retry_after() );
 					}
@@ -169,12 +173,21 @@ final class Sync {
 					if ( ! is_array( $row ) || ! Sync_Posts::valid( $row ) || $row['seq'] <= $seen || $row['seq'] > $data['cursor']['next'] ) {
 						if ( ! $dry_run ) {
 							Sync_Log::record( 'row_invalid', is_array( $row ) && is_int( $row['seq'] ?? null ) ? $row['seq'] : 0 );
+							if ( is_array( $row ) && is_int( $row['seq'] ?? null ) && $row['seq'] > $seen && $row['seq'] <= $data['cursor']['next'] ) {
+								$state['cursor'] = $row['seq'];
+								$seen            = $row['seq'];
+							}
 						}
 						continue;
 					}
 					$seen = $row['seq'];
 					if ( ! $dry_run ) {
 						self::require_lock();
+						$retry = $connection->sync_status()['retry'];
+						if ( ( $retry['seq'] ?? 0 ) === $row['seq'] && $retry['attempts'] >= self::APPLY_ATTEMPTS ) {
+							$state['cursor'] = $row['seq'];
+							continue; // Recover a crash after exhaustion was recorded, before the cursor was saved.
+						}
 						try {
 							$id = ( new Sync_Posts() )->apply( $site, $row );
 						} catch ( \Throwable $error ) {
@@ -182,10 +195,18 @@ final class Sync {
 							$id = new \WP_Error( 'showfm_row_failed' );
 						}
 						if ( is_wp_error( $id ) ) {
-							Sync_Log::record( 'row_apply_failed', $row['seq'] );
+							$code = self::apply_error( $id );
+							if ( 'row_invalid' !== $code && ! self::exhausted( $row['seq'], $code ) ) {
+								return $this->failure( $state, $result, $code );
+							}
+							if ( 'row_invalid' === $code ) {
+								Sync_Log::record( $code, $row['seq'] );
+							}
+							$state['cursor'] = $row['seq'];
 							continue;
 						}
-						$detached = in_array( $row['reason'] ?? null, array( 'access_removed', 'plan_or_policy' ), true );
+						$state['cursor'] = $row['seq'];
+						$detached        = in_array( $row['reason'] ?? null, array( 'access_removed', 'plan_or_policy' ), true );
 						if ( $id && ! $detached ) {
 							$state['reports'][ $row['episode_id'] ] = $id;
 						} else {
@@ -198,6 +219,7 @@ final class Sync {
 				if ( ! $dry_run ) {
 					// Reports and cursor share one durable write: never acknowledge without the outbox.
 					self::save( $state );
+					self::clear_apply_retry( (int) $state['cursor'] );
 				}
 				if ( $dry_run ) {
 					// The server records each requested after as applied. Previewing another
@@ -247,7 +269,76 @@ final class Sync {
 		if ( ( $cursor['after'] ?? null ) !== $after || ! is_int( $cursor['next'] ?? null ) || ! is_int( $cursor['latest'] ?? null ) || ! is_bool( $cursor['has_more'] ?? null ) ) {
 			return false;
 		}
-		return $cursor['next'] >= $after && $cursor['next'] <= $cursor['latest'] && ( empty( $data['data'] ) ? $cursor['next'] === $after && ! $cursor['has_more'] : $cursor['next'] > $after );
+		if ( $cursor['next'] < $after || $cursor['next'] > $cursor['latest'] ) {
+			return false;
+		}
+		if ( empty( $data['data'] ) ) {
+			return $cursor['next'] === $after && ! $cursor['has_more'];
+		}
+		// Content may be poison; sequence boundaries still have to account for the cursor.
+		$boundary = $after;
+		foreach ( $data['data'] as $row ) {
+			if ( is_array( $row ) && is_int( $row['seq'] ?? null ) ) {
+				$boundary = max( $boundary, $row['seq'] );
+			}
+		}
+		return $boundary > $after && $boundary === $cursor['next'];
+	}
+
+	/**
+	 * Only known validation refusals are permanent; all other write errors may recover.
+	 *
+	 * @param \WP_Error $error Apply failure.
+	 */
+	private static function apply_error( \WP_Error $error ): string {
+		$codes = array(
+			'empty_content'    => 'row_invalid',
+			'showfm_post_type' => 'row_post_type',
+			'showfm_author'    => 'row_author',
+		);
+		return $codes[ $error->get_error_code() ] ?? 'row_write_failed';
+	}
+
+	/**
+	 * Count failures per sequence and retain exhausted reasons for connection status.
+	 *
+	 * @param int    $seq Failing sequence.
+	 * @param string $code Own reason code.
+	 */
+	private static function exhausted( int $seq, string $code ): bool {
+		$connection      = Plugin::connection();
+		$status          = $connection->sync_status();
+		$previous        = $status['retry'];
+		$attempts        = ( $previous['seq'] ?? 0 ) === $seq ? $previous['attempts'] + 1 : 1;
+		$entry           = array(
+			'seq'      => $seq,
+			'code'     => $code,
+			'attempts' => $attempts,
+			'at'       => time(),
+		);
+		$exhausted       = $attempts >= self::APPLY_ATTEMPTS;
+		$status['retry'] = $entry;
+		if ( $exhausted ) {
+			$status['skipped'][] = $entry;
+			$status['skipped']   = array_slice( $status['skipped'], -50 );
+		}
+		$connection->save_sync_status( $status );
+		Sync_Log::record( $exhausted ? 'row_attempts_exhausted' : $code, $seq );
+		return $exhausted;
+	}
+
+	/**
+	 * Clear the active retry only after its sequence has been durably handled.
+	 *
+	 * @param int $cursor Applied or deliberately skipped boundary.
+	 */
+	private static function clear_apply_retry( int $cursor ): void {
+		$connection = Plugin::connection();
+		$status     = $connection->sync_status();
+		if ( $status['retry'] && $status['retry']['seq'] <= $cursor ) {
+			$status['retry'] = array();
+			$connection->save_sync_status( $status );
+		}
 	}
 
 	/**
@@ -347,7 +438,15 @@ final class Sync {
 	 * @param \WP_Post $post Post being reported.
 	 */
 	public static function post_url( \WP_Post $post ): ?string {
-		$url   = get_permalink( $post );
+		return self::validate_post_url( get_permalink( $post ) );
+	}
+
+	/**
+	 * Validate saved deletion URLs against the current registered home too.
+	 *
+	 * @param string|false $url Permalink snapshot.
+	 */
+	public static function validate_post_url( $url ): ?string {
 		$parts = $url ? wp_parse_url( $url ) : false;
 		$home  = wp_parse_url( home_url() );
 		if ( ! is_array( $parts ) || ! is_array( $home ) || 'https' !== ( $parts['scheme'] ?? '' ) || strtolower( $parts['host'] ?? '' ) !== strtolower( $home['host'] ?? '' ) || isset( $parts['user'] ) || isset( $parts['pass'] ) || isset( $parts['port'] ) || isset( $parts['fragment'] ) ) {
@@ -403,7 +502,7 @@ final class Sync {
 	 * @return array{status:string,rows:int,cursor:int}
 	 */
 	private function failure( array $state, array $result, string $error, int $retry_after = 0 ): array {
-		$error = in_array( $error, array( Api_Result::UNAUTHORISED, Api_Result::RATE_LIMITED, Api_Result::TRANSIENT_FAILURE, Api_Result::FAILED, Api_Result::UNAVAILABLE, Api_Result::NOT_MODIFIED, 'invalid_feed', 'apply_failed' ), true ) ? $error : 'apply_failed';
+		$error = in_array( $error, array( Api_Result::UNAUTHORISED, Api_Result::RATE_LIMITED, Api_Result::TRANSIENT_FAILURE, Api_Result::FAILED, Api_Result::UNAVAILABLE, Api_Result::NOT_MODIFIED, 'invalid_feed', 'apply_failed', 'row_post_type', 'row_author', 'row_write_failed' ), true ) ? $error : 'apply_failed';
 		++$state['failures'];
 		$state['error']    = $error;
 		$state['retry_at'] = time() + max( $retry_after, min( 3600, 30 * ( 2 ** min( 7, $state['failures'] - 1 ) ) ) + wp_rand( 0, 15 ) );
