@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
 	connectionNotice,
 	connectionStatus,
+	disconnectedMessage,
+	disconnectedNotice,
 	hasConnection,
 	keyRow,
 	listNames,
@@ -207,7 +209,8 @@ describe( 'connection view', () => {
 			title: 'Couldn’t connect to show.fm.',
 			text: 'The connection was cancelled.',
 			action: { type: 'retry', label: 'Try again' },
-			dismissible: false,
+			dismissible: true,
+			result: true,
 		} );
 
 		const https = connectionNotice(
@@ -241,6 +244,43 @@ describe( 'connection view', () => {
 			text: 'New episodes of The Long Table and Second Helpings will be posted here.',
 			dismissible: true,
 		} );
+	} );
+
+	it( 'marks the stored connect outcome so dismissing can clear it', () => {
+		const success = connectionNotice(
+			view( {
+				result: {
+					status: 'connected',
+					error: '',
+					message: '',
+					action: 'none',
+				},
+			} )
+		);
+		expect( success.result ).toBe( true );
+		expect( connectionNotice( view( { state: 'expired' } ) ).result ).toBe(
+			undefined
+		);
+	} );
+
+	it( 'says after Disconnect that the key stays valid at show.fm', () => {
+		expect(
+			disconnectedNotice( {
+				keyRevoked: false,
+				sitesUrl: 'https://my.show.fm/p/the-long-table/settings/sites',
+			} )
+		).toEqual( {
+			status: 'info',
+			title: 'Disconnected from show.fm.',
+			text: 'This site’s key stays valid at show.fm until you disconnect the site there too.',
+			action: {
+				type: 'link',
+				label: 'Open Connected sites in show.fm',
+				url: 'https://my.show.fm/p/the-long-table/settings/sites',
+			},
+			dismissible: true,
+		} );
+		expect( disconnectedMessage() ).toContain( 'stays valid at show.fm' );
 	} );
 
 	it( 'lets the state notice win over a successful connect', () => {

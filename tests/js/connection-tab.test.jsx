@@ -1,9 +1,41 @@
+import { speak } from '@wordpress/a11y';
+import apiFetch from '@wordpress/api-fetch';
+import { useState } from '@wordpress/element';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import ConnectionTab from '../../src/admin/connection-tab';
+import ConnectionTab, {
+	DISMISS_RESULT_PATH,
+} from '../../src/admin/connection-tab';
 import { view } from './fixtures';
+
+vi.mock( '@wordpress/a11y', () => ( { speak: vi.fn() } ) );
+vi.mock( '@wordpress/api-fetch', () => ( {
+	default: vi.fn( () => Promise.resolve( { dismissed: true } ) ),
+} ) );
+
+const SITES = 'https://my.show.fm/p/the-long-table/settings/sites';
+
+/**
+ * The tab as the app holds it: Disconnect swaps in the server's answer.
+ */
+function Stateful() {
+	const [ current, setCurrent ] = useState( view( { sitesUrl: SITES } ) );
+	return (
+		<ConnectionTab
+			view={ current }
+			onDisconnect={ async () =>
+				setCurrent(
+					view( {
+						state: 'not_connected',
+						disconnected: { keyRevoked: false, sitesUrl: SITES },
+					} )
+				)
+			}
+		/>
+	);
+}
 
 describe( 'Connection tab', () => {
 	let submit;
@@ -243,5 +275,114 @@ describe( 'Connection tab', () => {
 			} )
 		).toBeInTheDocument();
 		expect( screen.getByRole( 'dialog' ) ).toBeInTheDocument();
+	} );
+
+	it( 'says in the dialog that the key stays valid at show.fm, with a link', async () => {
+		render( <ConnectionTab view={ view( { sitesUrl: SITES } ) } /> );
+
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Disconnect' } )
+		);
+		const dialog = screen.getByRole( 'dialog' );
+
+		expect(
+			within( dialog ).getByText(
+				/key stays valid at show.fm until you disconnect the site there too/
+			)
+		).toBeInTheDocument();
+		expect(
+			within( dialog ).getByRole( 'link', {
+				name: /Open Connected sites in show.fm/,
+			} )
+		).toHaveAttribute( 'href', SITES );
+	} );
+
+	it( 'moves focus to the Connect heading and announces once after disconnecting', async () => {
+		render( <Stateful /> );
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Disconnect' } )
+		);
+		speak.mockClear();
+
+		await userEvent.click(
+			within( screen.getByRole( 'dialog' ) ).getByRole( 'button', {
+				name: 'Disconnect',
+			} )
+		);
+
+		const heading = await screen.findByRole( 'heading', {
+			name: 'Connect to show.fm',
+		} );
+		await waitFor( () => expect( heading ).toHaveFocus() );
+		expect( speak ).toHaveBeenCalledTimes( 1 );
+		expect( speak ).toHaveBeenCalledWith(
+			expect.stringContaining( 'Disconnected from show.fm.' ),
+			'polite'
+		);
+		expect(
+			screen.getByText( 'Disconnected from show.fm.' )
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole( 'link', {
+				name: /Open Connected sites in show.fm/,
+			} )
+		).toHaveAttribute( 'href', SITES );
+	} );
+
+	it( 'clears a connect outcome on the server when it is dismissed', async () => {
+		render(
+			<ConnectionTab
+				view={ view( {
+					state: 'not_connected',
+					result: {
+						status: 'failed',
+						error: 'cancelled',
+						message: 'The connection was cancelled.',
+						action: 'retry',
+					},
+				} ) }
+			/>
+		);
+
+		await userEvent.click(
+			within( document.querySelector( '.showfm-notice' ) ).getByRole(
+				'button',
+				{ name: /Close|Dismiss/ }
+			)
+		);
+
+		expect(
+			screen.queryByText( 'Couldn’t connect to show.fm.' )
+		).toBeNull();
+		expect( apiFetch ).toHaveBeenCalledWith( {
+			path: DISMISS_RESULT_PATH,
+			method: 'POST',
+		} );
+	} );
+
+	it( 'clears a successful connect outcome once dismissed', async () => {
+		render(
+			<ConnectionTab
+				view={ view( {
+					result: {
+						status: 'connected',
+						error: '',
+						message: '',
+						action: 'none',
+					},
+				} ) }
+			/>
+		);
+		await userEvent.click(
+			within( document.querySelector( '.showfm-notice' ) ).getByRole(
+				'button',
+				{ name: /Close|Dismiss/ }
+			)
+		);
+		expect( apiFetch ).toHaveBeenCalledTimes( 1 );
+		expect( apiFetch ).toHaveBeenCalledWith( {
+			path: DISMISS_RESULT_PATH,
+			method: 'POST',
+		} );
 	} );
 } );

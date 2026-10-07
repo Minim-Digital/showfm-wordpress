@@ -3,7 +3,7 @@
  */
 import apiFetch from '@wordpress/api-fetch';
 import { Notice, Spinner, TabPanel } from '@wordpress/components';
-import { useCallback, useEffect, useState } from '@wordpress/element';
+import { useCallback, useEffect, useRef, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { addQueryArgs, getQueryArg } from '@wordpress/url';
 
@@ -31,13 +31,17 @@ function rememberTab( name ) {
 }
 
 /**
- * The admin notice, shown on every tab except Connection, which has its own.
+ * The admin notice, shown on every tab except Connection, which has its own. Reconnect
+ * POSTs the connect form with its nonce; the other actions are links. A dismissal that
+ * fails to save brings the notice back.
  *
  * @param {Object} props
- * @param {Object} props.notice Notice from the connection data.
+ * @param {Object} props.notice  Notice from the connection data.
+ * @param {Object} props.connect Connect form target, action and nonce.
  */
-function AdminNotice( { notice } ) {
+function AdminNotice( { notice, connect } ) {
 	const [ dismissed, setDismissed ] = useState( false );
+	const formRef = useRef();
 	if ( dismissed ) {
 		return null;
 	}
@@ -47,19 +51,46 @@ function AdminNotice( { notice } ) {
 			path: '/showfm/v1/admin/notices/dismiss',
 			method: 'POST',
 			data: { key: notice.key },
-		} ).catch( () => {} );
+		} ).catch( () => setDismissed( false ) );
 	};
+	const action =
+		notice.action.type === 'reconnect'
+			? {
+					label: notice.action.label,
+					onClick: () => formRef.current?.requestSubmit(),
+					variant: 'secondary',
+				}
+			: { label: notice.action.label, url: notice.action.url };
 	return (
-		<Notice
-			className="showfm-notice"
-			status={ notice.type }
-			onRemove={ dismiss }
-			actions={ [
-				{ label: notice.action.label, url: notice.action.url },
-			] }
-		>
-			<p>{ notice.text }</p>
-		</Notice>
+		<>
+			<Notice
+				className="showfm-notice"
+				status={ notice.type }
+				onRemove={ dismiss }
+				actions={ [ action ] }
+			>
+				<p>{ notice.text }</p>
+			</Notice>
+			{ notice.action.type === 'reconnect' && (
+				<form
+					ref={ formRef }
+					method="post"
+					action={ connect.url }
+					hidden
+				>
+					<input
+						type="hidden"
+						name="action"
+						value={ connect.action }
+					/>
+					<input
+						type="hidden"
+						name="_wpnonce"
+						value={ connect.nonce }
+					/>
+				</form>
+			) }
+		</>
 	);
 }
 
@@ -134,6 +165,7 @@ export default function App() {
 									<AdminNotice
 										key={ view.notice.key }
 										notice={ view.notice }
+										connect={ view.connect }
 									/>
 								) }
 								{ tab.render( {

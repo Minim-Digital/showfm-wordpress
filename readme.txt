@@ -85,6 +85,10 @@ Settings > show.fm. The Connection tab connects the site and shows the account, 
 
 The plugin shows at most one notice, only on the Dashboard, Plugins and show.fm screens, and only to administrators. It warns 30 and 7 days before the site key expires, when show.fm stops accepting the key (for example after the account password changes), when the shows' plan pauses auto-posting, and when a publishing setting stops new episodes being posted. Each notice has one button that fixes the problem. Dismissing a notice hides it for you until the next stage.
 
+= Does disconnecting cancel the site key? =
+
+No. Disconnect in Settings > show.fm (or `wp showfm disconnect`) removes the key from this site and stops posting, but the key stays valid at show.fm until you disconnect the site there too, on a show's Connected sites page in show.fm. The settings screen links to it.
+
 = Can I connect from the command line? =
 
 Yes. Create a site key in show.fm under Connected sites, then Add a site with WP-CLI, and run `wp showfm connect`. It asks for the key with the input hidden, or reads it from the `SHOWFM_KEY` environment variable, or from standard input with `--key=-` (for example `pass show showfm/site-key | wp showfm connect --key=-`). `--key=<key>` also works, but the key then stays in your shell history and shows in the process list. `wp showfm status` shows the connection and `wp showfm disconnect` removes it. On a multisite network, add `--url=` to pick the site: each site connects separately.
@@ -111,3 +115,5 @@ The plugin keeps up to 50 local sync diagnostics containing its own reason codes
 * Added admin notices for key expiry at 30 and 7 days, a refused key, a plan pause and a sync configuration problem: at most one at a time, dismissible per user.
 * Connecting now stops early when the site's address does not use https, and a return from show.fm without approval says the connection was cancelled.
 * Added the account name and connected shows to the settings screen, fetched after connecting and with the daily health report, and updated the suggested privacy policy text.
+* Disconnect now says plainly that the site key stays valid at show.fm until the site is disconnected there, and links to Connected sites. Focus moves to the Connect card afterwards and the change is announced.
+* The outcome of connecting stays on the settings screen across reloads and tabs until it is dismissed or 15 minutes pass. Reconnect in an admin notice now submits a form instead of following a link.

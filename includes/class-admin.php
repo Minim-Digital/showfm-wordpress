@@ -100,7 +100,7 @@ final class Admin {
 		global $pagenow;
 		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- A redirect only; the settings page checks the state.
 		$page = isset( $_GET['page'] ) && is_string( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
-		if ( 'admin.php' !== $pagenow || Connect::PAGE !== $page ) {
+		if ( 'admin.php' !== $pagenow || Connect::PAGE !== $page || is_network_admin() ) {
 			return;
 		}
 		$args = array();

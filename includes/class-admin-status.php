@@ -90,15 +90,15 @@ final class Admin_Status {
 	}
 
 	/**
-	 * The Connection tab's data for a user. Reading it shows the user the outcome of their
-	 * last connect attempt once, then clears it.
+	 * The Connection tab's data for a user, including the outcome of their last connect
+	 * attempt. Reading has no side effect: the outcome stays until the admin dismisses it,
+	 * starts again, or `Connect::RESULT_TTL` passes, so a reload or another tab still shows it.
 	 *
 	 * @param int $user_id The admin.
 	 * @return array<string,mixed>
 	 */
 	public function view( int $user_id ): array {
 		$result = Connect::result( $user_id );
-		Connect::clear_result( $user_id );
 
 		$state   = $this->state();
 		$details = 'not_connected' === $state || 'unreadable' === $state ? array(
@@ -129,8 +129,32 @@ final class Admin_Status {
 				'nonce'  => wp_create_nonce( Connect::ACTION ),
 			),
 			'planUrl'     => Notices::plan_url(),
+			'sitesUrl'    => self::sites_url( $details['shows'] ),
 			'notice'      => $this->notices->current( $user_id ),
 		);
+	}
+
+	/**
+	 * Where the account disconnects the site at show.fm: the Connected sites page of the
+	 * first connected show, or the show.fm dashboard when no show is known. A site key
+	 * cannot revoke itself, so disconnecting here leaves it valid until it is removed there.
+	 *
+	 * @param array<int,array{id:string,title:string,slug:string}> $shows Connected shows.
+	 */
+	public static function sites_url( array $shows ): string {
+		foreach ( $shows as $show ) {
+			if ( '' !== $show['slug'] ) {
+				return Connect::app_url() . '/p/' . rawurlencode( $show['slug'] ) . '/settings/sites';
+			}
+		}
+		return Connect::app_url() . '/dashboard';
+	}
+
+	/**
+	 * The Connected sites link for the stored connection, read before it is removed.
+	 */
+	public function current_sites_url(): string {
+		return self::sites_url( $this->account->details()['shows'] );
 	}
 
 	/**

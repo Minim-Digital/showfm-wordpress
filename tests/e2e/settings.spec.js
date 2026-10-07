@@ -187,6 +187,20 @@ test.describe( 'show.fm settings', () => {
 		await expect(
 			notice.getByRole( 'button', { name: 'Try again' } )
 		).toBeVisible();
+
+		// The outcome survives a reload until it is dismissed.
+		await page.reload();
+		await expect( notice ).toContainText( 'The connection was cancelled.' );
+		const cleared = page.waitForResponse( ( response ) =>
+			response.url().includes( 'dismiss-result' )
+		);
+		await notice.getByRole( 'button', { name: /Close|Dismiss/ } ).click();
+		await cleared;
+		await page.reload();
+		await expect(
+			page.getByRole( 'heading', { name: 'Connect to show.fm' } )
+		).toBeVisible();
+		await expect( page.locator( '.showfm-notice' ) ).toHaveCount( 0 );
 	} );
 
 	test( 'disconnect asks first, then returns to the connect card', async ( {
@@ -202,6 +216,17 @@ test.describe( 'show.fm settings', () => {
 			name: 'Disconnect from show.fm?',
 		} );
 		await expect( dialog ).toBeVisible();
+		await expect( dialog ).toContainText(
+			'This site’s key stays valid at show.fm until you disconnect the site there too'
+		);
+		await expect(
+			dialog.getByRole( 'link', {
+				name: /Open Connected sites in show.fm/,
+			} )
+		).toHaveAttribute(
+			'href',
+			'https://my.show.fm/p/the-long-table/settings/sites'
+		);
 		await dialog.getByRole( 'button', { name: 'Cancel' } ).click();
 		await expect( dialog ).toBeHidden();
 
@@ -209,7 +234,10 @@ test.describe( 'show.fm settings', () => {
 		await dialog.getByRole( 'button', { name: 'Disconnect' } ).click();
 		await expect(
 			page.getByRole( 'heading', { name: 'Connect to show.fm' } )
-		).toBeVisible();
+		).toBeFocused();
+		await expect( page.locator( '.showfm-notice' ) ).toContainText(
+			'Disconnected from show.fm. This site’s key stays valid at show.fm until you disconnect the site there too.'
+		);
 
 		await page.reload();
 		await expect(
@@ -283,8 +311,11 @@ test.describe( 'show.fm settings', () => {
 			'Your show.fm connection expires in 30 days.'
 		);
 		await expect(
-			notice.getByRole( 'link', { name: 'Reconnect' } )
+			notice.getByRole( 'button', { name: 'Reconnect' } )
 		).toBeVisible();
+		await expect( notice.locator( 'a[href*="_wpnonce"]' ) ).toHaveCount(
+			0
+		);
 
 		const dismissed = page.waitForResponse(
 			( response ) =>
@@ -302,8 +333,36 @@ test.describe( 'show.fm settings', () => {
 		await expect(
 			page
 				.locator( '.showfm-notice' )
-				.getByRole( 'link', { name: 'Reconnect' } )
+				.getByRole( 'button', { name: 'Reconnect' } )
 		).toBeVisible();
+	} );
+
+	test( 'Reconnect in a dashboard notice POSTs the connect form', async ( {
+		admin,
+		page,
+		requestUtils,
+	} ) => {
+		await setState( requestUtils, 'expiring7' );
+		await admin.visitAdminPage( 'index.php' );
+
+		const posted = page.waitForRequest(
+			( request ) =>
+				request.url().includes( 'admin-post.php' ) &&
+				request.method() === 'POST'
+		);
+		await page
+			.locator( '.showfm-notice' )
+			.getByRole( 'button', { name: 'Reconnect' } )
+			.click();
+		const request = await posted;
+		expect( request.url() ).not.toContain( '_wpnonce' );
+		expect( request.postData() ).toContain( 'action=showfm_connect' );
+
+		// wp-env is http, so the flow stops at the https check and says so.
+		await expect( page ).toHaveURL( /options-general\.php\?page=showfm/ );
+		await expect( page.locator( '.showfm-notice' ) ).toContainText(
+			'This site’s address must use https.'
+		);
 	} );
 
 	test( 'the old settings address still works', async ( { admin, page } ) => {

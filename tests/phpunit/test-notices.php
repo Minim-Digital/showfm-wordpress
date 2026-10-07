@@ -77,8 +77,23 @@ class Test_Notices extends WP_UnitTestCase {
 		$this->assertSame( 'warning', $notice['type'] );
 		$this->assertSame( $text, $notice['text'] );
 		$this->assertSame( 'Reconnect', $notice['action']['label'] );
-		$this->assertStringContainsString( 'action=showfm_connect', $notice['action']['url'] );
-		$this->assertSame( 1, wp_verify_nonce( (string) wp_parse_args( (string) wp_parse_url( $notice['action']['url'], PHP_URL_QUERY ) )['_wpnonce'], Connect::ACTION ) );
+		$this->assertSame( 'reconnect', $notice['action']['type'] );
+		$this->assertSame( '', $notice['action']['url'], 'No nonce in a URL: Reconnect is a POST.' );
+	}
+
+	public function test_reconnect_is_a_post_form_with_a_nonce(): void {
+		$this->connect( time() + 5 * DAY_IN_SECONDS );
+
+		$html = $this->render_on( 'dashboard' );
+
+		$this->assertMatchesRegularExpression( '#<form method="post" action="' . preg_quote( admin_url( 'admin-post.php' ), '#' ) . '">#', $html );
+		$this->assertStringContainsString( 'name="action" value="showfm_connect"', $html );
+		$this->assertMatchesRegularExpression( '/name="_wpnonce" value="([^"]+)"/', $html );
+		preg_match( '/name="_wpnonce" value="([^"]+)"/', $html, $nonce );
+		$this->assertSame( 1, wp_verify_nonce( $nonce[1], Connect::ACTION ) );
+		$this->assertStringContainsString( '<button type="submit" class="button">Reconnect</button>', $html );
+		$this->assertStringNotContainsString( '_wpnonce=', $html, 'The nonce is never in a URL.' );
+		$this->assertStringNotContainsString( '<a class="button"', $html );
 	}
 
 	/**
@@ -150,7 +165,7 @@ class Test_Notices extends WP_UnitTestCase {
 			$this->assertStringContainsString( 'data-showfm-notice="paused:1700000000"', $html );
 			$this->assertStringContainsString( 'is-dismissible', $html );
 			$this->assertStringContainsString( 'Auto-posting is paused.', $html );
-			$this->assertSame( 1, substr_count( $html, '<a class="button"' ), 'One action.' );
+			$this->assertSame( 1, substr_count( $html, 'class="button"' ), 'One action.' );
 		}
 		$this->assertTrue( wp_script_is( Notices::HANDLE, 'enqueued' ) || ! is_readable( SHOWFM_DIR . '/build/notices.asset.php' ) );
 	}

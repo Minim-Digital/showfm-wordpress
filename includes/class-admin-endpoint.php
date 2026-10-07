@@ -17,8 +17,11 @@ if ( ! defined( 'ABSPATH' ) ) {
  * request runs as a logged-out user and is refused. No response carries the key, the ping
  * secret or a connect code.
  *
- * - `GET admin/connection`: the Connection tab's data.
- * - `POST admin/disconnect`: removes the local connection, then answers like the GET.
+ * - `GET admin/connection`: the Connection tab's data. Reading changes nothing.
+ * - `POST admin/connection/dismiss-result`: clears the current user's connect outcome.
+ * - `POST admin/disconnect`: removes the local connection, then answers like the GET, with
+ *   `disconnected` saying where to disconnect the site at show.fm. The show.fm API has no
+ *   route for a site key to revoke itself, so the key stays valid there until then.
  * - `POST admin/notices/dismiss`: hides a notice instance for the current user.
  */
 final class Admin_Endpoint {
@@ -66,6 +69,15 @@ final class Admin_Endpoint {
 		);
 		register_rest_route(
 			self::NAMESPACE,
+			'/admin/connection/dismiss-result',
+			array(
+				'methods'             => \WP_REST_Server::CREATABLE,
+				'callback'            => array( self::class, 'dismiss_result' ),
+				'permission_callback' => array( self::class, 'can_manage' ),
+			)
+		);
+		register_rest_route(
+			self::NAMESPACE,
 			'/admin/disconnect',
 			array(
 				'methods'             => \WP_REST_Server::CREATABLE,
@@ -106,11 +118,26 @@ final class Admin_Endpoint {
 	}
 
 	/**
-	 * Removes the local connection. The key stays live at show.fm until it is revoked there.
+	 * Clears the current user's connect outcome once they dismiss it.
+	 */
+	public static function dismiss_result(): \WP_REST_Response {
+		Connect::clear_result( get_current_user_id() );
+		return self::private_response( array( 'dismissed' => true ) );
+	}
+
+	/**
+	 * Removes the local connection. The key stays valid at show.fm until the site is
+	 * disconnected there, so the answer says where.
 	 */
 	public function disconnect(): \WP_REST_Response {
+		$sites = $this->status->current_sites_url();
 		$this->connect->disconnect();
-		return self::private_response( $this->status->view( get_current_user_id() ) );
+		$view                 = $this->status->view( get_current_user_id() );
+		$view['disconnected'] = array(
+			'keyRevoked' => false,
+			'sitesUrl'   => $sites,
+		);
+		return self::private_response( $view );
 	}
 
 	/**

@@ -14,7 +14,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * At most one notice at a time (WordPress.org guideline 11), in this order: show.fm stopped
  * accepting the key, auto-posting paused by the plan, a sync configuration problem, the key
- * expires within 7 days, within 30 days. Each says how to fix the problem with one action.
+ * expires within 7 days, within 30 days. Each says how to fix the problem with one action:
+ * Reconnect is a form that POSTs to admin-post.php with a nonce, the others are links.
  *
  * Notices show on the Dashboard and Plugins screens to users who can manage options. The
  * show.fm settings screen shows the same notice itself on every tab except Connection,
@@ -76,20 +77,28 @@ final class Notices {
 
 		self::enqueue_script();
 		printf(
-			'<div class="notice notice-%1$s is-dismissible showfm-notice" data-showfm-notice="%2$s"><p>%3$s</p><p><a class="button" href="%4$s">%5$s</a></p></div>',
+			'<div class="notice notice-%1$s is-dismissible showfm-notice" data-showfm-notice="%2$s"><p>%3$s</p>',
 			esc_attr( $notice['type'] ),
 			esc_attr( $notice['key'] ),
-			esc_html( $notice['text'] ),
-			esc_url( $notice['action']['url'] ),
-			esc_html( $notice['action']['label'] )
+			esc_html( $notice['text'] )
 		);
+		if ( 'reconnect' === $notice['action']['type'] ) {
+			// Starting the flow is a POST with a nonce, as on the settings screen.
+			echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '"><p>';
+			echo '<input type="hidden" name="action" value="' . esc_attr( Connect::ACTION ) . '" />';
+			wp_nonce_field( Connect::ACTION, '_wpnonce', true );
+			echo '<button type="submit" class="button">' . esc_html( $notice['action']['label'] ) . '</button></p></form>';
+		} else {
+			printf( '<p><a class="button" href="%1$s">%2$s</a></p>', esc_url( $notice['action']['url'] ), esc_html( $notice['action']['label'] ) );
+		}
+		echo '</div>';
 	}
 
 	/**
 	 * The notice to show this user now, or null.
 	 *
 	 * @param int $user_id The user.
-	 * @return array{key:string,type:string,text:string,action:array{label:string,url:string}}|null
+	 * @return array{key:string,type:string,text:string,action:array{type:string,label:string,url:string}}|null
 	 */
 	public function current( int $user_id ): ?array {
 		$dismissed = self::dismissed( $user_id );
@@ -123,7 +132,7 @@ final class Notices {
 	/**
 	 * The notices that apply now, highest first.
 	 *
-	 * @return array<int,array{key:string,type:string,text:string,action:array{label:string,url:string}}>
+	 * @return array<int,array{key:string,type:string,text:string,action:array{type:string,label:string,url:string}}>
 	 */
 	public function candidates(): array {
 		if ( Connection::STATE_DISCONNECTED === $this->connection->state() || $this->connection->is_unreadable() ) {
@@ -132,8 +141,9 @@ final class Notices {
 
 		$notices   = array();
 		$reconnect = array(
+			'type'  => 'reconnect',
 			'label' => __( 'Reconnect', 'showfm' ),
-			'url'   => self::reconnect_url(),
+			'url'   => '',
 		);
 		$expires   = (int) $this->connection->expires_at();
 		$expired   = $expires > 0 && $expires <= time();
@@ -156,6 +166,7 @@ final class Notices {
 				'type'   => 'warning',
 				'text'   => __( 'Auto-posting is paused. The show’s plan doesn’t include connected sites, so new episodes aren’t posted here.', 'showfm' ),
 				'action' => array(
+					'type'  => 'link',
 					'label' => __( 'Check your plan', 'showfm' ),
 					'url'   => self::plan_url(),
 				),
@@ -174,6 +185,7 @@ final class Notices {
 				'type'   => 'warning',
 				'text'   => $texts[ $problem ],
 				'action' => array(
+					'type'  => 'link',
 					'label' => __( 'See what to fix', 'showfm' ),
 					'url'   => admin_url( 'site-health.php' ),
 				),
@@ -204,20 +216,6 @@ final class Notices {
 			return null;
 		}
 		return (int) ceil( ( $expires - time() ) / DAY_IN_SECONDS );
-	}
-
-	/**
-	 * Starts the connect flow straight away (the nonce makes it a deliberate click).
-	 */
-	public static function reconnect_url(): string {
-		// Not wp_nonce_url(): its `&amp;` would reach the React screen as text.
-		return add_query_arg(
-			array(
-				'action'   => Connect::ACTION,
-				'_wpnonce' => wp_create_nonce( Connect::ACTION ),
-			),
-			admin_url( 'admin-post.php' )
-		);
 	}
 
 	/**

@@ -40,9 +40,9 @@ final class Connect {
 	const PAGE = 'showfm';
 
 	/**
-	 * Query argument added to the return address. show.fm keeps it, and adds `code` and
-	 * `state` only on approval, so a return with this argument alone means the admin
-	 * cancelled or show.fm could not connect the site.
+	 * Query argument added to the return address, holding a random token kept with the flow.
+	 * show.fm keeps it, and adds `code` and `state` only on approval, so a return with the
+	 * flow's own token alone means the admin cancelled or show.fm could not connect the site.
 	 */
 	const RETURN_ARG = 'showfm_return';
 
@@ -71,8 +71,11 @@ final class Connect {
 	/** Per-user transient holding the outcome for the settings screen. */
 	const RESULT_PREFIX = 'showfm_connect_result_';
 
-	/** How long an outcome is kept for the settings screen. */
-	const RESULT_TTL = 3600;
+	/**
+	 * How long an outcome is kept for the settings screen. It survives reloads and other
+	 * tabs until the admin dismisses it, starts again or this time passes.
+	 */
+	const RESULT_TTL = 900;
 
 	/** Option holding when the last challenge stored expires (autoload off). */
 	const CHALLENGE_OPEN_OPTION = 'showfm_challenge_open_until';
@@ -247,13 +250,15 @@ final class Connect {
 	public function start( int $user_id ): string {
 		$this->forget_flow( $user_id );
 
-		$pkce = self::new_pkce();
+		$pkce  = self::new_pkce();
+		$token = self::base64url( random_bytes( 16 ) );
 		set_transient(
 			self::FLOW_PREFIX . $user_id,
 			array(
 				'state'     => $pkce['state'],
 				'verifier'  => $pkce['verifier'],
 				'challenge' => $pkce['challenge'],
+				'return'    => $token,
 			),
 			self::FLOW_TTL
 		);
@@ -265,7 +270,7 @@ final class Connect {
 			'rest_root'      => rest_url(),
 			'state'          => $pkce['state'],
 			'code_challenge' => $pkce['challenge'],
-			'return'         => add_query_arg( self::RETURN_ARG, '1', self::settings_url() ),
+			'return'         => add_query_arg( self::RETURN_ARG, $token, self::settings_url() ),
 		);
 		$partner = self::partner();
 		if ( null !== $partner ) {
@@ -324,9 +329,17 @@ final class Connect {
 			if ( ! isset( $query[ self::RETURN_ARG ] ) ) {
 				return null;
 			}
-			// Back from show.fm without approval. Only a flow still waiting for its code
-			// counts as cancelled: a stale or crafted link changes nothing.
-			if ( is_array( $flow ) && is_string( $flow['state'] ?? null ) && ! isset( $flow['code'] ) ) {
+			// Back from show.fm without approval. Only the flow's own token, while the flow
+			// still waits for its code, counts as cancelled: a stale or crafted link changes
+			// nothing.
+			$token = is_string( $query[ self::RETURN_ARG ] ) ? $query[ self::RETURN_ARG ] : '';
+			if (
+				is_array( $flow )
+				&& is_string( $flow['state'] ?? null )
+				&& ! isset( $flow['code'] )
+				&& is_string( $flow['return'] ?? null )
+				&& hash_equals( $flow['return'], $token )
+			) {
 				$this->forget_flow( $user_id );
 				$this->fail( $user_id, self::ERROR_CANCELLED );
 			}

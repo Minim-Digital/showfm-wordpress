@@ -1,5 +1,5 @@
 import apiFetch from '@wordpress/api-fetch';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -13,7 +13,18 @@ const NOTICE = {
 	key: 'expiry30:1791363600',
 	type: 'warning',
 	text: 'Your show.fm connection expires in 30 days.',
-	action: { label: 'Reconnect', url: 'https://example.org/reconnect' },
+	action: { type: 'reconnect', label: 'Reconnect', url: '' },
+};
+
+const PLAN_NOTICE = {
+	key: 'paused:1700000000',
+	type: 'warning',
+	text: 'Auto-posting is paused.',
+	action: {
+		type: 'link',
+		label: 'Check your plan',
+		url: 'https://my.show.fm/pricing',
+	},
 };
 
 /**
@@ -92,18 +103,83 @@ describe( 'Settings app', () => {
 		render( <App /> );
 
 		await screen.findByRole( 'tab', { name: 'Connection' } );
-		// The Connection tab shows its own notice, without the admin notice's link.
+		// The Connection tab shows its own notice instead.
 		expect(
-			screen.queryByRole( 'link', { name: 'Reconnect' } )
+			screen.queryByText( NOTICE.text, { selector: 'p' } )
 		).toBeNull();
 
 		await userEvent.click( screen.getByRole( 'tab', { name: 'Display' } ) );
 		expect(
 			screen.getByText( NOTICE.text, { selector: 'p' } )
 		).toBeInTheDocument();
+	} );
+
+	it( 'reconnects from the admin notice with a POST form, not a link', async () => {
+		const submit = vi
+			.spyOn( window.HTMLFormElement.prototype, 'requestSubmit' )
+			.mockImplementation( () => {} );
+		window.history.replaceState(
+			null,
+			'',
+			'/wp-admin/options-general.php?page=showfm&tab=display'
+		);
+		serve( view( { notice: NOTICE } ) );
+		const { container } = render( <App /> );
+
+		const button = await screen.findByRole( 'button', {
+			name: 'Reconnect',
+		} );
 		expect(
-			screen.getByRole( 'link', { name: 'Reconnect' } )
-		).toHaveAttribute( 'href', NOTICE.action.url );
+			screen.queryByRole( 'link', { name: 'Reconnect' } )
+		).toBeNull();
+		const form = container.querySelector( 'form[hidden]' );
+		expect( form ).toHaveAttribute( 'method', 'post' );
+		expect( form ).toHaveAttribute(
+			'action',
+			'https://thelongtable.co/wp-admin/admin-post.php'
+		);
+		expect( form.querySelector( '[name="_wpnonce"]' ) ).toHaveValue(
+			'abc123'
+		);
+
+		await userEvent.click( button );
+		expect( submit ).toHaveBeenCalledTimes( 1 );
+	} );
+
+	it( 'keeps link actions as links', async () => {
+		window.history.replaceState(
+			null,
+			'',
+			'/wp-admin/options-general.php?page=showfm&tab=display'
+		);
+		serve( view( { notice: PLAN_NOTICE } ) );
+		render( <App /> );
+
+		expect(
+			await screen.findByRole( 'link', { name: 'Check your plan' } )
+		).toHaveAttribute( 'href', 'https://my.show.fm/pricing' );
+	} );
+
+	it( 'brings the admin notice back when dismissing fails', async () => {
+		window.history.replaceState(
+			null,
+			'',
+			'/wp-admin/options-general.php?page=showfm&tab=display'
+		);
+		serve( view( { notice: NOTICE } ) );
+		render( <App /> );
+		const text = await screen.findByText( NOTICE.text, { selector: 'p' } );
+
+		apiFetch.mockRejectedValueOnce( new Error( 'x' ) );
+		await userEvent.click(
+			text
+				.closest( '.components-notice' )
+				.querySelector( '.components-notice__dismiss' )
+		);
+
+		expect(
+			await screen.findByText( NOTICE.text, { selector: 'p' } )
+		).toBeInTheDocument();
 	} );
 
 	it( 'dismisses the admin notice for this user', async () => {
@@ -139,7 +215,16 @@ describe( 'Settings app', () => {
 		await userEvent.click(
 			await screen.findByRole( 'button', { name: 'Disconnect' } )
 		);
-		apiFetch.mockResolvedValueOnce( view( { state: 'not_connected' } ) );
+		apiFetch.mockResolvedValueOnce(
+			view( {
+				state: 'not_connected',
+				disconnected: {
+					keyRevoked: false,
+					sitesUrl:
+						'https://my.show.fm/p/the-long-table/settings/sites',
+				},
+			} )
+		);
 		await userEvent.click(
 			screen.getAllByRole( 'button', { name: 'Disconnect' } ).pop()
 		);
@@ -151,6 +236,22 @@ describe( 'Settings app', () => {
 			path: '/showfm/v1/admin/disconnect',
 			method: 'POST',
 		} );
+		expect(
+			screen.getByText( 'Disconnected from show.fm.' )
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole( 'link', {
+				name: /Open Connected sites in show.fm/,
+			} )
+		).toHaveAttribute(
+			'href',
+			'https://my.show.fm/p/the-long-table/settings/sites'
+		);
+		await waitFor( () =>
+			expect(
+				screen.getByRole( 'heading', { name: 'Connect to show.fm' } )
+			).toHaveFocus()
+		);
 	} );
 
 	it( 'says when the settings cannot load', async () => {

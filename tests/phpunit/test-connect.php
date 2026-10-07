@@ -112,7 +112,8 @@ class Test_Connect extends WP_UnitTestCase {
 		$this->assertSame( array( 'site_url', 'rest_root', 'state', 'code_challenge', 'return' ), array_keys( $query ) );
 		$this->assertSame( home_url(), $query['site_url'] );
 		$this->assertSame( rest_url(), $query['rest_root'] );
-		$this->assertSame( admin_url( 'options-general.php?page=showfm&showfm_return=1' ), $query['return'] );
+		$this->assertSame( admin_url( 'options-general.php?page=showfm&showfm_return=' . get_transient( Connect::FLOW_PREFIX . $this->user_id )['return'] ), $query['return'] );
+		$this->assertMatchesRegularExpression( '/^[A-Za-z0-9_-]{22}$/', get_transient( Connect::FLOW_PREFIX . $this->user_id )['return'], 'A random token per flow.' );
 		$this->assertMatchesRegularExpression( '/^[A-Za-z0-9_-]{43}$/', $query['state'], '32 random bytes, base64url.' );
 		$this->assertMatchesRegularExpression( '/^[A-Za-z0-9_-]{43}$/', $query['code_challenge'] );
 
@@ -228,12 +229,23 @@ class Test_Connect extends WP_UnitTestCase {
 	public function test_returning_without_approval_records_a_cancel(): void {
 		$state = $this->started_state();
 
-		$clean = $this->connect->handle_return( $this->user_id, array( Connect::RETURN_ARG => '1' ) );
+		$clean = $this->connect->handle_return( $this->user_id, array( Connect::RETURN_ARG => $this->return_token() ) );
 
 		$this->assertSame( admin_url( 'options-general.php?page=showfm' ), $clean );
 		$this->assertSame( Connect::ERROR_CANCELLED, Connect::result( $this->user_id )['error'] );
 		$this->assertFalse( get_transient( Connect::FLOW_PREFIX . $this->user_id ), 'The flow is over.' );
 		$this->assertNull( Connect::challenge_for_state( $state ) );
+	}
+
+	public function test_a_crafted_return_link_does_not_cancel_the_flow(): void {
+		$state = $this->started_state();
+
+		$this->connect->handle_return( $this->user_id, array( Connect::RETURN_ARG => '1' ) );
+		$this->connect->handle_return( $this->user_id, array( Connect::RETURN_ARG => str_repeat( 'a', 22 ) ) );
+
+		$this->assertNull( Connect::result( $this->user_id ), 'No spurious "cancelled".' );
+		$this->assertSame( $state, get_transient( Connect::FLOW_PREFIX . $this->user_id )['state'], 'The flow goes on.' );
+		$this->assertNotNull( Connect::challenge_for_state( $state ) );
 	}
 
 	public function test_a_return_marker_without_a_flow_changes_nothing(): void {
@@ -244,9 +256,17 @@ class Test_Connect extends WP_UnitTestCase {
 	}
 
 	public function test_a_return_marker_does_not_cancel_a_code_waiting_for_exchange(): void {
-		$this->returned();
+		$this->started_state();
+		$token = $this->return_token();
+		$this->connect->handle_return(
+			$this->user_id,
+			array(
+				'code'  => self::CODE,
+				'state' => get_transient( Connect::FLOW_PREFIX . $this->user_id )['state'],
+			)
+		);
 
-		$this->connect->handle_return( $this->user_id, array( Connect::RETURN_ARG => '1' ) );
+		$this->connect->handle_return( $this->user_id, array( Connect::RETURN_ARG => $token ) );
 
 		$this->assertSame( self::CODE, get_transient( Connect::FLOW_PREFIX . $this->user_id )['code'] );
 		$this->assertNull( Connect::result( $this->user_id ) );
@@ -712,7 +732,7 @@ class Test_Connect extends WP_UnitTestCase {
 			parse_str( (string) wp_parse_url( $this->connect->start( $this->user_id ), PHP_URL_QUERY ), $query );
 			$this->assertSame( home_url(), $query['site_url'] );
 			$this->assertStringEndsWith( '/second', $query['site_url'], 'A subdirectory site sends its path; show.fm accepts it once #741 is merged.' );
-			$this->assertSame( admin_url( 'options-general.php?page=showfm&showfm_return=1' ), $query['return'] );
+			$this->assertStringStartsWith( admin_url( 'options-general.php?page=showfm&showfm_return=' ), $query['return'] );
 			$this->assertStringContainsString( '/second/wp-admin/', $query['return'] );
 		} finally {
 			restore_current_blog();
@@ -720,6 +740,13 @@ class Test_Connect extends WP_UnitTestCase {
 		$this->assertFalse( get_transient( Connect::FLOW_PREFIX . $this->user_id ), 'The flow is stored on site 2 only.' );
 	}
 
+
+	/**
+	 * The return token of the flow in progress.
+	 */
+	private function return_token(): string {
+		return get_transient( Connect::FLOW_PREFIX . $this->user_id )['return'];
+	}
 
 	/**
 	 * Starts a flow and returns its state.

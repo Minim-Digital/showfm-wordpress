@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-07T17:14:09+00:00\n"
+"POT-Creation-Date: 2026-10-07T17:39:39+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: showfm\n"
@@ -40,28 +40,28 @@ msgstr ""
 msgid "https://show.fm"
 msgstr ""
 
-#: includes/class-admin-endpoint.php:124
+#: includes/class-admin-endpoint.php:151
 msgid "That notice can’t be dismissed."
 msgstr ""
 
-#: includes/class-admin-status.php:170
+#: includes/class-admin-status.php:194
 msgid "The connection request expired. Try again."
 msgstr ""
 
-#: includes/class-admin-status.php:173
+#: includes/class-admin-status.php:197
 msgid "The connection request didn’t start in this browser. Try again."
 msgstr ""
 
-#: includes/class-admin-status.php:176
+#: includes/class-admin-status.php:200
 msgid "show.fm couldn’t be reached. Try again in a few minutes."
 msgstr ""
 
-#: includes/class-admin-status.php:209
+#: includes/class-admin-status.php:233
 msgid "just now"
 msgstr ""
 
 #. translators: %d: number of minutes.
-#: includes/class-admin-status.php:214
+#: includes/class-admin-status.php:238
 #, php-format
 msgid "%d minute ago"
 msgid_plural "%d minutes ago"
@@ -69,19 +69,19 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %d: number of hours.
-#: includes/class-admin-status.php:219
+#: includes/class-admin-status.php:243
 #, php-format
 msgid "%d hour ago"
 msgid_plural "%d hours ago"
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/class-admin-status.php:223
+#: includes/class-admin-status.php:247
 msgid "yesterday"
 msgstr ""
 
 #. translators: %d: number of days.
-#: includes/class-admin-status.php:226
+#: includes/class-admin-status.php:250
 #, php-format
 msgid "%d day ago"
 msgid_plural "%d days ago"
@@ -234,63 +234,63 @@ msgstr ""
 msgid "Site key from show.fm (input hidden)"
 msgstr ""
 
-#: includes/class-connect.php:545
+#: includes/class-connect.php:558
 msgid "This connection request did not come from this browser session. Start again with Connect to show.fm."
 msgstr ""
 
-#: includes/class-connect.php:547
+#: includes/class-connect.php:560
 msgid "The connection request expired or was already used. Start again with Connect to show.fm."
 msgstr ""
 
-#: includes/class-connect.php:549
+#: includes/class-connect.php:562
 msgid "show.fm did not accept the connection. Codes last five minutes and work once. Start again with Connect to show.fm."
 msgstr ""
 
-#: includes/class-connect.php:551
+#: includes/class-connect.php:564
 msgid "That is not a show.fm site key. Copy the key from Connected sites in show.fm."
 msgstr ""
 
-#: includes/class-connect.php:553
+#: includes/class-connect.php:566
 msgid "show.fm did not accept that key. Site keys must be registered within 24 hours. Create a new one in show.fm under Connected sites."
 msgstr ""
 
-#: includes/class-connect.php:555
+#: includes/class-connect.php:568
 msgid "show.fm could not confirm that this site belongs to you. Check that the site is public, uses https and has the show.fm plugin active, then try again."
 msgstr ""
 
 #. translators: %d: number of seconds.
-#: includes/class-connect.php:559
+#: includes/class-connect.php:572
 #, php-format
 msgid "show.fm asked this site to wait. Try again in %d second."
 msgid_plural "show.fm asked this site to wait. Try again in %d seconds."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/class-connect.php:563
+#: includes/class-connect.php:576
 msgid "show.fm could not be reached. Try again in a few minutes."
 msgstr ""
 
-#: includes/class-connect.php:565
+#: includes/class-connect.php:578
 msgid "show.fm sent an answer this plugin does not understand. Update the plugin, then try again."
 msgstr ""
 
-#: includes/class-connect.php:567
+#: includes/class-connect.php:580
 msgid "The connection was cancelled."
 msgstr ""
 
-#: includes/class-connect.php:569
+#: includes/class-connect.php:582
 msgid "This site’s address must use https."
 msgstr ""
 
-#: includes/class-connect.php:571
+#: includes/class-connect.php:584
 msgid "The connection could not be saved. Your server needs the PHP sodium extension, or WordPress 6.6 or later. Then try again."
 msgstr ""
 
-#: includes/class-connect.php:573
+#: includes/class-connect.php:586
 msgid "Connected, but this site could not report in to show.fm yet. It tries again automatically."
 msgstr ""
 
-#: includes/class-connect.php:575
+#: includes/class-connect.php:588
 msgid "Something went wrong. Start again with Connect to show.fm."
 msgstr ""
 
@@ -342,42 +342,42 @@ msgstr ""
 msgid "No blocking configuration or server contract problem is recorded for this connection."
 msgstr ""
 
-#: includes/class-notices.php:135
+#: includes/class-notices.php:145
 #: build/admin.js:10
 msgid "Reconnect"
 msgstr ""
 
-#: includes/class-notices.php:146
+#: includes/class-notices.php:156
 msgid "show.fm disconnected this site, for example because the account password changed."
 msgstr ""
 
-#: includes/class-notices.php:157
+#: includes/class-notices.php:167
 msgid "Auto-posting is paused. The show’s plan doesn’t include connected sites, so new episodes aren’t posted here."
 msgstr ""
 
-#: includes/class-notices.php:159
+#: includes/class-notices.php:170
 #: build/admin.js:13
 msgid "Check your plan"
 msgstr ""
 
-#: includes/class-notices.php:168
+#: includes/class-notices.php:179
 msgid "New episodes aren’t being posted here because the chosen post type isn’t available."
 msgstr ""
 
-#: includes/class-notices.php:169
+#: includes/class-notices.php:180
 msgid "New episodes aren’t being posted here because the chosen author can’t publish posts."
 msgstr ""
 
-#: includes/class-notices.php:170
+#: includes/class-notices.php:181
 msgid "New episodes aren’t being posted here because show.fm sent changes the plugin couldn’t read. It keeps trying."
 msgstr ""
 
-#: includes/class-notices.php:177
+#: includes/class-notices.php:189
 msgid "See what to fix"
 msgstr ""
 
 #. translators: %d: number of days.
-#: includes/class-notices.php:189
+#: includes/class-notices.php:201
 #: build/admin.js:11
 #, php-format,js-format
 msgid "Your show.fm connection expires in %d day."
@@ -459,6 +459,15 @@ msgstr ""
 
 #: build/admin.js:3
 msgid "Blocks keep playing public episodes. You can reconnect at any time."
+msgstr ""
+
+#: build/admin.js:3
+msgid "This site’s key stays valid at show.fm until you disconnect the site there too, under Connected sites."
+msgstr ""
+
+#: build/admin.js:3
+#: build/admin.js:10
+msgid "Open Connected sites in show.fm"
 msgstr ""
 
 #: build/admin.js:3
@@ -653,6 +662,14 @@ msgid "Updates"
 msgstr ""
 
 #: build/admin.js:10
+msgid "Disconnected from show.fm."
+msgstr ""
+
+#: build/admin.js:10
+msgid "This site’s key stays valid at show.fm until you disconnect the site there too."
+msgstr ""
+
+#: build/admin.js:10
 msgid "Try again"
 msgstr ""
 
@@ -724,6 +741,10 @@ msgstr ""
 
 #: build/admin.js:14
 msgid "New episodes will be posted here."
+msgstr ""
+
+#: build/admin.js:14
+msgid "Disconnected from show.fm. This site’s key stays valid at show.fm until you disconnect the site there too."
 msgstr ""
 
 #: build/admin.js:14

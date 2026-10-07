@@ -1,6 +1,8 @@
 /**
  * Settings > show.fm > Connection.
  */
+import { speak } from '@wordpress/a11y';
+import apiFetch from '@wordpress/api-fetch';
 import {
 	Button,
 	Card,
@@ -9,13 +11,15 @@ import {
 	CardHeader,
 	Notice,
 } from '@wordpress/components';
-import { useRef, useState } from '@wordpress/element';
+import { useEffect, useRef, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { Path, SVG } from '@wordpress/primitives';
 
 import {
 	connectionNotice,
 	connectionStatus,
+	disconnectedMessage,
+	disconnectedNotice,
 	keyRow,
 	needsReconnect,
 	updatesRow,
@@ -67,18 +71,31 @@ function ConnectForm( { connect, formRef, children, className } ) {
 	);
 }
 
+/** Clears the stored connect outcome. */
+export const DISMISS_RESULT_PATH = '/showfm/v1/admin/connection/dismiss-result';
+
 /**
- * The tab's one notice, with its one action.
+ * The tab's one notice, with its one action. Dismissing a stored connect outcome clears it
+ * on the server too, so it stops showing in other tabs and after a reload.
  *
  * @param {Object}     props
  * @param {Object}     props.notice    Notice from `connectionNotice()`.
  * @param {() => void} props.onConnect Starts the connect flow.
+ * @param {boolean}    props.silent    Whether the notice is announced elsewhere.
  */
-function ConnectionNotice( { notice, onConnect } ) {
+function ConnectionNotice( { notice, onConnect, silent } ) {
 	const [ dismissed, setDismissed ] = useState( false );
 	if ( dismissed ) {
 		return null;
 	}
+	const dismiss = () => {
+		setDismissed( true );
+		if ( notice.result ) {
+			apiFetch( { path: DISMISS_RESULT_PATH, method: 'POST' } ).catch(
+				() => setDismissed( false )
+			);
+		}
+	};
 	const actions = [];
 	if ( notice.action?.type === 'link' ) {
 		actions.push( { label: notice.action.label, url: notice.action.url } );
@@ -94,8 +111,9 @@ function ConnectionNotice( { notice, onConnect } ) {
 			className="showfm-notice"
 			status={ notice.status }
 			isDismissible={ notice.dismissible }
-			onRemove={ () => setDismissed( true ) }
+			onRemove={ dismiss }
 			actions={ actions }
+			spokenMessage={ silent ? '' : undefined }
 		>
 			<p>
 				<strong>{ notice.title }</strong> { notice.text }
@@ -108,10 +126,11 @@ function ConnectionNotice( { notice, onConnect } ) {
  * Not connected: what connecting adds and the Connect button.
  *
  * @param {Object} props
- * @param {Object} props.view    Connection data.
- * @param {Object} props.formRef Ref to the connect form.
+ * @param {Object} props.view       Connection data.
+ * @param {Object} props.formRef    Ref to the connect form.
+ * @param {Object} props.headingRef Ref to the heading, which takes focus after Disconnect.
  */
-function ConnectCard( { view, formRef } ) {
+function ConnectCard( { view, formRef, headingRef } ) {
 	const adds = [
 		__(
 			'Post new episodes as WordPress posts, including scheduled posts.',
@@ -136,7 +155,9 @@ function ConnectCard( { view, formRef } ) {
 	return (
 		<Card className="showfm-card">
 			<CardHeader>
-				<h2>{ __( 'Connect to show.fm', 'showfm' ) }</h2>
+				<h2 ref={ headingRef } tabIndex={ -1 }>
+					{ __( 'Connect to show.fm', 'showfm' ) }
+				</h2>
 			</CardHeader>
 			<CardBody className="showfm-connect">
 				<p className="showfm-connect__intro">
@@ -362,17 +383,40 @@ function ConnectionCard( { view, formRef, onDisconnect } ) {
  */
 export default function ConnectionTab( { view, onDisconnect } ) {
 	const formRef = useRef();
+	const headingRef = useRef();
 	const [ confirming, setConfirming ] = useState( false );
-	const notice = connectionNotice( view );
+	const [ announce, setAnnounce ] = useState( false );
+	const notice = view.disconnected
+		? disconnectedNotice( view.disconnected )
+		: connectionNotice( view );
 	const connect = () => formRef.current?.requestSubmit();
+
+	// The Disconnect button is gone with the card, so the dialog cannot hand focus back to
+	// it. Move focus to the Connect card's heading and say once what happened.
+	useEffect( () => {
+		if ( announce && ! confirming && view.state === 'not_connected' ) {
+			setAnnounce( false );
+			headingRef.current?.focus();
+			speak( disconnectedMessage(), 'polite' );
+		}
+	}, [ announce, confirming, view.state ] );
 
 	return (
 		<div className="showfm-tab">
 			{ notice && (
-				<ConnectionNotice notice={ notice } onConnect={ connect } />
+				<ConnectionNotice
+					key={ notice.title }
+					notice={ notice }
+					onConnect={ connect }
+					silent={ !! view.disconnected }
+				/>
 			) }
 			{ view.state === 'not_connected' ? (
-				<ConnectCard view={ view } formRef={ formRef } />
+				<ConnectCard
+					view={ view }
+					formRef={ formRef }
+					headingRef={ headingRef }
+				/>
 			) : (
 				<ConnectionCard
 					view={ view }
@@ -382,9 +426,13 @@ export default function ConnectionTab( { view, onDisconnect } ) {
 			) }
 			{ confirming && (
 				<DisconnectModal
+					sitesUrl={ view.sitesUrl }
 					onCancel={ () => setConfirming( false ) }
 					onConfirm={ onDisconnect }
-					onDone={ () => setConfirming( false ) }
+					onDone={ () => {
+						setAnnounce( true );
+						setConfirming( false );
+					} }
 				/>
 			) }
 		</div>

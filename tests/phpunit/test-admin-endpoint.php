@@ -63,7 +63,7 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 
 	public function test_routes_are_registered(): void {
 		$routes = rest_get_server()->get_routes();
-		foreach ( array( '/showfm/v1/admin/connection', '/showfm/v1/admin/disconnect', '/showfm/v1/admin/notices/dismiss' ) as $route ) {
+		foreach ( array( '/showfm/v1/admin/connection', '/showfm/v1/admin/connection/dismiss-result', '/showfm/v1/admin/disconnect', '/showfm/v1/admin/notices/dismiss' ) as $route ) {
 			$this->assertArrayHasKey( $route, $routes );
 		}
 	}
@@ -101,9 +101,10 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 	 */
 	public function routes(): array {
 		return array(
-			'connection' => array( 'GET', '/showfm/v1/admin/connection' ),
-			'disconnect' => array( 'POST', '/showfm/v1/admin/disconnect' ),
-			'dismiss'    => array( 'POST', '/showfm/v1/admin/notices/dismiss' ),
+			'connection'     => array( 'GET', '/showfm/v1/admin/connection' ),
+			'dismiss result' => array( 'POST', '/showfm/v1/admin/connection/dismiss-result' ),
+			'disconnect'     => array( 'POST', '/showfm/v1/admin/disconnect' ),
+			'dismiss'        => array( 'POST', '/showfm/v1/admin/notices/dismiss' ),
 		);
 	}
 
@@ -285,20 +286,32 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 		$this->assertSame( '', $data['account'], 'Nothing is shown for a connection that cannot be read.' );
 	}
 
-	public function test_a_successful_return_is_shown_once(): void {
+	public function test_the_connect_outcome_survives_reads_until_it_is_dismissed(): void {
 		$this->connect();
 		$this->result( Connect::STATUS_CONNECTED, '' );
-
-		$this->assertSame(
-			array(
-				'status'  => 'connected',
-				'error'   => '',
-				'message' => '',
-				'action'  => 'none',
-			),
-			$this->view()['result']
+		$expected = array(
+			'status'  => 'connected',
+			'error'   => '',
+			'message' => '',
+			'action'  => 'none',
 		);
-		$this->assertNull( $this->view()['result'], 'Shown once.' );
+
+		$this->assertSame( $expected, $this->view()['result'] );
+		$this->assertSame( $expected, $this->view()['result'], 'A reload or a second tab still shows it.' );
+
+		$response = $this->dispatch( 'POST', '/showfm/v1/admin/connection/dismiss-result' );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertNull( $this->view()['result'], 'Gone once dismissed.' );
+	}
+
+	public function test_a_failed_connect_is_kept_for_the_result_ttl(): void {
+		Plugin::connect()->fail( $this->admin, Connect::ERROR_CANCELLED );
+
+		$timeout = (int) get_option( '_transient_timeout_' . Connect::RESULT_PREFIX . $this->admin );
+		$this->assertEqualsWithDelta( time() + Connect::RESULT_TTL, $timeout, 5 );
+		$this->assertSame( 'cancelled', $this->view()['result']['error'] );
+		$this->assertSame( 'cancelled', $this->view()['result']['error'] );
 	}
 
 	/**
@@ -333,17 +346,33 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 		);
 	}
 
-	public function test_disconnect_removes_the_local_connection(): void {
+	public function test_disconnect_removes_the_local_connection_and_says_the_key_stays_valid(): void {
 		$this->connect();
-		update_option( Account::OPTION, array( 'site' => self::SITE_ID ) );
 
 		$response = $this->dispatch( 'POST', '/showfm/v1/admin/disconnect' );
+		$data     = $response->get_data();
 
 		$this->assertSame( 200, $response->get_status() );
-		$this->assertSame( 'not_connected', $response->get_data()['state'] );
+		$this->assertSame( 'not_connected', $data['state'] );
 		$this->assertSame( Connection::STATE_DISCONNECTED, Plugin::connection()->state() );
 		$this->assertFalse( get_option( Account::OPTION ) );
-		$this->assertSame( 0, $this->http->count(), 'Disconnecting is local: the key stays live at show.fm.' );
+		$this->assertSame( 0, $this->http->count(), 'show.fm has no route for a site key to revoke itself.' );
+		$this->assertSame(
+			array(
+				'keyRevoked' => false,
+				'sitesUrl'   => 'https://my.show.fm/p/the-long-table/settings/sites',
+			),
+			$data['disconnected'],
+			'The answer says the key stays valid and where to disconnect it.'
+		);
+	}
+
+	public function test_the_connected_sites_link_follows_the_first_show(): void {
+		$this->assertSame( 'https://my.show.fm/dashboard', $this->view()['sitesUrl'], 'No show known.' );
+
+		$this->connect();
+
+		$this->assertSame( 'https://my.show.fm/p/the-long-table/settings/sites', $this->view()['sitesUrl'] );
 	}
 
 	public function test_dismiss_stores_the_key_for_this_user(): void {
@@ -408,7 +437,7 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 				'retry_after' => 0,
 				'reason'      => '',
 			),
-			HOUR_IN_SECONDS
+			Connect::RESULT_TTL
 		);
 	}
 

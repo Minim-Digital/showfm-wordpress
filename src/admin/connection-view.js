@@ -191,7 +191,8 @@ export function listNames( names ) {
  * The one notice the Connection tab shows, or null. A failed connect attempt comes first,
  * then the state's own message, then the outcome of a successful connect.
  *
- * Actions: `reconnect` and `retry` start the connect flow; `link` opens `url`.
+ * Actions: `reconnect` and `retry` start the connect flow; `link` opens `url`. A notice
+ * with `result` is the stored connect outcome: it stays until the admin dismisses it.
  *
  * @param {Object} view Connection data.
  * @return {Object|null} Notice: status, title, text, action and whether it can be dismissed.
@@ -208,7 +209,8 @@ export function connectionNotice( view ) {
 			title: __( 'Couldn’t connect to show.fm.', 'showfm' ),
 			text: result.message,
 			action,
-			dismissible: false,
+			dismissible: true,
+			result: true,
 		};
 	}
 
@@ -318,6 +320,7 @@ export function connectionNotice( view ) {
 				text: result.message,
 				action: null,
 				dismissible: true,
+				result: true,
 			};
 		}
 		const names = view.shows
@@ -338,7 +341,44 @@ export function connectionNotice( view ) {
 				: __( 'New episodes will be posted here.', 'showfm' ),
 			action: null,
 			dismissible: true,
+			result: true,
 		};
 	}
 	return null;
+}
+
+/**
+ * The notice after Disconnect. The show.fm API has no way for a site key to revoke
+ * itself, so the key stays valid until the site is disconnected in show.fm too.
+ *
+ * @param {Object} disconnected `disconnected` from the disconnect answer.
+ * @return {Object} Notice.
+ */
+export function disconnectedNotice( disconnected ) {
+	return {
+		status: 'info',
+		title: __( 'Disconnected from show.fm.', 'showfm' ),
+		text: __(
+			'This site’s key stays valid at show.fm until you disconnect the site there too.',
+			'showfm'
+		),
+		action: {
+			type: 'link',
+			label: __( 'Open Connected sites in show.fm', 'showfm' ),
+			url: disconnected.sitesUrl,
+		},
+		dismissible: true,
+	};
+}
+
+/**
+ * The one polite message spoken after Disconnect.
+ *
+ * @return {string} Message.
+ */
+export function disconnectedMessage() {
+	return __(
+		'Disconnected from show.fm. This site’s key stays valid at show.fm until you disconnect the site there too.',
+		'showfm'
+	);
 }

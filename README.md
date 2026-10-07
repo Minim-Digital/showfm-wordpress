@@ -16,7 +16,7 @@ admin notices. Blocks and the shortcode are available, together with the backgro
 ## Requirements
 
 - WordPress 6.6 or later, PHP 7.4 or later.
-- For development: Node 20.10 or later, Docker (for `wp-env`), and Composer (or Docker to run
+- For development: Node 22.12 or later on the 22 line, 24, or 26 and later (what Vitest 5 needs; `.nvmrc` and CI use the latest 22), Docker (for `wp-env`), and Composer (or Docker to run
   it).
 
 ## Layout
@@ -59,14 +59,22 @@ admin notices. Blocks and the shortcode are available, together with the backgro
   (`src/admin.jsx`, built to `build/admin.js` with `@wordpress/components` from core) and the
   connect action. `admin.php?page=showfm`, which the show.fm app links to, redirects there with
   the connect return kept. The app's data is preloaded into the page.
-- `Admin_Endpoint` is `showfm/v1/admin/connection` (GET), `admin/disconnect` (POST) and
-  `admin/notices/dismiss` (POST), for `manage_options` with the `wp_rest` nonce. `Admin_Status`
-  builds the Connection tab's data from local state only: no request, no key (the last four
-  characters only), no ping secret.
+- `Admin_Endpoint` is `showfm/v1/admin/connection` (GET), `admin/connection/dismiss-result`,
+  `admin/disconnect` and `admin/notices/dismiss` (all POST), for `manage_options` with the
+  `wp_rest` nonce. `Admin_Status` builds the Connection tab's data from local state only: no
+  request, no key (the last four characters only), no ping secret. Reading it changes nothing:
+  the connect outcome stays for 15 minutes (`Connect::RESULT_TTL`) until the admin dismisses it
+  or starts again, so a reload or a second tab still shows it.
+- Disconnect removes the local connection only. The show.fm API has no route for a site key to
+  revoke itself, so the key stays valid at show.fm until the site is disconnected there. The
+  dialog and the result say so and link to the first show's Connected sites page
+  (`{app}/p/{slug}/settings/sites`). Afterwards focus moves to the Connect card's heading and
+  one polite message is spoken.
 - `Notices` shows at most one admin notice on the Dashboard and Plugins screens (the settings
   screen shows it on every tab except Connection): refused key, plan pause, sync configuration
-  problem, expiry within 7 days, within 30 days. Dismissals are per user and per instance key
-  (user meta `showfm_dismissed_notices`), so the next stage shows again.
+  problem, expiry within 7 days, within 30 days. Reconnect is a form that POSTs to
+  `admin-post.php` with a nonce; the other actions are links. Dismissals are per user and per
+  instance key (user meta `showfm_dismissed_notices`), so the next stage shows again.
 - `Account` keeps the account holder's name and the connected shows from `GET /v1/me` and
   `GET /v1/me/podcasts`, fetched after connecting and after each daily health report.
 - `Embed_Settings` registers the four Display settings (`show_in_rest`), saved through
@@ -77,7 +85,8 @@ the key (`showfm_connection_refused_at`) and when a verify or health report got
 `403 plan_upgrade_required` (`showfm_plan_paused_at`); `Ping_Endpoint::note_change()` records a
 change that arrived through the 15-minute check with no ping after a 10-minute grace
 (`showfm_ping_missed_at`), which the next accepted ping clears. A return from show.fm carries
-`showfm_return=1`; without `code` and `state` it means the admin cancelled.
+`showfm_return={token}`, a random token kept with the flow. With the flow's own token and no
+`code` or `state`, it means the admin cancelled; any other value changes nothing.
 
 - `Cli` is `wp showfm connect`, `status` and `disconnect`.
 - `Privacy` adds the suggested privacy policy text.
