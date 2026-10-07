@@ -42,6 +42,21 @@ final class Connection {
 	/** The error code show.fm sends when no podcast on the key may sync to a site. */
 	const PLAN_ERROR = 'plan_upgrade_required';
 
+	/**
+	 * Connection generation (autoload off): an integer that goes up by one on every connect,
+	 * reconnect and disconnect, from any tab or WP-CLI. A connect outcome records the
+	 * generation it belongs to, so the settings screen can tell an outcome the connection has
+	 * since moved past, even within the same second. Never deleted on disconnect.
+	 */
+	const GENERATION_OPTION = 'showfm_connection_generation';
+
+	/**
+	 * The generation this instance's last successful save() produced, or null.
+	 *
+	 * @var int|null
+	 */
+	private $saved_generation = null;
+
 	/** No connection stored. */
 	const STATE_DISCONNECTED = 'disconnected';
 
@@ -113,6 +128,7 @@ final class Connection {
 		delete_option( self::REFUSED_AT_OPTION );
 		delete_option( self::PAUSED_OPTION );
 		update_option( self::CONNECTED_AT_OPTION, time(), false );
+		$this->saved_generation = self::next_generation();
 		return true;
 	}
 
@@ -291,6 +307,50 @@ final class Connection {
 		delete_option( self::REFUSED_AT_OPTION );
 		delete_option( self::CONNECTED_AT_OPTION );
 		delete_option( self::PAUSED_OPTION );
+		$this->saved_generation = null;
+		self::next_generation();
+	}
+
+	/**
+	 * The current connection generation, or 0 before the first connect.
+	 */
+	public static function generation(): int {
+		return (int) get_option( self::GENERATION_OPTION, 0 );
+	}
+
+	/**
+	 * The generation this instance's last successful save() produced, or null. Taken at the
+	 * moment of saving, so a save from another tab a moment later never counts as this one.
+	 */
+	public function saved_generation(): ?int {
+		return $this->saved_generation;
+	}
+
+	/**
+	 * Moves the generation on by one and returns the new value. One atomic UPDATE, so two
+	 * requests in the same second always get different values.
+	 */
+	private static function next_generation(): int {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- add_option() is not atomic (it upserts), INSERT IGNORE is.
+		$wpdb->query( $wpdb->prepare( "INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, '0', 'off')", self::GENERATION_OPTION ) );
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- One atomic increment; LAST_INSERT_ID(expr) hands this connection its own new value.
+		$updated = $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->options} SET option_value = LAST_INSERT_ID(CAST(option_value AS UNSIGNED) + 1) WHERE option_name = %s", self::GENERATION_OPTION ) );
+		wp_cache_delete( self::GENERATION_OPTION, 'options' );
+		wp_cache_delete( 'notoptions', 'options' );
+
+		if ( 1 === $updated ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Reads this connection's value from the UPDATE above.
+			$next = (int) $wpdb->get_var( 'SELECT LAST_INSERT_ID()' );
+			if ( $next > 0 ) {
+				return $next;
+			}
+		}
+		// A database without LAST_INSERT_ID(expr): read and write through the options API.
+		$next = self::generation() + 1;
+		update_option( self::GENERATION_OPTION, $next, false );
+		return $next;
 	}
 
 	/**

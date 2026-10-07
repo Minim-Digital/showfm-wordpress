@@ -405,14 +405,14 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 	}
 
 	public function test_a_success_from_an_earlier_connection_is_hidden(): void {
-		$this->result( Connect::STATUS_CONNECTED, '', time() - 60 );
+		$this->result( Connect::STATUS_CONNECTED, '' );
 		$this->connect();
 
 		$this->assertNull( $this->view()['result'], 'A later connection (for example WP-CLI) overtakes it.' );
 	}
 
 	public function test_a_failure_is_hidden_once_a_later_connection_is_stored(): void {
-		$this->result( Connect::STATUS_FAILED, Connect::ERROR_CANCELLED, time() - 60 );
+		$this->result( Connect::STATUS_FAILED, Connect::ERROR_CANCELLED );
 		$this->assertSame( 'cancelled', $this->view()['result']['error'] );
 
 		$this->connect();
@@ -422,14 +422,38 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 
 	public function test_a_failed_reconnect_still_shows_while_the_old_key_works(): void {
 		$this->connect();
-		update_option( Connection::CONNECTED_AT_OPTION, time() - HOUR_IN_SECONDS );
 		$this->result( Connect::STATUS_FAILED, Connect::ERROR_EXPIRED );
 
 		$data = $this->view();
 
 		$this->assertSame( 'connected', $data['state'] );
 		$this->assertSame( 'expired', $data['result']['error'] );
-		$this->assertArrayNotHasKey( 'at', $data['result'] );
+		$this->assertArrayNotHasKey( 'generation', $data['result'] );
+	}
+
+	public function test_an_outcome_without_a_generation_is_hidden(): void {
+		set_transient(
+			Connect::RESULT_PREFIX . $this->admin,
+			array(
+				'status' => Connect::STATUS_FAILED,
+				'error'  => Connect::ERROR_CANCELLED,
+			),
+			Connect::RESULT_TTL
+		);
+
+		$this->assertNull( $this->view()['result'], 'An outcome stored before generations existed.' );
+	}
+
+	public function test_a_failure_is_hidden_after_a_same_second_disconnect_and_reconnect(): void {
+		$this->connect();
+		Plugin::connect()->fail( $this->admin, Connect::ERROR_EXPIRED );
+		$this->assertSame( 'expired', $this->view()['result']['error'] );
+
+		// Another tab disconnects and WP-CLI reconnects, all within the same second.
+		( new Connection() )->disconnect();
+		$this->assertTrue( ( new Connection() )->save( self::KEY, self::SECRET, self::SITE_ID, time() + 300 * DAY_IN_SECONDS ) );
+
+		$this->assertNull( $this->view()['result'] );
 	}
 
 	public function test_disconnect_removes_the_local_connection_and_says_the_key_stays_valid(): void {
@@ -511,12 +535,12 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 	/**
 	 * Records a connect outcome for a user, as Connect does.
 	 *
-	 * @param string   $status  Outcome status.
-	 * @param string   $error   Error type.
-	 * @param int|null $at      When it happened (now by default).
-	 * @param int|null $user_id The user (the admin by default).
+	 * @param string   $status     Outcome status.
+	 * @param string   $error      Error type.
+	 * @param int|null $generation Connection generation it belongs to (the current one by default).
+	 * @param int|null $user_id    The user (the admin by default).
 	 */
-	private function result( string $status, string $error, ?int $at = null, ?int $user_id = null ): void {
+	private function result( string $status, string $error, ?int $generation = null, ?int $user_id = null ): void {
 		set_transient(
 			Connect::RESULT_PREFIX . ( $user_id ?? $this->admin ),
 			array(
@@ -524,7 +548,7 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 				'error'       => $error,
 				'retry_after' => 0,
 				'reason'      => '',
-				'at'          => $at ?? time(),
+				'generation'  => $generation ?? Connection::generation(),
 			),
 			Connect::RESULT_TTL
 		);

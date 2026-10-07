@@ -137,18 +137,18 @@ final class Admin_Status {
 	 * The stored connect outcome, only while the live connection still agrees with it. The
 	 * live state always wins:
 	 *
-	 * - "Connected" shows only while the stored key works (not after a disconnect, an expiry,
-	 *   a refusal such as a password change, or a salt change) and only for the connection
-	 *   it describes: one stored later (a reconnect, or WP-CLI) overtakes it.
-	 * - A failure shows until a later connection is stored, so a reconnect that succeeded
-	 *   elsewhere (another tab, WP-CLI) hides it.
+	 * - Every outcome belongs to a connection generation. Any later connect, reconnect or
+	 *   disconnect, from another tab or WP-CLI, moves the generation on and hides it, even in
+	 *   the same second.
+	 * - "Connected" also shows only while the stored key works: not after an expiry, a
+	 *   refusal such as a password change, or a salt change.
 	 *
-	 * @param array{status:string,error:string,retry_after:int,reason:string,at:int}|null $result Stored outcome.
-	 * @param string                                                                      $state  Live state.
-	 * @return array{status:string,error:string,retry_after:int,reason:string,at:int}|null
+	 * @param array{status:string,error:string,retry_after:int,reason:string,generation:int}|null $result Stored outcome.
+	 * @param string                                                                              $state  Live state.
+	 * @return array{status:string,error:string,retry_after:int,reason:string,generation:int}|null
 	 */
 	public static function current_result( ?array $result, string $state ): ?array {
-		if ( null === $result || $result['at'] < Connection::connected_at() ) {
+		if ( null === $result || Connection::generation() !== $result['generation'] ) {
 			return null;
 		}
 		$working = in_array( $state, array( 'connected', 'expiring', 'paused', 'scheduled' ), true );
@@ -201,7 +201,7 @@ final class Admin_Status {
 	/**
 	 * The connect outcome as the screen shows it: the message and its one action.
 	 *
-	 * @param array{status:string,error:string,retry_after:int,reason:string,at:int} $result Outcome.
+	 * @param array{status:string,error:string,retry_after:int,reason:string,generation:int} $result Outcome.
 	 * @return array{status:string,error:string,message:string,action:string}
 	 */
 	private static function result( array $result ): array {

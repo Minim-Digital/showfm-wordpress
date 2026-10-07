@@ -475,6 +475,57 @@ class Test_Connect extends WP_UnitTestCase {
 	}
 
 
+	public function test_a_success_shows_right_after_its_own_save_and_not_after_a_same_second_reconnect(): void {
+		$this->returned();
+		$this->http->respond( 200, $this->exchange_body() );
+		$this->http->respond( 200, '{"data":{"status":"active","activated":true}}' );
+		$this->connect->complete_pending( $this->user_id );
+
+		$result = Connect::result( $this->user_id );
+		$this->assertSame( Connection::generation(), $result['generation'], 'It belongs to the connection it saved.' );
+		$this->assertNotNull( ShowFM\Admin_Status::current_result( $result, 'connected' ), 'Shown straight after its own save.' );
+
+		// WP-CLI or another tab stores a new connection in the same second.
+		$this->assertTrue( ( new Connection() )->save( 'showfm_live_OTHERKEYabcdefghijklmnopq', self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+
+		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected' ) );
+	}
+
+	public function test_a_success_records_the_generation_it_saved_even_if_another_save_follows(): void {
+		$this->returned();
+		$this->http->respond( 200, $this->exchange_body() );
+		$this->http->respond_with(
+			function () {
+				// Another tab reconnects while this one is still reporting in.
+				( new Connection() )->save( 'showfm_live_OTHERKEYabcdefghijklmnopq', self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS );
+				return array( 200, '{"data":{"status":"active"}}' );
+			}
+		);
+		$this->connect->complete_pending( $this->user_id );
+
+		$this->assertSame( Connection::generation() - 1, Connect::result( $this->user_id )['generation'] );
+		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected' ), 'The newer connection wins.' );
+	}
+
+	public function test_the_generation_rises_on_every_connect_reconnect_and_disconnect(): void {
+		$seen = array( Connection::generation() );
+		foreach ( array( 'save', 'save', 'disconnect', 'save', 'disconnect' ) as $step ) {
+			$connection = new Connection();
+			if ( 'save' === $step ) {
+				$this->assertTrue( $connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+				$this->assertSame( Connection::generation(), $connection->saved_generation() );
+			} else {
+				$connection->disconnect();
+			}
+			$seen[] = Connection::generation();
+		}
+
+		$steps = count( $seen );
+		for ( $i = 1; $i < $steps; $i++ ) {
+			$this->assertSame( $seen[ $i - 1 ] + 1, $seen[ $i ], 'Strictly increasing, one step each time, all within one second.' );
+		}
+	}
+
 	public function test_exchange_stores_the_credentials_and_verifies(): void {
 		$this->returned();
 		$verifier = get_transient( Connect::FLOW_PREFIX . $this->user_id )['verifier'];
