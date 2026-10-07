@@ -11,6 +11,7 @@ use ShowFM\Api_Result;
 use ShowFM\Connect;
 use ShowFM\Connection;
 use ShowFM\Health;
+use ShowFM\Plugin;
 
 /**
  * Connect flow tests.
@@ -1147,6 +1148,78 @@ class Test_Connect extends WP_UnitTestCase {
 		}
 	}
 
+	public function test_a_disconnect_that_loses_its_lease_while_unscheduling_leaves_the_other_jobs(): void {
+		add_filter( 'showfm_sync_use_named_lock', '__return_false' );
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		foreach ( Plugin::CRON_HOOKS as $hook ) {
+			wp_schedule_single_event( time() + HOUR_IN_SECONDS, $hook );
+		}
+		$pinned   = $this->connection->pinned();
+		$cron     = 0;
+		$takeover = function ( string $option ) use ( &$cron ): void {
+			if ( 'cron' === $option && 1 === ++$cron ) {
+				// The first job is gone, then the lease is lost to a reconnect.
+				$this->edit_lease(
+					static function ( array $parts ): array {
+						$parts[0] = wp_generate_uuid4();
+						return $parts;
+					}
+				);
+			}
+		};
+		add_action( 'updated_option', $takeover );
+		try {
+			$this->connect->disconnect( $pinned );
+			$this->fail( 'Expected Connection_Lost.' );
+		} catch ( ShowFM\Connection_Lost $lost ) {
+			$this->assertFalse( wp_next_scheduled( Plugin::CRON_HOOKS[0] ), 'The first job went while the lock was held.' );
+			foreach ( array_slice( Plugin::CRON_HOOKS, 1 ) as $hook ) {
+				$this->assertNotFalse( wp_next_scheduled( $hook ), $hook . ' is left for whoever took over.' );
+			}
+		} finally {
+			remove_action( 'updated_option', $takeover );
+			remove_filter( 'showfm_sync_use_named_lock', '__return_false' );
+			delete_option( Connection::LOCK_OPTION );
+		}
+	}
+
+	public function test_every_write_inside_a_guarded_step_checks_the_lease(): void {
+		add_filter( 'showfm_sync_use_named_lock', '__return_false' );
+		try {
+			Connection::mutate(
+				function (): void {
+					Connection::guarded(
+						function (): void {
+							update_option( 'showfm_test_first', 1 );
+							$this->edit_lease(
+								static function ( array $parts ): array {
+									$parts[1] = (string) ( time() - 1 );
+									return $parts;
+								}
+							);
+							set_transient( 'showfm_test_second', 1 );
+							delete_option( 'showfm_test_first' );
+						}
+					);
+				}
+			);
+			$this->fail( 'Expected Connection_Lost.' );
+		} catch ( ShowFM\Connection_Lost $lost ) {
+			$this->assertSame( 1, (int) get_option( 'showfm_test_first' ), 'The write before the loss stands.' );
+			$this->assertFalse( get_transient( 'showfm_test_second' ), 'No write after the loss happened.' );
+		} finally {
+			remove_filter( 'showfm_sync_use_named_lock', '__return_false' );
+			delete_option( 'showfm_test_first' );
+			delete_option( Connection::LOCK_OPTION );
+		}
+	}
+
+	public function test_option_writes_outside_a_change_are_not_checked(): void {
+		Connection::mutate( '__return_true' );
+		$this->assertTrue( update_option( 'showfm_test_outside', 1 ) );
+		delete_option( 'showfm_test_outside' );
+	}
+
 	public function test_account_details_fetched_with_another_states_key_are_discarded(): void {
 		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
 		$stale = $this->connection->pinned();
@@ -1182,7 +1255,7 @@ class Test_Connect extends WP_UnitTestCase {
 
 		$this->assertTrue( ( new ShowFM\Account( $this->connection, new Api_Client( $this->connection ) ) )->refresh() );
 		$this->assertSame( self::SITE_ID, get_option( ShowFM\Account::OPTION )['site'] );
-		$this->assertSame( 'Maya', ShowFM\Account::details_for( self::SITE_ID )['name'] );
+		$this->assertSame( 'Maya', ShowFM\Account::details_for( self::SITE_ID, Connection::state_id() )['name'] );
 	}
 
 	public function test_every_state_writes_its_own_random_id(): void {

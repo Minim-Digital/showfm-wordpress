@@ -88,12 +88,15 @@ undo behaviour and the current server contract gaps. No Migrate tab is included 
   available), a fresh read inside it, and the decision made on that read. That covers saving
   (with the verify marker and scheduled jobs), disconnect with its whole teardown, the "needs
   reconnecting" flag, the plan pause, verify results, account details and connect results. Inside a
-  change, every write goes through `Connection::write()`, `remove()` or `guarded()`, which first
-  renew the lease and check by compare-and-swap that the change still owns it; a change that
-  outlived its lease stops before its next write (`Connection_Lost`). A
-  change that waits more than three seconds changes nothing and reports busy. Account details
-  are stored only when the site id and both answers come from one pinned state that is still
-  stored. The REST
+  change, a write guard on WordPress's `add_option`, `update_option` and `delete_option` actions
+  renews the lease and checks by compare-and-swap that the change still owns it before every
+  option write, including each cron and transient write; `guarded()` does the same before a
+  step that writes another way. A change that outlived its lease stops before its next write
+  (`Connection_Lost`). A change that waits more than three seconds changes nothing and reports
+  busy. Account details are stored with the state id they were fetched for, only when the site
+  id and both answers come from that one pinned state and it is still stored, and they show
+  only while it is the current state: after a reconnect, even with the same site id, the
+  account and shows stay hidden until a fetch for the new state succeeds. The REST
   disconnect needs the `stateId` the screen showed (400 without it, 409 if the connection
   changed, 503 if busy). Reading the state never writes. Keyed API results carry the state id
   of the key they sent. The

@@ -105,6 +105,7 @@ final class Account {
 		}
 
 		$details = array(
+			'state' => $state,
 			'site'  => $site_id,
 			'name'  => self::text( $user['name'] ?? null ),
 			'shows' => $shows,
@@ -132,27 +133,41 @@ final class Account {
 	}
 
 	/**
-	 * The stored details for the connected site, or empty ones.
+	 * The stored details for the connection as it is now, or empty ones.
 	 *
 	 * @return array{name:string,shows:array<int,array{id:string,title:string,slug:string}>}
 	 */
 	public function details(): array {
-		return self::details_for( $this->connection->site_id() );
+		return self::details_of( $this->connection->pinned() );
 	}
 
 	/**
-	 * The stored details for a site id the caller has already read, or empty ones.
+	 * The stored details for a connection the caller has already pinned, or empty ones.
 	 *
-	 * @param string|null $site_id Connected site id.
+	 * @param Connection $pinned Pinned connection.
 	 * @return array{name:string,shows:array<int,array{id:string,title:string,slug:string}>}
 	 */
-	public static function details_for( ?string $site_id ): array {
+	public static function details_of( Connection $pinned ): array {
+		return self::details_for( $pinned->site_id(), $pinned->snapshot()['id'] );
+	}
+
+	/**
+	 * The stored details, or empty ones. They show only for the state they were fetched for:
+	 * a reconnect, even with the same site id, is a new state, so the old key's account and
+	 * shows stay hidden until a fetch for the new state succeeds. Details stored without a
+	 * state are never shown; the next refresh replaces them.
+	 *
+	 * @param string|null $site_id  Connected site id.
+	 * @param string      $state_id The connection state id read with it.
+	 * @return array{name:string,shows:array<int,array{id:string,title:string,slug:string}>}
+	 */
+	public static function details_for( ?string $site_id, string $state_id ): array {
 		$empty  = array(
 			'name'  => '',
 			'shows' => array(),
 		);
 		$stored = get_option( self::OPTION, array() );
-		if ( null === $site_id || ! is_array( $stored ) || ( $stored['site'] ?? null ) !== $site_id ) {
+		if ( null === $site_id || ! is_array( $stored ) || ( $stored['site'] ?? null ) !== $site_id || ( $stored['state'] ?? null ) !== $state_id ) {
 			return $empty;
 		}
 

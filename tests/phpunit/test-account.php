@@ -74,6 +74,7 @@ class Test_Account extends WP_UnitTestCase {
 		update_option(
 			Account::OPTION,
 			array(
+				'state' => Connection::state_id(),
 				'site'  => self::SITE_ID,
 				'name'  => 'Kept',
 				'shows' => array(),
@@ -98,6 +99,46 @@ class Test_Account extends WP_UnitTestCase {
 		);
 
 		$this->assertSame( '', $this->account->details()['name'] );
+	}
+
+	public function test_details_stored_without_a_state_are_not_shown(): void {
+		update_option(
+			Account::OPTION,
+			array(
+				'site'  => self::SITE_ID,
+				'name'  => 'Old record',
+				'shows' => array(),
+			)
+		);
+
+		$this->assertSame( '', $this->account->details()['name'] );
+	}
+
+	public function test_a_reconnect_with_the_same_site_hides_the_old_accounts_details_until_a_fetch_succeeds(): void {
+		$this->http->respond( 200, '{"data":{"user":{"name":"Old account"}}}' );
+		$this->http->respond( 200, '{"data":[{"id":"7c9e6679-7425-40de-944b-e07fc1f90ae7","slug":"old-show","title":"Old show"}]}' );
+		$this->assertTrue( $this->account->refresh() );
+		$this->assertSame( 'Old account', $this->account->details()['name'] );
+
+		// A reconnect: same site id, new key, new state.
+		$this->assertTrue( Plugin::connection()->save( 'showfm_live_NEWabcdefghijklmnopqrst', str_repeat( 'b', 43 ), self::SITE_ID, time() + 300 * DAY_IN_SECONDS ) );
+		$hidden = array(
+			'name'  => '',
+			'shows' => array(),
+		);
+		$this->assertSame( $hidden, $this->account->details(), 'The old key\'s account is hidden at once.' );
+		$this->assertSame( ShowFM\Connect::app_url() . '/dashboard', ShowFM\Admin_Status::sites_url_for( Plugin::connection()->pinned() ), 'The Connected sites link does not use the old shows.' );
+
+		// The fetch for the new state fails: still hidden, never the old account.
+		$this->http->respond( 503, '' );
+		$this->assertFalse( $this->account->refresh() );
+		$this->assertSame( $hidden, $this->account->details() );
+
+		// It succeeds: the new account shows.
+		$this->http->respond( 200, '{"data":{"user":{"name":"New account"}}}' );
+		$this->http->respond( 200, '{"data":[]}' );
+		$this->assertTrue( $this->account->refresh() );
+		$this->assertSame( 'New account', $this->account->details()['name'] );
 	}
 
 	public function test_no_request_while_not_connected(): void {

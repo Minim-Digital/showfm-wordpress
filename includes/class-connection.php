@@ -225,6 +225,7 @@ final class Connection {
 			usleep( 50000 );
 		}
 
+		self::guard_writes();
 		$outer                = self::$locks[ $blog ] ?? null;
 		self::$locks[ $blog ] = $lock;
 		self::$depth[ $blog ] = ( self::$depth[ $blog ] ?? 0 ) + 1;
@@ -245,8 +246,8 @@ final class Connection {
 	 * Before each write inside a change: renews the lease and checks, by compare-and-swap on
 	 * its token, that this change still owns it. A change that took longer than its lease,
 	 * so that the lock expired or another request took it over, stops here: nothing more is
-	 * written, and Connection_Lost is thrown. Writes inside a change go through `write()`,
-	 * `remove()` and `guarded()`, which call this.
+	 * written, and Connection_Lost is thrown. The write guard calls this before every option
+	 * write inside a change, and `guarded()` before a step that writes some other way.
 	 *
 	 * @throws Connection_Lost When the lock was lost.
 	 */
@@ -258,31 +259,60 @@ final class Connection {
 	}
 
 	/**
-	 * Writes an option inside a change, once the lease is renewed and still owned.
+	 * Writes an option inside a change. The write guard renews the lease and checks it is
+	 * still owned first.
 	 *
 	 * @param string $name  Option name.
 	 * @param mixed  $value Value.
 	 * @throws Connection_Lost When the lock was lost.
 	 */
 	public static function write( string $name, $value ): bool {
-		self::hold();
 		return update_option( $name, $value, false );
 	}
 
 	/**
-	 * Deletes an option inside a change, once the lease is renewed and still owned.
+	 * Deletes an option inside a change. The write guard renews the lease and checks it is
+	 * still owned first.
 	 *
 	 * @param string $name Option name.
 	 * @throws Connection_Lost When the lock was lost.
 	 */
 	public static function remove( string $name ): bool {
-		self::hold();
 		return delete_option( $name );
 	}
 
 	/**
-	 * Runs one other write step inside a change (a transient, unscheduling jobs), once the
-	 * lease is renewed and still owned.
+	 * Hooks the write guard, unless it is hooked already. WordPress fires `add_option`, `update_option` and
+	 * `delete_option` before each option write reaches the database, so a change's every
+	 * option write, including each cron write when jobs are unscheduled or scheduled and
+	 * each transient row, renews and checks the lease first, however many writes one step
+	 * makes. The lock's own row is written with direct queries and never passes through here.
+	 */
+	private static function guard_writes(): void {
+		foreach ( array( 'add_option', 'update_option', 'delete_option' ) as $action ) {
+			if ( false === has_action( $action, array( self::class, 'before_write' ) ) ) {
+				add_action( $action, array( self::class, 'before_write' ), PHP_INT_MIN, 0 );
+			}
+		}
+	}
+
+	/**
+	 * The write guard: inside a change, renews and checks the lease before an option write.
+	 * Outside a change it does nothing.
+	 *
+	 * @throws Connection_Lost When the lock was lost.
+	 */
+	public static function before_write(): void {
+		if ( self::in_mutation() ) {
+			self::hold();
+		}
+	}
+
+	/**
+	 * Runs one step inside a change (a direct query, a transient, unscheduling jobs) once
+	 * the lease is renewed and still owned. Each option write the step makes is checked
+	 * again by the write guard, so a step with several writes stops at the first one made
+	 * after the lease was lost.
 	 *
 	 * @param callable():mixed $step The write.
 	 * @return mixed What the step returns.

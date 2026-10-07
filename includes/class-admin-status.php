@@ -97,7 +97,7 @@ final class Admin_Status {
 		$details = 'not_connected' === $state || 'unreadable' === $state ? array(
 			'name'  => '',
 			'shows' => array(),
-		) : Account::details_for( $pinned->site_id() );
+		) : Account::details_of( $pinned );
 		$expires = 'unreadable' === $state ? 0 : (int) $pinned->expires_at();
 		$checked = (int) get_option( Health::LAST_SYNC_OPTION, 0 );
 		$next    = wp_next_scheduled( Sync::POLL_HOOK );
@@ -179,7 +179,7 @@ final class Admin_Status {
 	 * @param Connection $pinned Pinned connection.
 	 */
 	public static function sites_url_for( Connection $pinned ): string {
-		return self::sites_url( Account::details_for( $pinned->site_id() )['shows'] );
+		return self::sites_url( Account::details_of( $pinned )['shows'] );
 	}
 
 	/**

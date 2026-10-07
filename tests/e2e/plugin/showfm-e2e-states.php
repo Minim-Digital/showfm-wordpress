@@ -65,6 +65,7 @@ function showfm_e2e_set_state( WP_REST_Request $request ) {
 		update_option(
 			Account::OPTION,
 			array(
+				'state' => Connection::state_id(),
 				'site'  => $site,
 				'name'  => 'Maya Lindgren',
 				'shows' => array(

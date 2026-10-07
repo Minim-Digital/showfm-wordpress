@@ -623,6 +623,7 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 		update_option(
 			Account::OPTION,
 			array(
+				'state' => Connection::state_id(),
 				'site'  => self::SITE_ID,
 				'name'  => 'Maya Lindgren',
 				'shows' => array(
