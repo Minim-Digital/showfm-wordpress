@@ -49,7 +49,7 @@ final class Migration_Swap {
 			$occupied[] = $item;
 		}
 		$replacements = array();
-		foreach ( $report['items'] as $item ) {
+		foreach ( $report['items'] as $index => $item ) {
 			$episode = null;
 			if ( 'matched' === $item['status'] ) {
 				$episode = $item['candidates'][0];
@@ -68,7 +68,7 @@ final class Migration_Swap {
 				if ( '' === Attributes::uuid( $episode['id'] ) || '' === Attributes::uuid( $episode['podcast_id'] ) ) {
 					return new \WP_Error( 'showfm_invalid_episode', __( 'The episode identifiers are invalid. Start a new scan.', 'showfm' ) );
 				}
-				$item['block']  = get_comment_delimited_block_content(
+				$item['block'] = get_comment_delimited_block_content(
 					'showfm/player',
 					array(
 						'episode'  => $episode['id'],
@@ -83,6 +83,13 @@ final class Migration_Swap {
 					),
 					''
 				);
+				// Keep the Player editable and caption fragments out of Classic blocks.
+				$evidence = $report['evidence'][ $index ];
+				if ( isset( $evidence['prefix'], $evidence['suffix'] ) ) {
+					$item['block'] = get_comment_delimited_block_content( 'core/html', array(), $evidence['prefix'] )
+						. $item['block']
+						. get_comment_delimited_block_content( 'core/html', array(), $evidence['suffix'] );
+				}
 				$replacements[] = $item;
 			}
 		}
@@ -104,7 +111,7 @@ final class Migration_Swap {
 			}
 		);
 		foreach ( $replacements as $replacement ) {
-			$block   = ( $replacement['prefix'] ?? '' ) . $replacement['block'] . ( $replacement['suffix'] ?? '' );
+			$block   = $replacement['block'];
 			$block   = 0 === $replacement['length'] ? "\n\n" . $block : $block;
 			$content = substr_replace( $content, $block, $replacement['offset'], $replacement['length'] );
 		}

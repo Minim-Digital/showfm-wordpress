@@ -76,6 +76,8 @@ final class Migration_Scanner {
 			$catalogue          = $detected ? $episodes() : array();
 			$matcher            = $catalogue instanceof Migration_Matcher ? $catalogue : new Migration_Matcher( $catalogue );
 			foreach ( $detected as $embed ) {
+				// Wrapper bytes live only in evidence, which is revalidated before a swap.
+				unset( $embed['prefix'], $embed['suffix'] );
 				$report['items'][] = array_merge( $embed, $matcher->find( $embed ) );
 				if ( ! empty( $embed['range_ambiguous'] ) ) {
 					$report['status'] = 'ambiguous';

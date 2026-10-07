@@ -338,7 +338,7 @@ class Test_Migration_Review extends WP_UnitTestCase {
 
 	public function test_report_only_stores_embeds_and_errors_and_binds_apply_to_run(): void {
 		$this->post( 'No players here' );
-		$broken = $this->post( '<iframe ' );
+		$broken = $this->post( '<!-- wp:html --><iframe <!-- /wp:html -->' );
 		$player = $this->post( '[powerpress]' );
 		$this->page( array() );
 		$engine = new Migrator( $this->connection, new Api_Client( $this->connection ) );
@@ -487,6 +487,61 @@ class Test_Migration_Review extends WP_UnitTestCase {
 		}
 	}
 
+	public function test_unclosed_letter_prefixed_less_than_text_is_prose(): void {
+		foreach ( array( 'x<y', 'a<b then', 'x<a', '<p>ok' ) as $text ) {
+			$report = $this->scan( $this->post( $text ) );
+			$this->assertSame( 'scanned', $report['status'], $text );
+			$this->assertSame( array(), $report['items'], $text );
+		}
+	}
+
+	public function test_unclosed_less_than_text_before_iframe_keeps_the_embed(): void {
+		$prefix = 'x<y and ';
+		$iframe = '<iframe src="https://www.buzzsprout.com/1/episodes/10"></iframe>';
+		$post   = $this->post( $prefix . $iframe . '<p>ok' );
+		$report = $this->scan( $post );
+		$this->assertSame( 'scanned', $report['status'] );
+		$this->assertCount( 1, $report['items'] );
+		$this->assertSame( strlen( $prefix ), $report['items'][0]['offset'] );
+		$this->assertSame( strlen( $iframe ), $report['items'][0]['length'] );
+		$this->assertSame( 'buzzsprout', $report['items'][0]['host'] );
+		$result = Migration_Swap::apply( $this->connection, $report, array( 1 => self::EPISODE ) );
+		$this->assertNotWPError( $result );
+		$this->assertStringStartsWith( $prefix . '<!-- wp:showfm/player', get_post( $post->ID )->post_content );
+		$this->assertStringEndsWith( '<p>ok', get_post( $post->ID )->post_content );
+	}
+
+	public function test_malformed_embed_wrappers_comments_and_closing_tags_still_fail_closed(): void {
+		foreach ( array(
+			'<!-- wp:html --><iframe src="https://www.buzzsprout.com/1/10"<!-- /wp:html -->',
+			// phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- Malformed legacy embed fixture.
+			'<!-- wp:embed --><script src="https://www.buzzsprout.com/1/10.js"<!-- /wp:embed -->',
+			'<!-- wp:html --><iframe src="https://www.buzzsprout.com/1/10></iframe><!-- /wp:html -->',
+			'<!-- unclosed comment',
+			'</p',
+		) as $content ) {
+			$report = $this->scan( $this->post( $content ) );
+			$this->assertSame( 'error', $report['status'], $content );
+			$this->assertSame( array(), $report['items'] );
+		}
+	}
+
+	public function test_caption_wrapper_fragments_are_stored_once_and_still_revalidated(): void {
+		$prefix = '<figure><div>';
+		$suffix = '</div><figcaption>' . str_repeat( 'A large caption ', 1000 ) . '</figcaption></figure>';
+		$post   = $this->post( '<!-- wp:html -->' . $prefix . '[powerpress url="https://media.example/a.mp3"]' . $suffix . '<!-- /wp:html -->' );
+		$report = $this->scan( $post );
+		$this->assertSame( 1, substr_count( serialize( $report ), $prefix ) );
+		$this->assertSame( 1, substr_count( serialize( $report ), $suffix ) );
+		$this->assertSame( $prefix, $report['evidence'][0]['prefix'] );
+		$this->assertSame( $suffix, $report['evidence'][0]['suffix'] );
+		$report['evidence'][0]['suffix'] = '';
+		$result                          = Migration_Swap::apply( $this->connection, $report );
+		$this->assertWPError( $result );
+		$this->assertSame( 'showfm_stale_report', $result->get_error_code() );
+		$this->assertSame( $post->post_content, get_post( $post->ID )->post_content );
+	}
+
 	public function test_anchor_closing_tag_does_not_match_longer_names(): void {
 		foreach ( array( '</a>', '</a >', "</a\n>" ) as $close ) {
 			$prefix = '<a href="https://example.test"><abbr>Words</abbr><article>More</article>' . $close;
@@ -510,9 +565,14 @@ class Test_Migration_Review extends WP_UnitTestCase {
 			$this->assertSame( strlen( $post->post_content ), $report['items'][0]['length'] );
 			$result = Migration_Swap::apply( $this->connection, $report );
 			$this->assertNotWPError( $result );
-			$saved = get_post( $post->ID )->post_content;
-			$this->assertStringStartsWith( $prefix . '<!-- wp:showfm/player', $saved );
-			$this->assertStringEndsWith( $suffix, $saved );
+			$saved  = get_post( $post->ID )->post_content;
+			$blocks = parse_blocks( $saved );
+			$this->assertSame( array( 'core/html', 'showfm/player', 'core/html' ), array_column( $blocks, 'blockName' ) );
+			$this->assertSame( $prefix, $blocks[0]['innerHTML'] );
+			$this->assertSame( $suffix, $blocks[2]['innerHTML'] );
+			$this->assertSame( $saved, serialize_blocks( $blocks ) );
+			$this->assertSame( $result, Migration_Swap::apply( $this->connection, $result ) );
+			$this->assertSame( 'already_showfm', $this->scan( get_post( $post->ID ) )['items'][0]['status'] );
 			$this->assertStringContainsString( $caption, $saved );
 			$this->assertStringNotContainsString( '<!-- wp:embed', $saved );
 			$this->assertContains( 'showfm/player', array_column( parse_blocks( $saved ), 'blockName' ) );

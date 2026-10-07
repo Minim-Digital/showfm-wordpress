@@ -106,7 +106,15 @@ final class Migration_Tokens {
 					++$cursor;
 					continue;
 				}
-				$end    = self::tag_end( $content, $start );
+				// An incomplete letter-prefixed candidate can be prose (for example x<y).
+				// Recognisable markup inside a block wrapper must still fail closed.
+				$text = self::match( '~\A<[a-z]~i', substr( $content, $start, 2 ) )
+					&& ! ( $stack && self::match( '~\A<(?:iframe|script|pre|code|a|div|figure|figcaption|p|span)(?=[\s>/]|\z)~i', substr( $content, $start, self::MAX_TAG ) ) );
+				$end  = self::tag_end( $content, $start, $text );
+				if ( null === $end ) {
+					++$cursor;
+					continue;
+				}
 				$raw    = substr( $content, $start, $end - $start );
 				$cursor = $end;
 				if ( ! self::match( '~\A<([a-z][a-z0-9]*+)(?=[\s>/])~i', $raw, $tag ) ) {
@@ -241,9 +249,10 @@ final class Migration_Tokens {
 	 *
 	 * @param string $content Content.
 	 * @param int    $start Start byte.
+	 * @param bool   $allow_text Return null for an incomplete prose candidate.
 	 * @throws \RuntimeException On an unterminated/oversized tag.
 	 */
-	private static function tag_end( string $content, int $start ): int {
+	private static function tag_end( string $content, int $start, bool $allow_text = false ): ?int {
 		$quote = '';
 		$limit = min( strlen( $content ), $start + self::MAX_TAG );
 		for ( $i = $start + 1; $i < $limit; ++$i ) {
@@ -259,6 +268,9 @@ final class Migration_Tokens {
 			} elseif ( '<' === $char ) {
 				break;
 			}
+		}
+		if ( $allow_text && ( $i < $limit || strlen( $content ) === $limit ) ) {
+			return null;
 		}
 		throw new \RuntimeException( 'Unclosed or oversized HTML tag.' );
 	}
