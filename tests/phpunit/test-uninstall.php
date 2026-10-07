@@ -223,6 +223,54 @@ class Test_Uninstall extends WP_UnitTestCase {
 		}
 	}
 
+	public function test_network_deactivation_preserves_events_on_other_networks(): void {
+		if ( ! is_multisite() ) {
+			$this->markTestSkipped( 'Runs with phpunit-multisite.xml.dist.' );
+		}
+
+		$original_blog   = get_current_blog_id();
+		$current_network = get_current_network_id();
+		$other_network   = self::factory()->network->create();
+		$this->assertIsInt( $other_network );
+		$this->assertNotSame( $current_network, $other_network );
+		$current_site = self::factory()->blog->create( array( 'network_id' => $current_network ) );
+		$other_site   = self::factory()->blog->create( array( 'network_id' => $other_network ) );
+		$this->assertIsInt( $current_site );
+		$this->assertIsInt( $other_site );
+		$timestamp = time() + 60;
+		$args      = array( '/v1/episodes/network-scope' );
+
+		foreach ( array( $current_site, $other_site ) as $site_id ) {
+			switch_to_blog( $site_id );
+			try {
+				foreach ( Plugin::CRON_HOOKS as $hook ) {
+					$this->assertTrue( wp_schedule_single_event( $timestamp, $hook, $args ) );
+				}
+				$this->assertTrue( wp_schedule_single_event( $timestamp, 'unrelated_event' ) );
+			} finally {
+				restore_current_blog();
+			}
+		}
+
+		do_action( 'deactivate_' . plugin_basename( SHOWFM_FILE ), true );
+
+		$this->assertSame( $original_blog, get_current_blog_id() );
+		$this->assertSame( $current_network, get_current_network_id() );
+		$this->assertFalse( ms_is_switched() );
+		$this->assertFalse( wp_next_scheduled( Cache::REFRESH_HOOK, array( '/v1/episodes/a' ) ) );
+		foreach ( array( $current_site, $other_site ) as $site_id ) {
+			switch_to_blog( $site_id );
+			try {
+				foreach ( Plugin::CRON_HOOKS as $hook ) {
+					$this->assertSame( $current_site === $site_id ? false : $timestamp, wp_next_scheduled( $hook, $args ) );
+				}
+				$this->assertSame( $timestamp, wp_next_scheduled( 'unrelated_event' ) );
+			} finally {
+				restore_current_blog();
+			}
+		}
+	}
+
 	public static function deactivation_scopes(): array {
 		return array(
 			'network deactivation' => array( true ),

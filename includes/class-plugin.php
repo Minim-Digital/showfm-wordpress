@@ -78,9 +78,10 @@ final class Plugin {
 		do {
 			$site_ids = get_sites(
 				array(
-					'fields' => 'ids',
-					'number' => self::SITES_PER_BATCH,
-					'offset' => $offset,
+					'network_id' => get_current_network_id(),
+					'fields'     => 'ids',
+					'number'     => self::SITES_PER_BATCH,
+					'offset'     => $offset,
 				)
 			);
 			foreach ( $site_ids as $site_id ) {
