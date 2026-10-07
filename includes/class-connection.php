@@ -27,6 +27,9 @@ final class Connection {
 	/** Option set when the connection needs reconnecting (autoload off). */
 	const STATE_OPTION = 'showfm_connection_state';
 
+	/** Durable sync retry and exhausted-row details for connection status. */
+	const SYNC_STATUS_OPTION = 'showfm_connection_sync_status';
+
 	/** No connection stored. */
 	const STATE_DISCONNECTED = 'disconnected';
 
@@ -118,6 +121,33 @@ final class Connection {
 			return self::STATE_RECONNECT_NEEDED;
 		}
 		return self::STATE_CONNECTED;
+	}
+
+	/**
+	 * Per-connection sync diagnostics for CLI and the future connection screen.
+	 *
+	 * @return array<string,mixed>
+	 */
+	public function sync_status(): array {
+		$status = (array) get_option( self::SYNC_STATUS_OPTION, array() );
+		$site   = (string) $this->site_id();
+		return ( $status['site'] ?? '' ) === $site ? $status : array(
+			'site'    => $site,
+			'retry'   => array(),
+			'skipped' => array(),
+		);
+	}
+
+	/**
+	 * Persist own reason codes and sequence numbers, never external error details.
+	 *
+	 * @param array<string,mixed> $status Sync diagnostics.
+	 * @throws \RuntimeException If the attempt receipt cannot be saved.
+	 */
+	public function save_sync_status( array $status ): void {
+		if ( ! update_option( self::SYNC_STATUS_OPTION, $status, false ) && get_option( self::SYNC_STATUS_OPTION ) !== $status ) {
+			throw new \RuntimeException( 'Sync diagnostic receipt could not be saved.' );
+		}
 	}
 
 	/**

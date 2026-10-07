@@ -213,6 +213,60 @@ final class Cli {
 	}
 
 	/**
+	 * Pull episode changes or show the sync cursor and pending reports.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [<action>]
+	 * : Use status to inspect sync without HTTP.
+	 *
+	 * [--dry-run]
+	 * : Preview one page (up to 20 changes) without applying or acknowledging those rows.
+	 *
+	 * [--from-start]
+	 * : Replay the feed from zero, keeping existing posts and edit protection.
+	 *
+	 * @param string[]            $args Positional arguments.
+	 * @param array<string,mixed> $assoc_args Flags.
+	 */
+	public function sync( array $args, array $assoc_args ): void {
+		if ( array( 'status' ) === $args ) {
+			$state = Sync::state();
+			foreach ( array( 'cursor', 'retry_at', 'error' ) as $key ) {
+				\WP_CLI::line( $key . ': ' . $state[ $key ] );
+			}
+			\WP_CLI::line( 'pending_reports: ' . count( $state['reports'] ) );
+			\WP_CLI::line( 'pending_artwork: ' . count( (array) get_option( Sync_Artwork::QUEUE, array() ) ) );
+			$status = $this->connection->sync_status();
+			\WP_CLI::line( 'apply_retry: ' . wp_json_encode( $status['retry'] ) );
+			\WP_CLI::line( 'skipped_rows: ' . wp_json_encode( $status['skipped'] ) );
+			$log = (array) get_option( Sync_Log::OPTION, array() );
+			\WP_CLI::line( 'recent_errors: ' . count( $log ) );
+			foreach ( $log as $entry ) {
+				\WP_CLI::line( 'sync_error: ' . $entry['code'] . '; seq: ' . $entry['seq'] . '; at: ' . $entry['at'] );
+			}
+			return;
+		}
+		if ( $args ) {
+			\WP_CLI::error( __( 'Use wp showfm sync or wp showfm sync status.', 'showfm' ) );
+			return;
+		}
+		$result  = ( new Sync() )->pull( isset( $assoc_args['dry-run'] ), isset( $assoc_args['from-start'] ) );
+		$message = sprintf(
+			/* translators: 1: sync outcome, 2: rows handled, 3: cursor. */
+			__( 'Sync: %1$s; rows: %2$d; cursor: %3$d.', 'showfm' ),
+			$result['status'],
+			$result['rows'],
+			$result['cursor']
+		);
+		if ( in_array( $result['status'], array( 'caught_up', 'continuing', 'dry_run', 'dry_run_limit' ), true ) ) {
+			\WP_CLI::success( $message );
+		} else {
+			\WP_CLI::error( $message );
+		}
+	}
+
+	/**
 	 * The key from --key=-, --key=VALUE, SHOWFM_KEY or a hidden prompt, in that order.
 	 *
 	 * @param array<string,string|bool> $assoc_args Named arguments; a bare --key is true.
