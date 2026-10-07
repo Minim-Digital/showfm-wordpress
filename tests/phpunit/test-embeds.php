@@ -448,6 +448,191 @@ class Test_Embeds extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'Cached', $this->block( 'player', array( 'episode' => self::ID ) ) );
 	}
 
+	public function test_validation_rejects_trailing_whitespace_without_scheduling_requests(): void {
+		foreach ( array( "\n", "\r\n", ' ', "\t", "\u{00a0}" ) as $suffix ) {
+			$this->assertSame( '', Attributes::uuid( self::ID . $suffix ) );
+			$this->assertSame( '', $this->block( 'player', array( 'episode' => self::ID . $suffix ) ) );
+			$this->assertSame( '', $this->block( 'episodes', array( 'podcast' => self::SHOW . $suffix ) ) );
+			$this->assertSame( '', ShowFM\Shortcode::render( array( 'podcast' => 'my-show' . $suffix ) ) );
+			$attrs = Attributes::clean(
+				'transcript',
+				array(
+					'for'    => 'player-one' . $suffix,
+					'lang'   => 'en-GB' . $suffix,
+					'accent' => '#aabbcc' . $suffix,
+				)
+			);
+			foreach ( array( 'for', 'lang', 'accent' ) as $name ) {
+				$this->assertArrayNotHasKey( $name, $attrs );
+			}
+			$this->assertSame(
+				'',
+				Theme::block_style(
+					array(
+						'fontFamily' => 'body' . $suffix,
+						'accent'     => '#aabbcc' . $suffix,
+					)
+				)
+			);
+		}
+		$this->assertSame( array(), _get_cron_array() );
+		$this->assertSame( self::ID, Attributes::uuid( strtoupper( self::ID ) ) );
+		$this->assertSame( 'my-show', Attributes::clean( 'player', array( 'podcast' => 'my-show' ) )['podcast'] );
+		$oembed = _wp_oembed_get_object();
+		$this->assertFalse( $oembed->get_provider( "https://my-show.show.fm\n", array( 'discover' => false ) ) );
+	}
+
+	/**
+	 * @dataProvider non_string_api_values
+	 * @param mixed $value A malformed API field.
+	 */
+	public function test_non_string_api_fields_are_missing_in_fallbacks_and_bindings( $value ): void {
+		$episode                 = $this->episode();
+		$episode['id']           = $value;
+		$episode['title']        = $value;
+		$episode['published_at'] = $value;
+		$episode['podcast']      = array( 'title' => $value );
+		$this->assertFalse( ShowFM\Plugin::cache()->is_episode_unavailable( $value, '/v1/test' ) );
+		foreach ( array( 'player', 'episodes', 'play', 'transcript' ) as $type ) {
+			$attrs = array(
+				'podcast' => self::SHOW,
+				'episode' => self::ID,
+			);
+			$path  = Embed::path( $type, Attributes::clean( $type, $attrs, true ) );
+			$this->cache( $path, array( 'data' => 'episodes' === $type ? array( $episode ) : $episode ) );
+			$html = $this->block( $type, $attrs );
+			$this->assertStringContainsString( '<a href="https://test.show.fm/e/first"></a>', $html );
+			$this->assertStringNotContainsString( 'datePublished', $html );
+		}
+		// Exercise the podcast/latest route too, without an explicit episode attribute.
+		$this->cache( '/v1/podcasts/' . self::SHOW . '/episodes/latest', array( 'data' => $episode ) );
+		$this->assertStringContainsString( '<showfm-player', $this->block( 'player', array( 'podcast' => self::SHOW ) ) );
+		$block          = new WP_Block(
+			array(
+				'blockName' => 'core/paragraph',
+				'attrs'     => array(),
+			)
+		);
+		$block->context = array( 'showfm/episode' => self::ID );
+		$this->assertSame( '', Bindings::value( array( 'key' => 'title' ), $block ) );
+		$this->assertSame( '', Bindings::value( array( 'key' => 'published_date' ), $block ) );
+		$json = json_decode( Fallback::json_ld( $episode ), true );
+		$this->assertSame( '', $json['name'] );
+		$this->assertArrayNotHasKey( 'datePublished', $json );
+		$this->assertArrayNotHasKey( 'partOfSeries', $json );
+	}
+
+	public static function non_string_api_values(): array {
+		return array(
+			'null'    => array( null ),
+			'boolean' => array( false ),
+			'integer' => array( 42 ),
+			'float'   => array( 1.5 ),
+			'array'   => array( array( 'bad' ) ),
+			'object'  => array( (object) array( 'bad' => true ) ),
+		);
+	}
+
+	public function test_core_content_bindings_render_text_once_escaped(): void {
+		$title            = 'Rock & Roll "live" \'now\' <script>alert(1)</script>';
+		$episode          = $this->episode();
+		$episode['title'] = $title;
+		$this->cache( '/v1/episodes/' . self::ID, array( 'data' => $episode ) );
+		$post_id = self::factory()->post->create();
+		update_post_meta( $post_id, '_showfm_episode_id', self::ID );
+		$expected = 'Rock &amp; Roll &quot;live&quot; &#039;now&#039; &lt;script&gt;alert(1)&lt;/script&gt;';
+		foreach ( array(
+			'paragraph' => 'p',
+			'heading'   => 'h2',
+		) as $type => $tag ) {
+			$attrs  = array(
+				'metadata' => array(
+					'bindings' => array(
+						'content' => array(
+							'source' => 'showfm/episode',
+							'args'   => array( 'key' => 'title' ),
+						),
+					),
+				),
+			);
+			$markup = '<!-- wp:' . $type . ' ' . wp_json_encode( $attrs ) . ' --><' . $tag . '>Stored text</' . $tag . '><!-- /wp:' . $type . ' -->';
+			$parsed = parse_blocks( $markup )[0];
+			foreach ( array( array( 'postId' => $post_id ), array( 'showfm/episode' => self::ID ) ) as $context ) {
+				// Call the real WP_Block::render path, including core's binding replacement.
+				$block = new WP_Block( $parsed, $context );
+				$html  = $block->render();
+				$this->assertStringContainsString( '>' . $expected . '</' . $tag . '>', $html );
+				$this->assertSame( $title, html_entity_decode( wp_strip_all_tags( $html ), ENT_QUOTES, 'UTF-8' ) );
+				$this->assertStringNotContainsString( '&amp;amp;', $html );
+				$this->assertStringNotContainsString( '<script>', $html );
+			}
+		}
+	}
+
+	public function test_snapshot_urls_require_https_on_save_and_render(): void {
+		foreach ( array( 'player', 'episodes', 'play', 'transcript' ) as $type ) {
+			$attrs = array(
+				'episode'  => self::ID,
+				'podcast'  => self::SHOW,
+				'snapshot' => array(
+					'title'     => 'Snapshot "quoted"',
+					'listenUrl' => 'http://test.show.fm/e/first',
+					'audioUrl'  => 'http://m.cdn.media/old.mp3',
+				),
+			);
+			$block = '<!-- wp:showfm/' . $type . ' ' . wp_json_encode( $attrs ) . ' /-->';
+			// Legacy content bypassing the save filter still cannot render HTTP snapshot URLs.
+			$html = do_blocks( $block );
+			$this->assertStringNotContainsString( 'href=', $html );
+			$this->assertStringNotContainsString( '<audio', $html );
+			$content  = '<!-- wp:group --><div class="wp-block-group">' . $block . '</div><!-- /wp:group -->';
+			$post_id  = wp_insert_post(
+				wp_slash(
+					array(
+						'post_title'   => 'Snapshot test',
+						'post_content' => $content,
+					)
+				)
+			);
+			$saved    = get_post_field( 'post_content', $post_id );
+			$snapshot = parse_blocks( $saved )[0]['innerBlocks'][0]['attrs']['snapshot'];
+			$this->assertArrayNotHasKey( 'audioUrl', $snapshot );
+			$this->assertArrayNotHasKey( 'listenUrl', $snapshot );
+			$this->assertSame( 'Snapshot "quoted"', $snapshot['title'] );
+			$attrs['snapshot'] = $this->snapshot();
+			$valid             = '<!-- wp:showfm/' . $type . ' ' . wp_json_encode( $attrs ) . ' /-->';
+			$this->assertSame( wp_slash( $valid ), ShowFM\Blocks::sanitize_content( wp_slash( $valid ) ) );
+			$html = do_blocks( $valid );
+			$this->assertStringContainsString( 'href="https://test.show.fm/e/first?a=1&amp;b=2"', $html );
+			if ( in_array( $type, array( 'player', 'play' ), true ) ) {
+				$this->assertStringContainsString( 'src="https://m.cdn.media/old.mp3"', $html );
+			}
+		}
+		foreach ( array( null, array(), 'HTTP://example.test/', '//example.test/', "https://example.test/\n", 'https://' ) as $url ) {
+			$this->assertSame(
+				array(),
+				Attributes::snapshot(
+					array(
+						'listenUrl' => $url,
+						'audioUrl'  => $url,
+					)
+				)
+			);
+		}
+		$unrelated = '<!-- wp:paragraph --><p>A \'quote\' and http://example.test</p><!-- /wp:paragraph -->';
+		$this->assertSame( wp_slash( $unrelated ), ShowFM\Blocks::sanitize_content( wp_slash( $unrelated ) ) );
+		// Snapshot policy must not change the pinned server renderer's API URL contract.
+		$this->assertSame(
+			'<a href="http://example.test">Public</a>',
+			Fallback::episode(
+				array(
+					'title' => 'Public',
+					'links' => array( 'listen' => 'http://example.test' ),
+				)
+			)
+		);
+	}
+
 	public function test_package_parity_for_every_shared_fixture(): void {
 		$fixtures = json_decode( file_get_contents( dirname( __DIR__ ) . '/fixtures/parity.json' ), true );
 		$methods  = array(

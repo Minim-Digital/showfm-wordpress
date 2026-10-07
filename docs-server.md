@@ -15,6 +15,8 @@ The editor controls are deliberately deferred to WP-2b; existing attributes can
 be previewed through ServerSideRender.
 
 The insertion snapshot is an object with `title`, `listenUrl` and `audioUrl`.
+Both snapshot URLs must use HTTPS. Save sanitisation removes other schemes,
+and rendering applies the same rule to existing content.
 The inserting editor must only populate audio for an already public episode and
 must never put scheduled/private titles or URLs into a public snapshot. There
 is no snapshot JSON-LD: schema data comes only from the public API cache.
@@ -37,6 +39,8 @@ and `season_episode`. It resolves `showfm/episode` context first, otherwise
 `postId` and `_showfm_episode_id`. Meta writes require the ability to edit the
 post and are sanitised to UUIDs. The custom binding source reads only public
 cached fields, not the protected meta through core's post-meta binding source.
+For heading and paragraph content, the source escapes plain text once. Core
+sanitises the result with `wp_kses_post()` and preserves those escaped entities.
 
 The site options are `showfm_show_credit` (boolean, false) and `showfm_json_ld`
 (boolean, true). Both are registered with sanitisation but have no admin screen.

@@ -46,7 +46,7 @@ final class Theme {
 	 * @param string $value CSS or preset token.
 	 */
 	private static function preset( string $value ): string {
-		if ( preg_match( '/^var:preset\|([a-zA-Z-]+)\|([a-zA-Z0-9-]+)$/', $value, $match ) ) {
+		if ( preg_match( '/^var:preset\|([a-zA-Z-]+)\|([a-zA-Z0-9-]+)\z/', $value, $match ) ) {
 			return 'var(--wp--preset--' . $match[1] . '--' . $match[2] . ')';
 		}
 		return $value;
@@ -97,12 +97,12 @@ final class Theme {
 			'fontFamily'      => array( '--showfm-font', 'font-family' ),
 			'fontSize'        => array( '--showfm-font-size', 'font-size' ),
 		) as $key => $mapping ) {
-			if ( isset( $attrs[ $key ] ) && is_string( $attrs[ $key ] ) && preg_match( '/^[a-zA-Z0-9-]+$/', $attrs[ $key ] ) ) {
+			if ( isset( $attrs[ $key ] ) && is_string( $attrs[ $key ] ) && preg_match( '/^[a-zA-Z0-9-]+\z/', $attrs[ $key ] ) ) {
 				$values[ $mapping[0] ] = 'var(--wp--preset--' . $mapping[1] . '--' . $attrs[ $key ] . ')';
 			}
 		}
 		if ( ! empty( $attrs['accent'] ) && is_string( $attrs['accent'] ) ) {
-			$values['--showfm-accent'] = sanitize_hex_color( $attrs['accent'] );
+			$values['--showfm-accent'] = ( preg_match( '/\A#(?:[a-f0-9]{3}|[a-f0-9]{6})\z/i', $attrs['accent'] ) ? $attrs['accent'] : null );
 		} elseif ( isset( $values['--showfm-text'] ) ) {
 			$values['--showfm-accent'] = $values['--showfm-text'];
 		}

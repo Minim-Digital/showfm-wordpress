@@ -115,10 +115,13 @@ final class Cache {
 	 * items are not complete episode payloads, and old sources must still be hidden.
 	 * Equal timestamps favour the marker because their ordering is unknown.
 	 *
-	 * @param string $episode_id Episode UUID in the public response.
+	 * @param mixed  $episode_id Episode UUID in the public response.
 	 * @param string $source_path Cache path of that list or latest response.
 	 */
-	public function is_episode_unavailable( string $episode_id, string $source_path ): bool {
+	public function is_episode_unavailable( $episode_id, string $source_path ): bool {
+		if ( ! is_string( $episode_id ) || '' === $episode_id ) {
+			return false;
+		}
 		$path   = '/v1/episodes/' . $episode_id;
 		$marker = $this->read( $path );
 		if ( null === $marker || self::STATE_UNAVAILABLE !== $marker['state'] ) {

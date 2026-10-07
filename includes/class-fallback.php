@@ -47,11 +47,12 @@ final class Fallback {
 	/**
 	 * A title link, or plain text for an unsafe URL.
 	 *
-	 * @param mixed  $href URL.
-	 * @param string $text Title.
+	 * @param mixed $href URL.
+	 * @param mixed $text Title.
 	 */
-	private static function link( $href, string $text ): string {
-		$url = self::safe_url( $href );
+	private static function link( $href, $text ): string {
+		$text = is_string( $text ) ? $text : '';
+		$url  = self::safe_url( $href );
 		return null !== $url ? '<a href="' . self::escape( $url ) . '">' . self::escape( $text ) . '</a>' : self::escape( $text );
 	}
 
@@ -112,13 +113,13 @@ final class Fallback {
 		$data = array(
 			'@context' => 'https://schema.org',
 			'@type'    => 'PodcastEpisode',
-			'name'     => $episode['title'] ?? '',
+			'name'     => is_string( $episode['title'] ?? null ) ? $episode['title'] : '',
 		);
 		$url  = self::safe_url( $episode['links']['listen'] ?? null );
 		if ( $url ) {
 			$data['url'] = $url;
 		}
-		if ( ! empty( $episode['published_at'] ) ) {
+		if ( is_string( $episode['published_at'] ?? null ) && '' !== $episode['published_at'] ) {
 			try {
 				$date = new \DateTimeImmutable( $episode['published_at'], new \DateTimeZone( 'UTC' ) );
 			} catch ( \Exception $exception ) {
@@ -153,7 +154,7 @@ final class Fallback {
 				'seasonNumber' => $episode['season_number'],
 			);
 		}
-		if ( ! empty( $episode['podcast']['title'] ) ) {
+		if ( is_string( $episode['podcast']['title'] ?? null ) && '' !== $episode['podcast']['title'] ) {
 			$series = array(
 				'@type' => 'PodcastSeries',
 				'name'  => $episode['podcast']['title'],

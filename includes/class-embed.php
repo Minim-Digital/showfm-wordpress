@@ -61,7 +61,7 @@ final class Embed {
 		if ( $cache->is_unavailable( $path ) ) {
 			return '';
 		}
-		$snapshot = isset( $input['snapshot'] ) && is_array( $input['snapshot'] ) ? $input['snapshot'] : array();
+		$snapshot = isset( $input['snapshot'] ) && is_array( $input['snapshot'] ) ? Attributes::snapshot( $input['snapshot'] ) : array();
 		$fallback = array(
 			'title' => is_string( $snapshot['title'] ?? null ) ? $snapshot['title'] : '',
 			'links' => array( 'listen' => $snapshot['listenUrl'] ?? null ),

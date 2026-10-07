@@ -21,10 +21,10 @@ final class Oembed {
 		if ( 'https://api.showfm.dev' === Api_Client::base_url() ) {
 			wp_oembed_add_provider( 'https://*.showfm.dev/*', $endpoint );
 			wp_oembed_add_provider( 'https://showfm.dev/*', $endpoint );
-			wp_oembed_add_provider( '~^https://[a-z0-9]+(?:-[a-z0-9]+)*\.showfm\.dev/?(?:[?#].*)?$~i', $endpoint, true );
+			wp_oembed_add_provider( '~^https://[a-z0-9]+(?:-[a-z0-9]+)*\.showfm\.dev/?(?:[?#].*)?\z~i', $endpoint, true );
 		}
 		// A show homepage need not have a trailing slash.
-		wp_oembed_add_provider( '~^https://[a-z0-9]+(?:-[a-z0-9]+)*\.show\.fm/?(?:[?#].*)?$~i', $endpoint, true );
+		wp_oembed_add_provider( '~^https://[a-z0-9]+(?:-[a-z0-9]+)*\.show\.fm/?(?:[?#].*)?\z~i', $endpoint, true );
 	}
 
 	/**
@@ -37,7 +37,7 @@ final class Oembed {
 	public static function output( string $html, string $url ): string {
 		$host = wp_parse_url( $url, PHP_URL_HOST );
 		$root = 'https://api.showfm.dev' === Api_Client::base_url() ? 'showfm.dev' : 'show.fm';
-		if ( ! is_string( $host ) || ! preg_match( '/^(?:[a-z0-9-]+\.)?' . preg_quote( $root, '/' ) . '$/i', $host ) ) {
+		if ( ! is_string( $host ) || ! preg_match( '/^(?:[a-z0-9-]+\.)?' . preg_quote( $root, '/' ) . '\z/i', $host ) ) {
 			return $html;
 		}
 		$tags = new \WP_HTML_Tag_Processor( $html );
@@ -51,9 +51,9 @@ final class Oembed {
 		}
 		$path  = $parts['path'] ?? '';
 		$attrs = array();
-		if ( preg_match( '~^/ep/([^/]+)$~', $path, $match ) && Attributes::uuid( $match[1] ) ) {
+		if ( preg_match( '~^/ep/([^/]+)\z~', $path, $match ) && Attributes::uuid( $match[1] ) ) {
 			$attrs['episode'] = $match[1];
-		} elseif ( preg_match( '~^/latest/([a-z0-9]+(?:-[a-z0-9]+)*)$~', $path, $match ) ) {
+		} elseif ( preg_match( '~^/latest/([a-z0-9]+(?:-[a-z0-9]+)*)\z~', $path, $match ) ) {
 			$attrs['podcast'] = $match[1];
 		} else {
 			return $html;

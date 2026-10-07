@@ -56,7 +56,7 @@ final class Bindings {
 		$data    = Plugin::cache()->get( '/v1/episodes/' . $id );
 		$episode = $data['data'] ?? array();
 		if ( 'published_date' === $field ) {
-			$time = isset( $episode['published_at'] ) ? strtotime( $episode['published_at'] ) : false;
+			$time = is_string( $episode['published_at'] ?? null ) ? strtotime( $episode['published_at'] ) : false;
 			return false === $time ? '' : esc_html( wp_date( get_option( 'date_format' ), $time ) );
 		}
 		if ( 'season_episode' === $field ) {
@@ -71,6 +71,8 @@ final class Bindings {
 			}
 			return esc_html( implode( ', ', $parts ) );
 		}
-		return esc_html( $episode[ $field ] ?? '' );
+		// Core's content binding uses wp_kses_post(), not text escaping (WP 6.6+).
+		// Escape here so API text cannot become markup; core preserves these entities.
+		return is_string( $episode[ $field ] ?? null ) ? esc_html( $episode[ $field ] ) : '';
 	}
 }

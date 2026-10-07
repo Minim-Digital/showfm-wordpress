@@ -36,7 +36,24 @@ final class Attributes {
 	 * @param mixed $value Candidate UUID.
 	 */
 	public static function uuid( $value ): string {
-		return is_string( $value ) && wp_is_uuid( $value ) ? strtolower( $value ) : '';
+		return is_string( $value ) && 36 === strlen( $value ) && wp_is_uuid( $value ) ? strtolower( $value ) : '';
+	}
+
+	/**
+	 * Remove non-HTTPS URLs at both the save and render boundaries.
+	 * Public API fallback URLs retain the pinned package's HTTP(S) contract.
+	 *
+	 * @param array<string,mixed> $snapshot Insertion snapshot.
+	 * @return array<string,mixed>
+	 */
+	public static function snapshot( array $snapshot ): array {
+		foreach ( array( 'listenUrl', 'audioUrl' ) as $key ) {
+			$url = $snapshot[ $key ] ?? null;
+			if ( ! is_string( $url ) || ! preg_match( '~\Ahttps://[^\s]+\z~i', $url ) || ! wp_parse_url( $url, PHP_URL_HOST ) ) {
+				unset( $snapshot[ $key ] );
+			}
+		}
+		return $snapshot;
 	}
 
 	/**
@@ -73,7 +90,7 @@ final class Attributes {
 			}
 			if ( 'episode' === $name || ( 'podcast' === $name && $block ) ) {
 				$value = self::uuid( $value );
-			} elseif ( 'podcast' === $name && ! preg_match( '/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $value ) ) {
+			} elseif ( 'podcast' === $name && ! preg_match( '/^[a-z0-9]+(?:-[a-z0-9]+)*\z/', $value ) ) {
 				continue;
 			} elseif ( 'strings' === $name ) {
 				$strings = json_decode( $value );
@@ -86,7 +103,7 @@ final class Attributes {
 				}
 				$value = (string) wp_json_encode( $strings );
 			} elseif ( 'accent' === $name ) {
-				$value = sanitize_hex_color( $value ) ?? '';
+				$value = preg_match( '/\A#(?:[a-f0-9]{3}|[a-f0-9]{6})\z/i', $value ) ? $value : '';
 			} elseif ( 'api' === $name ) {
 				$value = Api_Client::sanitize_base_url( $value );
 			} elseif ( in_array( $name, array( 'count', 'season', 'height' ), true ) ) {
@@ -96,7 +113,7 @@ final class Attributes {
 				$value = (string) min( (int) $value, 'count' === $name ? 50 : 9999 );
 			} elseif ( 'hide' === $name ) {
 				$value = implode( ',', array_intersect( array( 'trailer', 'bonus' ), explode( ',', $value ) ) );
-			} elseif ( in_array( $name, array( 'for', 'lang' ), true ) && ! preg_match( '/^[a-zA-Z0-9_-]+$/', $value ) ) {
+			} elseif ( in_array( $name, array( 'for', 'lang' ), true ) && ! preg_match( '/^[a-zA-Z0-9_-]+\z/', $value ) ) {
 				continue;
 			}
 			if ( '' !== $value ) {
