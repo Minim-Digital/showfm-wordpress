@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-07T17:39:39+00:00\n"
+"POT-Creation-Date: 2026-10-07T18:37:39+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: showfm\n"
@@ -40,28 +40,28 @@ msgstr ""
 msgid "https://show.fm"
 msgstr ""
 
-#: includes/class-admin-endpoint.php:151
+#: includes/class-admin-endpoint.php:153
 msgid "That notice can’t be dismissed."
 msgstr ""
 
-#: includes/class-admin-status.php:194
+#: includes/class-admin-status.php:219
 msgid "The connection request expired. Try again."
 msgstr ""
 
-#: includes/class-admin-status.php:197
+#: includes/class-admin-status.php:222
 msgid "The connection request didn’t start in this browser. Try again."
 msgstr ""
 
-#: includes/class-admin-status.php:200
+#: includes/class-admin-status.php:225
 msgid "show.fm couldn’t be reached. Try again in a few minutes."
 msgstr ""
 
-#: includes/class-admin-status.php:233
+#: includes/class-admin-status.php:258
 msgid "just now"
 msgstr ""
 
 #. translators: %d: number of minutes.
-#: includes/class-admin-status.php:238
+#: includes/class-admin-status.php:263
 #, php-format
 msgid "%d minute ago"
 msgid_plural "%d minutes ago"
@@ -69,19 +69,19 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %d: number of hours.
-#: includes/class-admin-status.php:243
+#: includes/class-admin-status.php:268
 #, php-format
 msgid "%d hour ago"
 msgid_plural "%d hours ago"
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/class-admin-status.php:247
+#: includes/class-admin-status.php:272
 msgid "yesterday"
 msgstr ""
 
 #. translators: %d: number of days.
-#: includes/class-admin-status.php:250
+#: includes/class-admin-status.php:275
 #, php-format
 msgid "%d day ago"
 msgid_plural "%d days ago"
@@ -234,63 +234,63 @@ msgstr ""
 msgid "Site key from show.fm (input hidden)"
 msgstr ""
 
-#: includes/class-connect.php:558
+#: includes/class-connect.php:559
 msgid "This connection request did not come from this browser session. Start again with Connect to show.fm."
 msgstr ""
 
-#: includes/class-connect.php:560
+#: includes/class-connect.php:561
 msgid "The connection request expired or was already used. Start again with Connect to show.fm."
 msgstr ""
 
-#: includes/class-connect.php:562
+#: includes/class-connect.php:563
 msgid "show.fm did not accept the connection. Codes last five minutes and work once. Start again with Connect to show.fm."
 msgstr ""
 
-#: includes/class-connect.php:564
+#: includes/class-connect.php:565
 msgid "That is not a show.fm site key. Copy the key from Connected sites in show.fm."
 msgstr ""
 
-#: includes/class-connect.php:566
+#: includes/class-connect.php:567
 msgid "show.fm did not accept that key. Site keys must be registered within 24 hours. Create a new one in show.fm under Connected sites."
 msgstr ""
 
-#: includes/class-connect.php:568
+#: includes/class-connect.php:569
 msgid "show.fm could not confirm that this site belongs to you. Check that the site is public, uses https and has the show.fm plugin active, then try again."
 msgstr ""
 
 #. translators: %d: number of seconds.
-#: includes/class-connect.php:572
+#: includes/class-connect.php:573
 #, php-format
 msgid "show.fm asked this site to wait. Try again in %d second."
 msgid_plural "show.fm asked this site to wait. Try again in %d seconds."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/class-connect.php:576
+#: includes/class-connect.php:577
 msgid "show.fm could not be reached. Try again in a few minutes."
 msgstr ""
 
-#: includes/class-connect.php:578
+#: includes/class-connect.php:579
 msgid "show.fm sent an answer this plugin does not understand. Update the plugin, then try again."
 msgstr ""
 
-#: includes/class-connect.php:580
+#: includes/class-connect.php:581
 msgid "The connection was cancelled."
 msgstr ""
 
-#: includes/class-connect.php:582
+#: includes/class-connect.php:583
 msgid "This site’s address must use https."
 msgstr ""
 
-#: includes/class-connect.php:584
+#: includes/class-connect.php:585
 msgid "The connection could not be saved. Your server needs the PHP sodium extension, or WordPress 6.6 or later. Then try again."
 msgstr ""
 
-#: includes/class-connect.php:586
+#: includes/class-connect.php:587
 msgid "Connected, but this site could not report in to show.fm yet. It tries again automatically."
 msgstr ""
 
-#: includes/class-connect.php:588
+#: includes/class-connect.php:589
 msgid "Something went wrong. Start again with Connect to show.fm."
 msgstr ""
 
@@ -340,6 +340,176 @@ msgstr ""
 
 #: includes/class-health.php:104
 msgid "No blocking configuration or server contract problem is recorded for this connection."
+msgstr ""
+
+#: includes/class-migration-catalogue.php:52
+msgid "The catalogue is waiting for API backoff. Resume the dry run after the retry time."
+msgstr ""
+
+#: includes/class-migration-catalogue.php:104
+msgid "The catalogue is incomplete. The episode list must expose provenance fingerprints. Saved pages and the previous report are retained; resume the dry run after backoff."
+msgstr ""
+
+#: includes/class-migration-cli.php:83
+msgid "Use --reset alone or with --dry-run; it cannot apply or resume an existing report."
+msgstr ""
+
+#: includes/class-migration-cli.php:92
+msgid "Pending catalogue pages discarded. The active report, posts and revisions are unchanged."
+msgstr ""
+
+#: includes/class-migration-cli.php:102
+msgid "Use --dry-run to review or --yes to replace matched embeds."
+msgstr ""
+
+#: includes/class-migration-cli.php:107
+msgid "Use --format=table or --format=json."
+msgstr ""
+
+#: includes/class-migration-cli.php:112
+msgid "Post and batch limits must be positive integers."
+msgstr ""
+
+#: includes/class-migration-cli.php:125
+msgid "Complete a dry run before using --yes. Only that saved report can be applied."
+msgstr ""
+
+#: includes/class-migration-cli.php:136
+msgid "There is no scan to resume."
+msgstr ""
+
+#: includes/class-migration-cli.php:140
+msgid "The post restriction differs from the saved scan. Start a new scan."
+msgstr ""
+
+#: includes/class-migration-cli.php:162
+msgid "Each choice must name an ambiguous embed and one of its reported candidates."
+msgstr ""
+
+#: includes/class-migration-cli.php:197
+msgid "Scan paused. Continue with --resume; no posts have been changed."
+msgstr ""
+
+#: includes/class-migration-cli.php:200
+msgid "Some posts could not be migrated. Review the report."
+msgstr ""
+
+#: includes/class-migration-cli.php:215
+msgid "Use --choose=post:embed:episode-uuid, with one choice per ambiguous embed."
+msgstr ""
+
+#: includes/class-migration-cli.php:229
+msgid "Already show.fm"
+msgstr ""
+
+#: includes/class-migration-detectors.php:27
+msgid "The scan exceeded the 10,000-token limit (candidate < and [ starts). No embeds from this post were accepted. Shorten or split the content before rescanning."
+msgstr ""
+
+#: includes/class-migration-detectors.php:29
+msgid "The content could not be scanned safely. Review the malformed or oversized embed markup."
+msgstr ""
+
+#: includes/class-migration-scanner.php:90
+msgid "Matching failed safely. Check the content encoding and PHP regular expression limits."
+msgstr ""
+
+#: includes/class-migration-store.php:146
+msgid "Another migration request is active. Resume when it finishes."
+msgstr ""
+
+#: includes/class-migration-swap.php:26
+msgid "Use a site administrator who can edit this post."
+msgstr ""
+
+#: includes/class-migration-swap.php:29
+#: includes/class-migrator.php:50
+msgid "Connect this site to show.fm before migrating embeds."
+msgstr ""
+
+#: includes/class-migration-swap.php:33
+msgid "The published post or page is no longer available."
+msgstr ""
+
+#: includes/class-migration-swap.php:39
+msgid "This post has no safe, reviewed embed ranges. Start a new scan."
+msgstr ""
+
+#: includes/class-migration-swap.php:42
+msgid "The post or source player changed after scanning. Start a new scan."
+msgstr ""
+
+#: includes/class-migration-swap.php:47
+msgid "This embed has no matching scan evidence. Start a new scan."
+msgstr ""
+
+#: includes/class-migration-swap.php:50
+msgid "The embed ranges overlap or changed. This post needs manual review."
+msgstr ""
+
+#: includes/class-migration-swap.php:67
+msgid "Choose an episode from this ambiguous embed's candidates."
+msgstr ""
+
+#: includes/class-migration-swap.php:72
+msgid "The episode identifiers are invalid. Start a new scan."
+msgstr ""
+
+#: includes/class-migration-swap.php:100
+msgid "The chosen embed does not exist in this report."
+msgstr ""
+
+#: includes/class-migration-swap.php:106
+msgid "Enable WordPress revisions before migrating so the change can be undone."
+msgstr ""
+
+#: includes/class-migration-swap.php:135
+msgid "Could not save the undo revision. The post has not been changed."
+msgstr ""
+
+#: includes/class-migration-swap.php:139
+msgid "The post or source player changed during migration. Start a new scan."
+msgstr ""
+
+#: includes/class-migration-swap.php:146
+msgid "The post changed at write time. The migration was refused."
+msgstr ""
+
+#: includes/class-migration-swap.php:177
+msgid "The post was migrated, but another save callback removed or changed its undo revision. Review the post before continuing."
+msgstr ""
+
+#: includes/class-migrator.php:47
+msgid "Use --user=<administrator> for a site administrator who can edit these posts."
+msgstr ""
+
+#: includes/class-migrator.php:70
+msgid "Choose a published post or page you can edit."
+msgstr ""
+
+#: includes/class-migrator.php:80
+msgid "Resume the pending catalogue or use --dry-run --reset to change the post restriction."
+msgstr ""
+
+#: includes/class-migrator.php:125
+msgid "Start a new scan for this connection."
+msgstr ""
+
+#: includes/class-migrator.php:164
+msgid "Complete a scan for this connection before swapping."
+msgstr ""
+
+#: includes/class-migrator.php:168
+msgid "This post has no migration report."
+msgstr ""
+
+#: includes/class-migrator.php:200
+msgid "Use --user=<administrator> to reset pending migration data."
+msgstr ""
+
+#: includes/class-migrator.php:228
+#: includes/class-migrator.php:244
+msgid "The active scan changed."
 msgstr ""
 
 #: includes/class-notices.php:145

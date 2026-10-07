@@ -375,6 +375,7 @@ class Test_Connect extends WP_UnitTestCase {
 	 * @param bool $flow_exists Whether a flow is in progress.
 	 */
 	public function test_a_stray_return_keeps_the_notice_waiting( bool $flow_exists ): void {
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
 		$state = $this->started_state();
 		set_transient(
 			Connect::RESULT_PREFIX . $this->user_id,
@@ -383,6 +384,7 @@ class Test_Connect extends WP_UnitTestCase {
 				'error'       => '',
 				'retry_after' => 0,
 				'reason'      => '',
+				'generation'  => Connection::generation(),
 			),
 			60
 		);
@@ -403,6 +405,114 @@ class Test_Connect extends WP_UnitTestCase {
 		if ( $flow_exists ) {
 			$this->assertSame( $state, get_transient( Connect::FLOW_PREFIX . $this->user_id )['state'] );
 		}
+	}
+
+	public function test_a_stale_outcome_does_not_hide_a_new_failure(): void {
+		$this->started_state();
+		set_transient(
+			Connect::RESULT_PREFIX . $this->user_id,
+			array(
+				'status'      => Connect::STATUS_CONNECTED,
+				'error'       => '',
+				'retry_after' => 0,
+				'reason'      => '',
+				'generation'  => Connection::generation(),
+			),
+			60
+		);
+		// Another tab reconnects: the stored "Connected" is now hidden on the screen.
+		$this->assertTrue( ( new Connection() )->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+
+		$this->connect->handle_return(
+			$this->user_id,
+			array(
+				'code'  => self::CODE,
+				'state' => str_repeat( 'x', 43 ),
+			)
+		);
+
+		$this->assertSame( Connect::ERROR_STATE_MISMATCH, Connect::result( $this->user_id )['error'], 'The new failure is recorded where the admin can see it.' );
+		$this->assertSame( Connection::generation(), Connect::result( $this->user_id )['generation'] );
+	}
+
+	public function test_a_connected_outcome_without_its_own_save_gets_no_generation(): void {
+		$this->assertTrue( ( new Connection() )->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		$record = new ReflectionMethod( Connect::class, 'record' );
+		$record->setAccessible( true );
+
+		$record->invoke(
+			$this->connect,
+			$this->user_id,
+			array(
+				'status'      => Connect::STATUS_CONNECTED,
+				'error'       => '',
+				'retry_after' => 0,
+				'reason'      => '',
+			)
+		);
+
+		$this->assertNull( Connect::result( $this->user_id )['generation'], 'Never attached to another request\'s credentials.' );
+		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected' ) );
+	}
+
+	public function test_the_counter_path_keeps_generation_and_counter_in_step(): void {
+		$this->assert_generations_stay_in_step();
+	}
+
+	public function test_an_untrusted_last_insert_id_falls_back_to_the_counter_read_back(): void {
+		$lie = static function ( string $query ): string {
+			return 'SELECT LAST_INSERT_ID()' === $query ? 'SELECT 999999' : $query;
+		};
+		add_filter( 'query', $lie );
+		try {
+			$this->assert_generations_stay_in_step();
+		} finally {
+			remove_filter( 'query', $lie );
+		}
+	}
+
+	public function test_the_options_api_fallback_keeps_generation_and_counter_in_step(): void {
+		global $wpdb;
+		$no_atomic_update = static function ( string $query ) use ( $wpdb ): string {
+			// A database without LAST_INSERT_ID(expr): the atomic UPDATE changes nothing.
+			return false !== strpos( $query, 'LAST_INSERT_ID(CAST' ) ? "UPDATE {$wpdb->options} SET option_value = option_value WHERE 1 = 0" : $query;
+		};
+		add_filter( 'query', $no_atomic_update );
+		try {
+			$this->assert_generations_stay_in_step();
+		} finally {
+			remove_filter( 'query', $no_atomic_update );
+		}
+	}
+
+	/**
+	 * Connects, disconnects and reconnects, checking after each step that the counter only
+	 * rises, the stored credentials carry the value their save took, and the disconnected
+	 * generation is the counter negated.
+	 */
+	private function assert_generations_stay_in_step(): void {
+		$counter = static function (): int {
+			wp_cache_delete( Connection::GENERATION_OPTION, 'options' );
+			return (int) get_option( Connection::GENERATION_OPTION, 0 );
+		};
+		$last    = $counter();
+		$this->assertGreaterThanOrEqual( 0, $last );
+		$seen = array();
+		foreach ( array( 'save', 'disconnect', 'save', 'save', 'disconnect', 'disconnect', 'save' ) as $step ) {
+			$connection = new Connection();
+			if ( 'save' === $step ) {
+				$this->assertTrue( $connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+				$this->assertSame( $counter(), $connection->saved_generation(), 'The save took the counter\'s new value.' );
+				$this->assertSame( $connection->saved_generation(), Connection::generation(), 'And stored it with the credentials.' );
+			} else {
+				$connection->disconnect();
+				$this->assertSame( -$counter(), Connection::generation(), 'Disconnected: the counter negated.' );
+			}
+			$this->assertSame( $last + 1, $counter(), 'One step up, never back, never reset.' );
+			$last   = $counter();
+			$seen[] = Connection::generation();
+		}
+		$this->assertSame( $seen, array_unique( $seen ), 'No generation repeats.' );
 	}
 
 	/**

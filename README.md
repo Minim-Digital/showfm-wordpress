@@ -76,7 +76,10 @@ undo behaviour and the current server contract gaps. No Migrate tab is included 
   (`showfm_connection_generation`, one atomic increment per connect, reconnect and disconnect)
   and writes it as `g` in the same option value as the encrypted credentials, in one write, so
   a credential and its generation always come from the same request, however reconnects from
-  other tabs or WP-CLI interleave. With nothing stored, the generation is the counter negated. "Connected"
+  other tabs or WP-CLI interleave. With nothing stored, the generation is the counter negated.
+  Every path to the counter reads and writes only the counter: the atomic UPDATE, the counter
+  read back when `LAST_INSERT_ID` cannot be trusted, and an options-API fallback for databases
+  without `LAST_INSERT_ID(expr)`, which is not atomic but never goes backwards. "Connected"
   also shows only while the stored key works, and Disconnect clears the admin's outcome.
 - Disconnect removes the local connection only. The show.fm API has no route for a site key to
   revoke itself, so the key stays valid at show.fm until the site is disconnected there. The

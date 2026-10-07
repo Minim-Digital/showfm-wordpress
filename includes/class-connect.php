@@ -709,13 +709,19 @@ final class Connect {
 	}
 
 	/**
-	 * Records a failure only when no outcome is waiting to be shown.
+	 * Records a failure only when no outcome is waiting to be shown. An outcome the screen
+	 * would hide (another generation, or a "Connected" whose key no longer works) is not
+	 * waiting, so it never keeps a new failure from being seen.
 	 *
 	 * @param int    $user_id The admin.
 	 * @param string $error   Error type.
 	 */
 	private function fail_unless_noted( int $user_id, string $error ): void {
-		if ( null === self::result( $user_id ) ) {
+		$result  = self::result( $user_id );
+		$waiting = null !== $result
+			&& Connection::generation() === $result['generation']
+			&& ( self::STATUS_CONNECTED !== $result['status'] || $this->connection->is_connected() );
+		if ( ! $waiting ) {
 			$this->fail( $user_id, $error );
 		}
 	}
@@ -731,8 +737,9 @@ final class Connect {
 		// its credentials, or the stored one for a failure. The settings screen shows the
 		// outcome only while the stored credentials still carry it, so a later connect or
 		// disconnect (another tab, WP-CLI) wins, however the requests interleave.
-		$saved                 = $this->connection->saved_generation();
-		$outcome['generation'] = self::STATUS_CONNECTED === $outcome['status'] && null !== $saved ? $saved : Connection::generation();
+		// A "Connected" with no save of its own in this request gets no generation, so it is
+		// never shown against another request's credentials.
+		$outcome['generation'] = self::STATUS_CONNECTED === $outcome['status'] ? $this->connection->saved_generation() : Connection::generation();
 		set_transient( self::RESULT_PREFIX . $user_id, $outcome, self::RESULT_TTL );
 	}
 

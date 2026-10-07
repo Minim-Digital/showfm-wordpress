@@ -86,6 +86,8 @@ final class Connection {
 	 * @return bool Whether the credentials were stored.
 	 */
 	public function save( string $key, string $ping_secret, string $site_id, int $expires_at ): bool {
+		// Only a save that succeeds now may name a generation as its own.
+		$this->saved_generation = null;
 		foreach ( array( $key, $ping_secret, $site_id ) as $value ) {
 			if ( '' === $value || strlen( $value ) > self::MAX_LENGTH || preg_match( '/[\x00-\x20\x7f]/', $value ) ) {
 				return false;
@@ -339,8 +341,16 @@ final class Connection {
 	}
 
 	/**
-	 * Moves the generation on by one and returns the new value. One atomic UPDATE, so two
-	 * requests in the same second always get different values.
+	 * Moves the generation counter on by one and returns the new value. Every path reads and
+	 * writes only the counter (`GENERATION_OPTION`), never the stored credentials or the
+	 * negated value `generation()` gives while disconnected, so the counter only rises.
+	 *
+	 * - Atomic path: one UPDATE with `LAST_INSERT_ID(expr)` hands this request its own value,
+	 *   so two requests in the same second always differ. The value is trusted only if it is
+	 *   above 0 and not above the counter read back from the database.
+	 * - If the UPDATE ran but the value cannot be trusted, the counter read back is used.
+	 * - Fallback, when the UPDATE changed nothing: the counter is read and written through the
+	 *   options API. That path is not atomic, but it never goes backwards or below 1.
 	 */
 	private static function next_generation(): int {
 		global $wpdb;
@@ -355,12 +365,18 @@ final class Connection {
 		if ( 1 === $updated ) {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Reads this connection's value from the UPDATE above.
 			$next = (int) $wpdb->get_var( 'SELECT LAST_INSERT_ID()' );
-			if ( $next > 0 ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- The counter as stored, bypassing the cache.
+			$counter = (int) $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", self::GENERATION_OPTION ) );
+			if ( $next > 0 && $next <= $counter ) {
 				return $next;
 			}
+			if ( $counter > 0 ) {
+				return $counter;
+			}
 		}
-		// A database without LAST_INSERT_ID(expr): read and write through the options API.
-		$next = self::generation() + 1;
+
+		// Fallback: the counter itself, through the options API.
+		$next = max( 1, (int) get_option( self::GENERATION_OPTION, 0 ) + 1 );
 		update_option( self::GENERATION_OPTION, $next, false );
 		return $next;
 	}
