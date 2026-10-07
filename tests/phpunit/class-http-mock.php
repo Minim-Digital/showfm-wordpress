@@ -21,7 +21,7 @@ class ShowFM_Http_Mock {
 	/**
 	 * Responses still to return.
 	 *
-	 * @var array<int,array|WP_Error>
+	 * @var array<int,array|WP_Error|callable>
 	 */
 	private $queue = array();
 
@@ -54,6 +54,17 @@ class ShowFM_Http_Mock {
 	}
 
 	/**
+	 * Queues a callback that builds the response while the request is in flight. It gets
+	 * the request args and URL and returns what `respond()` would have queued, as
+	 * [status, body, headers].
+	 *
+	 * @param callable $callback Callback.
+	 */
+	public function respond_with( callable $callback ): void {
+		$this->queue[] = $callback;
+	}
+
+	/**
 	 * Queues a network failure.
 	 *
 	 * @param string $message Error message.
@@ -78,7 +89,13 @@ class ShowFM_Http_Mock {
 		if ( empty( $this->queue ) ) {
 			return new WP_Error( 'showfm_test_blocked', 'No response queued.' );
 		}
-		return array_shift( $this->queue );
+		$next = array_shift( $this->queue );
+		if ( is_callable( $next ) ) {
+			list( $status, $body, $headers ) = array_pad( (array) $next( $args, $url ), 3, array() );
+			$this->respond( (int) $status, (string) $body, (array) $headers );
+			$next = array_pop( $this->queue );
+		}
+		return $next;
 	}
 
 	public function count(): int {

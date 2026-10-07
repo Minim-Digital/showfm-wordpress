@@ -89,8 +89,9 @@ final class Connection {
 			'c' => base64_encode( $cipher ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Binary ciphertext stored as text.
 		);
 
-		delete_option( self::OPTION );
-		if ( ! add_option( self::OPTION, $stored, '', false ) ) {
+		// One UPDATE (or INSERT when nothing is stored). If it fails, the old credentials
+		// are still there, so a failed reconnect never leaves the site with nothing.
+		if ( ! update_option( self::OPTION, $stored, false ) ) {
 			return false;
 		}
 		delete_option( self::STATE_OPTION );

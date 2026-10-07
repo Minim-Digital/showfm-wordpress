@@ -11,6 +11,8 @@
 	<exclude-pattern>/artifacts/*</exclude-pattern>
 	<exclude-pattern>/test-results/*</exclude-pattern>
 	<exclude-pattern>/playwright-report/*</exclude-pattern>
+	<!-- A stand-in for WP-CLI, read by PHPStan and the PHPUnit tests. -->
+	<exclude-pattern>/tests/stubs/*</exclude-pattern>
 
 	<arg name="extensions" value="php"/>
 	<arg name="basepath" value="."/>

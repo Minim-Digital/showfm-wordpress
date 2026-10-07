@@ -7,9 +7,11 @@ This file is for developers. The WordPress.org readme is `readme.txt`.
 
 ## Status
 
-Version 0.1.0 is the foundation only: the API client, the cache, encrypted connection
-storage and uninstall. Blocks, the shortcode, the connection flow and the admin screens
-come in later pull requests.
+Version 0.1.0 has the foundation (the API client, the cache, encrypted connection storage
+and uninstall) and the plugin side of connecting a site to show.fm: the browser flow, the
+code exchange, WP-CLI registration, the ownership challenge, the signed ping endpoint and
+the daily health report. The settings page is a placeholder until the designed admin
+screens land. Blocks, the shortcode and the sync come in later pull requests.
 
 ## Requirements
 
@@ -46,8 +48,69 @@ come in later pull requests.
 - `Connection` stores the site key, ping secret, site id and expiry encrypted with libsodium
   secretbox, keyed from `wp_salt( 'auth' )`, in options with autoload off. If the salts
   change, the state becomes "reconnect needed" without errors. `masked_key()` shows the last
-  four characters only.
+  four characters only. Set the salts in `wp-config.php`: without them WordPress keeps a
+  generated salt in the same database, and a database dump alone would then be enough.
 - `Uninstaller` does the uninstall cleanup, on every site of a multisite network.
+- `Connect` runs the connect protocol (below). Its outcomes are typed (`Connect::ERROR_*`)
+  and kept per user for the settings screen, with `Connect::message()` for the text.
+- `Challenge_Endpoint` and `Ping_Endpoint` are the two REST routes show.fm calls.
+- `Health` sends the daily health report and finishes a verify that failed at connect time.
+- `Admin` registers the settings page (`admin.php?page=showfm`) and the connect action. Its
+  screen is a placeholder for the designed one.
+- `Cli` is `wp showfm connect`, `status` and `disconnect`.
+- `Privacy` adds the suggested privacy policy text.
+
+### Connecting a site
+
+Plan sections 5.2.2, 5.2.6 and 5.3.5 (show.fm issue #731). Every admin action needs
+`manage_options` and a nonce. No key, code or verifier is logged, echoed or put in a URL.
+
+1. **Connect** (`admin-post.php?action=showfm_connect`). The plugin makes a `state` (32
+   random bytes, base64url) and a PKCE `code_verifier`, keeps both for 10 minutes in a
+   per-user transient, and redirects to `{SHOWFM_APP_URL}/connect/wordpress` with
+   `site_url` (`home_url()`), `rest_root` (`rest_url()`), `state`, `code_challenge` (S256),
+   `return` (the settings page) and `partner` (if `SHOWFM_PARTNER` is set). No outbound HTTP.
+2. **Challenge.** show.fm fetches `GET /wp-json/showfm/v1/challenge?state=…`. The route is
+   public, answers `{"code_challenge": "…"}` for that exact state only (the transient is
+   named by the state's SHA-256 and the stored hash is compared with `hash_equals`), 404
+   for anything else and never cacheable. While no connection has been started in the last
+   10 minutes (`showfm_challenge_open_until`), every request gets a 404 with no lookup or
+   write. While one has, the right state is always answered, and wrong states share one
+   global budget of 60 a minute: one options row per minute, counted with one atomic
+   conditional UPDATE, with or without an object cache. Only rows of older minutes are
+   removed. The caller's address plays no part and rotating addresses add no rows.
+3. **Return.** On the settings page load the plugin checks `state` against the user's flow
+   (single use), keeps the code server-side and redirects to the clean URL at once.
+4. **Exchange.** On the clean load it POSTs `{code, code_verifier}` to
+   `https://api.show.fm/v1/sites/exchange`, stores `site_id`, `api_key`, `ping_secret` and
+   `expires_at` with `Connection` (encrypted), then POSTs `/v1/me/sites/{id}/verify` with the
+   plugin, WordPress and PHP versions and the site name. A reconnect keeps the old
+   credentials until the new ones are stored.
+5. **WP-CLI** (`wp showfm connect`). The key comes from `--key=-` (standard input), then
+   `--key=<key>`, then the `SHOWFM_KEY` environment variable, then a hidden prompt when
+   standard input is a terminal. Prefer `SHOWFM_KEY` or `--key=-`: a key typed as
+   `--key=<key>` stays in shell history and shows in `ps`, and the command warns about it.
+   The plugin makes a state and challenge and
+   POSTs `/v1/me/sites` with `site_url`, `rest_root`, `state` and `code_challenge`; show.fm
+   fetches the challenge back inside that request, then returns the site id and ping
+   secret. Then it verifies. `wp showfm status` shows the state, the masked key, the
+   expiry, the last sync and the last ping. `wp showfm disconnect [--yes]` removes the local
+   credentials and ping nonce claims and unschedules the plugin's events; the key stays live
+   in show.fm until it is revoked there.
+6. **Ping** (`POST /wp-json/showfm/v1/ping`). The permission callback checks
+   `X-Showfm-Signature: v1={hex HMAC-SHA256(ping_secret, "v1.{site_id}.{timestamp}.{nonce}")}`
+   with `X-Showfm-Site`, `X-Showfm-Timestamp` (within 300 seconds) and `X-Showfm-Nonce`
+   (each accepted once in 10 minutes). A nonce is claimed with one `INSERT IGNORE` into
+   the options table, so two copies of a ping arriving together cannot both pass; expired
+   claims are removed on the next claim. The body is never read. The handler queues one
+   `showfm_pull` event, calls `spawn_cron()` and answers 202.
+7. **Health.** The daily `showfm_health` event POSTs `/v1/me/sites/{id}/health` with the
+   versions, `last_sync_at` and `sync_error_count`. A 401 from any keyed call marks the
+   connection "reconnect needed" and stops keyed calls. A 429 holds every keyed call until
+   its Retry-After has passed (`showfm_rate_limited_until`).
+
+A WordPress install in a subdirectory sends a `site_url` with a path. show.fm accepts that
+once podcaster-plus-app PR #741 is merged.
 
 ### Staging
 
@@ -59,6 +122,15 @@ define( 'SHOWFM_API_URL', 'https://api.showfm.dev' );
 
 Only `https://api.show.fm` and `https://api.showfm.dev` are accepted. Anything else falls
 back to production, so the site key is never sent to another host.
+
+The connect flow opens the app at `SHOWFM_APP_URL`, which accepts `https://my.show.fm`
+(the default) and `https://my.showfm.dev` only. A host that resells show.fm can set its
+partner code, which is passed to show.fm for attribution:
+
+```php
+define( 'SHOWFM_APP_URL', 'https://my.showfm.dev' );
+define( 'SHOWFM_PARTNER', 'your-partner-code' );
+```
 
 ## Development
 
@@ -78,6 +150,9 @@ npm run env:start           # WordPress on http://localhost:8888 (user admin, pa
 | `npm run lint:js`            | ESLint through `@wordpress/scripts`.                                       |
 | `npm run format`             | Prettier through `@wordpress/scripts`.                                     |
 | `npm run zip`                | Builds `dist/showfm/` and `dist/showfm-{version}.zip`.                     |
+
+The PHPUnit suite runs the WP-CLI commands against a stand-in for `WP_CLI`
+(`tests/stubs/wp-cli.php`), which PHPStan also reads for the signatures.
 
 Run PHPUnit before Playwright, or on a fresh environment: the core test installer resets
 the tables of the `wp-env` tests site (port 8889), so the browser tests use the development

@@ -129,6 +129,24 @@ class Test_Connection extends WP_UnitTestCase {
 		$this->assertSame( 'showfm_live_newkey000000000000000001', $this->connection->key() );
 	}
 
+	public function test_a_failed_write_keeps_the_old_credentials(): void {
+		$this->connection->save( self::KEY, self::SECRET, 'site-42', 0 );
+		$this->connection->mark_reconnect_needed();
+		$block = static function ( $query ) {
+			return preg_match( '/^\s*(INSERT|UPDATE)\b/i', $query ) && false !== strpos( $query, "'" . Connection::OPTION . "'" ) ? '' : $query;
+		};
+		add_filter( 'query', $block );
+
+		$saved = $this->connection->save( 'showfm_live_newkey000000000000000001', self::SECRET, 'site-42', 0 );
+
+		remove_filter( 'query', $block );
+		wp_cache_flush();
+		$this->assertFalse( $saved );
+		$this->assertSame( Connection::STATE_RECONNECT_NEEDED, $this->connection->state(), 'The state is unchanged too.' );
+		delete_option( Connection::STATE_OPTION );
+		$this->assertSame( self::KEY, $this->connection->key(), 'The old row is still in the database.' );
+	}
+
 	public function test_masked_display_shows_only_the_last_four_characters(): void {
 		$this->connection->save( self::KEY, self::SECRET, 'site-42', 0 );
 
