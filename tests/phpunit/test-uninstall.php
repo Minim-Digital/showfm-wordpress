@@ -32,7 +32,7 @@ class Test_Uninstall extends WP_UnitTestCase {
 		wp_schedule_single_event( time() + 60, Cache::REFRESH_HOOK, array( '/v1/episodes/a' ) );
 
 		$this->post_id = self::factory()->post->create( array( 'post_title' => 'An episode post' ) );
-		update_post_meta( $this->post_id, '_showfm_episode_id', 'ep-1' );
+		update_post_meta( $this->post_id, '_showfm_episode_id', '11111111-2222-4333-8444-555555555555' );
 		update_post_meta( $this->post_id, '_showfm_content_hash', 'abc' );
 		update_post_meta( $this->post_id, 'unrelated_meta', 'keep me' );
 		update_post_meta( $this->post_id, 'showfm_without_underscore', 'not ours' );
@@ -143,7 +143,7 @@ class Test_Uninstall extends WP_UnitTestCase {
 		switch_to_blog( $blog_id );
 		( new Connection() )->save( 'showfm_live_secondsitekey00000000001', 'ping-secret-second', 'site-2', 0 );
 		$second_post = self::factory()->post->create();
-		update_post_meta( $second_post, '_showfm_episode_id', 'ep-2' );
+		update_post_meta( $second_post, '_showfm_episode_id', '22222222-2222-4333-8444-555555555555' );
 		restore_current_blog();
 
 		if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
@@ -165,7 +165,7 @@ class Test_Uninstall extends WP_UnitTestCase {
 		$this->assertFalse( wp_next_scheduled( Cache::REFRESH_HOOK, array( '/v1/episodes/a' ) ) );
 		$this->assertIsInt( wp_next_scheduled( 'unrelated_event' ) );
 		$this->assertSame( Connection::STATE_CONNECTED, ( new Connection() )->state() );
-		$this->assertSame( 'ep-1', get_post_meta( $this->post_id, '_showfm_episode_id', true ) );
+		$this->assertSame( '11111111-2222-4333-8444-555555555555', get_post_meta( $this->post_id, '_showfm_episode_id', true ) );
 		$this->assertIsArray( get_transient( Cache::key( '/v1/episodes/a' ) ) );
 		$this->assertInstanceOf( Api_Client::class, Plugin::api_client() );
 	}

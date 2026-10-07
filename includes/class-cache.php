@@ -108,6 +108,46 @@ final class Cache {
 	}
 
 	/**
+	 * Refresh-aware episode visibility for a cached list or latest response.
+	 *
+	 * A fresh public response containing the episode can supersede an older marker
+	 * for this render. Keep the marker stored until its own refresh succeeds: list
+	 * items are not complete episode payloads, and old sources must still be hidden.
+	 * Equal timestamps favour the marker because their ordering is unknown.
+	 *
+	 * @param mixed  $episode_id Episode UUID in the public response.
+	 * @param string $source_path Cache path of that list or latest response.
+	 */
+	public function is_episode_unavailable( $episode_id, string $source_path ): bool {
+		if ( ! is_string( $episode_id ) || '' === $episode_id ) {
+			return false;
+		}
+		$path   = '/v1/episodes/' . $episode_id;
+		$marker = $this->read( $path );
+		if ( null === $marker || self::STATE_UNAVAILABLE !== $marker['state'] ) {
+			return false;
+		}
+		// This read schedules a stale marker's refresh and honours its existing back-off.
+		// Do not fan out requests for episodes without an unavailable marker.
+		$this->get( $path );
+		$source = $this->read( $source_path );
+		if ( null === $source || self::STATE_OK !== $source['state'] || $this->is_stale( $source ) || $source['fetched_at'] <= $marker['fetched_at'] ) {
+			return true;
+		}
+		$data = $source['data']['data'] ?? null;
+		if ( ! is_array( $data ) ) {
+			return true;
+		}
+		$episodes = isset( $data['id'] ) ? array( $data ) : $data;
+		foreach ( $episodes as $episode ) {
+			if ( is_array( $episode ) && ( $episode['id'] ?? null ) === $episode_id ) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
 	 * Refreshes one entry. Runs from WP-Cron only.
 	 *
 	 * @param mixed $path Public API path, as passed to the cron event.

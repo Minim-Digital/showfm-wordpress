@@ -54,6 +54,15 @@ final class Plugin {
 	 */
 	public static function boot(): void {
 		add_action( Cache::REFRESH_HOOK, array( self::cache(), 'refresh' ) );
+		add_action( 'init', array( Blocks::class, 'register' ) );
+		add_action( 'init', array( Bindings::class, 'register' ) );
+		add_action( 'init', array( Oembed::class, 'register' ) );
+		add_action( 'init', array( Embed_Settings::class, 'register' ) );
+		add_action( 'init', array( Assets::class, 'register' ) );
+		add_action( 'enqueue_block_assets', array( Assets::class, 'editor_assets' ) );
+		add_action( 'wp_footer', array( Assets::class, 'late_styles' ) );
+		add_filter( 'embed_oembed_html', array( Oembed::class, 'output' ), 10, 2 );
+		add_shortcode( 'showfm', array( Shortcode::class, 'render' ) );
 	}
 
 	/**
