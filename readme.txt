@@ -17,11 +17,11 @@ show.fm hosts podcasts. This plugin brings a show.fm show into WordPress:
 * A podcast player, episode lists, a play button and transcripts, as blocks and a shortcode.
 * Publish to WordPress: connect the site to show.fm and each new episode becomes a post.
 
-This version is an early development release. It can connect a site to show.fm, from the show.fm menu or with WP-CLI, but the blocks and the designed settings screens are not in it yet.
+This version is an early development release. Four server-rendered blocks and the [showfm] shortcode are available, and the site can connect to show.fm from the show.fm menu or with WP-CLI. The block picker controls and the designed connection screen follow in separate work. The pinned embed package (1.1.0) upgrades the player; lists, play buttons and transcripts currently display their readable HTML fallbacks until those elements ship in the package.
 
 The plugin works for any public show.fm show without an account. Publish to WordPress needs a show.fm account and a connected site.
 
-The source code is on GitHub: [show.fm for WordPress](https://github.com/Minim-Digital/showfm-wordpress).
+The source code and build instructions are on GitHub: [show.fm for WordPress](https://github.com/Minim-Digital/showfm-wordpress) and the MIT-licensed [show.fm embed package](https://github.com/Minim-Digital/showfm-embed/tree/v1.1.0). The bundled scripts are copied without modification from @showfm/embed 1.1.0.
 
 == External services ==
 
@@ -30,8 +30,8 @@ This plugin relies on show.fm, a podcast hosting service run by show.fm Ltd. It 
 **show.fm public API (api.show.fm)**
 
 * Used to fetch show and episode details (titles, descriptions, artwork, audio links and transcripts) for the shows and episodes you add to your pages.
-* When: when you add a show or episode in the editor, and when the plugin refreshes its cached copy in the background (at most every 15 minutes for each show or episode). Your visitors' page views never cause a request from your server.
-* What is sent: the show or episode identifier, and your site's address in the request's User-Agent header. Your server's IP address is visible to show.fm, as with any web request. No visitor data is sent.
+* When: when WP-Cron refreshes a missing or stale cache entry (fresh for 15 minutes, with retries after errors). Page rendering reads only cached data or the insertion snapshot and schedules a background refresh; it makes no inline HTTP request. The enhanced player also requests public episode data directly from the visitor's browser when it loads, or after a click with load="click".
+* What is sent: the show or episode identifier, and your site's address in the request's User-Agent header. Your server's IP address is visible to show.fm, as with any web request. Background requests send no visitor data. Browser requests expose the visitor's IP address and browser details to the service. WordPress may also request /v1/oembed to resolve a pasted listen-page URL, then caches the returned iframe in post meta.
 
 **show.fm API for connected sites (api.show.fm)**
 
@@ -52,7 +52,7 @@ This plugin relies on show.fm, a podcast hosting service run by show.fm Ltd. It 
 
 * Audio and transcript files are served from m.cdn.media.
 * When: only when a visitor plays an episode or opens a transcript. The visitor's browser loads the file directly, so show.fm sees the visitor's IP address and browser details, as with any audio file on the web.
-* The player itself is bundled with the plugin. Nothing is loaded from embed.cdn.media.
+* Scripts are bundled with the plugin. Recognised show.fm oEmbed iframe responses are rendered as local players too, so they do not load code from embed.cdn.media.
 
 **show.fm account (my.show.fm)**
 
@@ -83,5 +83,6 @@ The site key and ping secret are encrypted with a key derived from your WordPres
 == Changelog ==
 
 = 0.1.0 =
-* Development release: the plugin's foundations (API client, cache and encrypted connection storage). No blocks or settings screens yet.
+* Development release: the plugin's foundations (API client, cache and encrypted connection storage). No designed settings screen yet.
+* Added cache-only block and shortcode rendering, local embed assets, fallback parity checks, episode bindings, oEmbed and theme mapping. Credit defaults off and public-episode JSON-LD defaults on.
 * Connect a site to show.fm from the show.fm menu or with `wp showfm connect`, with a daily health report and signed wake-up pings.

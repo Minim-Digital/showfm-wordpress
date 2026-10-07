@@ -1,0 +1,623 @@
+[
+	{
+		"name": "episode-external-audio.json",
+		"function": "renderEpisodeHTML",
+		"args": [
+			{
+				"id": "11111111-2222-4333-8444-555555555555",
+				"title": "Episode One: The Signal",
+				"published_at": "2026-07-01T10:00:00.000Z",
+				"description": "We talk about signals, noise and the space between.",
+				"season_number": 2,
+				"episode_number": 4,
+				"audio": {
+					"url": "https://cdn.example-host.com/feeds/ep1.mp3?token=abc",
+					"content_type": "audio/mpeg",
+					"duration_seconds": 1843
+				},
+				"artwork": {
+					"url": "https://m.cdn.media/podcasts/test-signal/cover.jpg"
+				},
+				"links": {
+					"listen": "https://show.fm/test-signal/e/episode-one"
+				},
+				"podcast": {
+					"title": "Test Signal",
+					"links": {
+						"listen": "https://show.fm/test-signal"
+					},
+					"branding": {
+						"show_powered_by": true
+					}
+				}
+			}
+		],
+		"expected": "<a href=\"https://show.fm/test-signal/e/episode-one\">Episode One: The Signal</a><audio controls preload=\"none\" src=\"https://cdn.example-host.com/feeds/ep1.mp3?token=abc\"></audio>"
+	},
+	{
+		"name": "episode-hostile.json",
+		"function": "renderEpisodeHTML",
+		"args": [
+			{
+				"id": "11111111-2222-4333-8444-555555555555",
+				"title": "\"><script>alert(1)</script> & 'quoted' <b>bold</b>",
+				"published_at": "2026-07-01T10:00:00.000Z",
+				"description": "</script><script>alert(2)</script>",
+				"season_number": 2,
+				"episode_number": 4,
+				"audio": {
+					"url": "https://m.cdn.media/a.mp3?x=\"1\"&y=<2>",
+					"content_type": "audio/mpeg",
+					"duration_seconds": 60
+				},
+				"artwork": {
+					"url": "data:image/png;base64,AAAA"
+				},
+				"links": {
+					"listen": "javascript:alert(3)"
+				},
+				"podcast": {
+					"title": "Show & <Tell>",
+					"links": {
+						"listen": "https://show.fm/show-and-tell?a=1&b=2"
+					}
+				}
+			}
+		],
+		"expected": "&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt; &amp; &#39;quoted&#39; &lt;b&gt;bold&lt;/b&gt;<audio controls preload=\"none\" src=\"https://m.cdn.media/a.mp3?x=&quot;1&quot;&amp;y=&lt;2&gt;\"></audio>"
+	},
+	{
+		"name": "episode-no-audio.json",
+		"function": "renderEpisodeHTML",
+		"args": [
+			{
+				"id": "11111111-2222-4333-8444-555555555555",
+				"title": "Episode One: The Signal",
+				"published_at": "2026-07-01T10:00:00.000Z",
+				"description": "We talk about signals, noise and the space between.",
+				"season_number": 2,
+				"episode_number": 4,
+				"audio": {
+					"url": null,
+					"content_type": null,
+					"duration_seconds": null
+				},
+				"artwork": {
+					"url": "https://m.cdn.media/podcasts/test-signal/cover.jpg"
+				},
+				"links": {
+					"listen": "https://show.fm/test-signal/e/episode-one"
+				},
+				"podcast": {
+					"title": "Test Signal",
+					"links": {
+						"listen": "https://show.fm/test-signal"
+					},
+					"branding": {
+						"show_powered_by": true
+					}
+				}
+			}
+		],
+		"expected": "<a href=\"https://show.fm/test-signal/e/episode-one\">Episode One: The Signal</a>"
+	},
+	{
+		"name": "episode-source-tag.json",
+		"function": "renderEpisodeHTML",
+		"args": [
+			{
+				"id": "11111111-2222-4333-8444-555555555555",
+				"title": "Episode One: The Signal",
+				"published_at": "2026-07-01T10:00:00.000Z",
+				"description": "We talk about signals, noise and the space between.",
+				"season_number": 2,
+				"episode_number": 4,
+				"audio": {
+					"url": "https://cdn.example-host.com/feeds/ep1.mp3?token=abc",
+					"content_type": "audio/mpeg",
+					"duration_seconds": 1843
+				},
+				"artwork": {
+					"url": "https://m.cdn.media/podcasts/test-signal/cover.jpg"
+				},
+				"links": {
+					"listen": "https://show.fm/test-signal/e/episode-one"
+				},
+				"podcast": {
+					"title": "Test Signal",
+					"links": {
+						"listen": "https://show.fm/test-signal"
+					},
+					"branding": {
+						"show_powered_by": true
+					}
+				}
+			},
+			{
+				"sourceTag": "fallback"
+			}
+		],
+		"expected": "<a href=\"https://show.fm/test-signal/e/episode-one\">Episode One: The Signal</a><audio controls preload=\"none\" src=\"https://cdn.example-host.com/feeds/ep1.mp3?token=abc&amp;src=fallback\"></audio>"
+	},
+	{
+		"name": "episode.json",
+		"function": "renderEpisodeHTML",
+		"args": [
+			{
+				"id": "11111111-2222-4333-8444-555555555555",
+				"title": "Episode One: The Signal",
+				"published_at": "2026-07-01T10:00:00.000Z",
+				"description": "We talk about signals, noise and the space between.",
+				"season_number": 2,
+				"episode_number": 4,
+				"audio": {
+					"url": "https://m.cdn.media/podcasts/test-signal/episode-one.mp3",
+					"content_type": "audio/mpeg",
+					"duration_seconds": 1843
+				},
+				"artwork": {
+					"url": "https://m.cdn.media/podcasts/test-signal/cover.jpg"
+				},
+				"links": {
+					"listen": "https://show.fm/test-signal/e/episode-one"
+				},
+				"podcast": {
+					"title": "Test Signal",
+					"links": {
+						"listen": "https://show.fm/test-signal"
+					},
+					"branding": {
+						"show_powered_by": true
+					}
+				}
+			}
+		],
+		"expected": "<a href=\"https://show.fm/test-signal/e/episode-one\">Episode One: The Signal</a><audio controls preload=\"none\" src=\"https://m.cdn.media/podcasts/test-signal/episode-one.mp3\"></audio>"
+	},
+	{
+		"name": "jsonld-hostile.json",
+		"function": "episodeJsonLd",
+		"args": [
+			{
+				"id": "11111111-2222-4333-8444-555555555555",
+				"title": "\"><script>alert(1)</script> & 'quoted' <b>bold</b>",
+				"published_at": "2026-07-01T10:00:00.000Z",
+				"description": "</script><script>alert(2)</script>",
+				"season_number": 2,
+				"episode_number": 4,
+				"audio": {
+					"url": "https://m.cdn.media/a.mp3?x=\"1\"&y=<2>",
+					"content_type": "audio/mpeg",
+					"duration_seconds": 60
+				},
+				"artwork": {
+					"url": "data:image/png;base64,AAAA"
+				},
+				"links": {
+					"listen": "javascript:alert(3)"
+				},
+				"podcast": {
+					"title": "Show & <Tell>",
+					"links": {
+						"listen": "https://show.fm/show-and-tell?a=1&b=2"
+					}
+				}
+			}
+		],
+		"expected": "{\"@context\":\"https://schema.org\",\"@type\":\"PodcastEpisode\",\"name\":\"\\\"\\u003e\\u003cscript\\u003ealert(1)\\u003c/script\\u003e \\u0026 'quoted' \\u003cb\\u003ebold\\u003c/b\\u003e\",\"datePublished\":\"2026-07-01T10:00:00.000Z\",\"description\":\"\\u003c/script\\u003e\\u003cscript\\u003ealert(2)\\u003c/script\\u003e\",\"duration\":\"PT1M\",\"episodeNumber\":4,\"partOfSeason\":{\"@type\":\"PodcastSeason\",\"seasonNumber\":2},\"partOfSeries\":{\"@type\":\"PodcastSeries\",\"name\":\"Show \\u0026 \\u003cTell\\u003e\",\"url\":\"https://show.fm/show-and-tell?a=1\\u0026b=2\"},\"associatedMedia\":{\"@type\":\"MediaObject\",\"contentUrl\":\"https://m.cdn.media/a.mp3?x=\\\"1\\\"\\u0026y=\\u003c2\\u003e\",\"encodingFormat\":\"audio/mpeg\"}}"
+	},
+	{
+		"name": "jsonld-minimal.json",
+		"function": "episodeJsonLd",
+		"args": [
+			{
+				"title": "Bare",
+				"links": {
+					"listen": "https://show.fm/x/e/bare"
+				},
+				"audio": {
+					"url": null,
+					"duration_seconds": null
+				}
+			}
+		],
+		"expected": "{\"@context\":\"https://schema.org\",\"@type\":\"PodcastEpisode\",\"name\":\"Bare\",\"url\":\"https://show.fm/x/e/bare\"}"
+	},
+	{
+		"name": "jsonld.json",
+		"function": "episodeJsonLd",
+		"args": [
+			{
+				"id": "11111111-2222-4333-8444-555555555555",
+				"title": "Episode One: The Signal",
+				"published_at": "2026-07-01T10:00:00.000Z",
+				"description": "We talk about signals, noise and the space between.",
+				"season_number": 2,
+				"episode_number": 4,
+				"audio": {
+					"url": "https://m.cdn.media/podcasts/test-signal/episode-one.mp3",
+					"content_type": "audio/mpeg",
+					"duration_seconds": 1843
+				},
+				"artwork": {
+					"url": "https://m.cdn.media/podcasts/test-signal/cover.jpg"
+				},
+				"links": {
+					"listen": "https://show.fm/test-signal/e/episode-one"
+				},
+				"podcast": {
+					"title": "Test Signal",
+					"links": {
+						"listen": "https://show.fm/test-signal"
+					},
+					"branding": {
+						"show_powered_by": true
+					}
+				}
+			}
+		],
+		"expected": "{\"@context\":\"https://schema.org\",\"@type\":\"PodcastEpisode\",\"name\":\"Episode One: The Signal\",\"url\":\"https://show.fm/test-signal/e/episode-one\",\"datePublished\":\"2026-07-01T10:00:00.000Z\",\"description\":\"We talk about signals, noise and the space between.\",\"duration\":\"PT30M43S\",\"image\":\"https://m.cdn.media/podcasts/test-signal/cover.jpg\",\"episodeNumber\":4,\"partOfSeason\":{\"@type\":\"PodcastSeason\",\"seasonNumber\":2},\"partOfSeries\":{\"@type\":\"PodcastSeries\",\"name\":\"Test Signal\",\"url\":\"https://show.fm/test-signal\"},\"associatedMedia\":{\"@type\":\"MediaObject\",\"contentUrl\":\"https://m.cdn.media/podcasts/test-signal/episode-one.mp3\",\"encodingFormat\":\"audio/mpeg\"}}"
+	},
+	{
+		"name": "list-empty.json",
+		"function": "renderEpisodeListHTML",
+		"args": [
+			{
+				"title": "Test Signal",
+				"links": {
+					"listen": "https://show.fm/test-signal"
+				}
+			},
+			[]
+		],
+		"expected": "<a href=\"https://show.fm/test-signal\">Test Signal</a>"
+	},
+	{
+		"name": "list-hostile.json",
+		"function": "renderEpisodeListHTML",
+		"args": [
+			{
+				"title": "Show & <Tell>",
+				"links": {
+					"listen": "https://show.fm/show-and-tell?a=1&b=2"
+				}
+			},
+			[
+				{
+					"id": "11111111-2222-4333-8444-555555555555",
+					"title": "\"><script>alert(1)</script> & 'quoted' <b>bold</b>",
+					"published_at": "2026-07-01T10:00:00.000Z",
+					"description": "</script><script>alert(2)</script>",
+					"season_number": 2,
+					"episode_number": 4,
+					"audio": {
+						"url": "https://m.cdn.media/a.mp3?x=\"1\"&y=<2>",
+						"content_type": "audio/mpeg",
+						"duration_seconds": 60
+					},
+					"artwork": {
+						"url": "data:image/png;base64,AAAA"
+					},
+					"links": {
+						"listen": "javascript:alert(3)"
+					},
+					"podcast": {
+						"title": "Show & <Tell>",
+						"links": {
+							"listen": "https://show.fm/show-and-tell?a=1&b=2"
+						}
+					}
+				},
+				{
+					"id": "11111111-2222-4333-8444-555555555555",
+					"title": "Episode Two",
+					"published_at": "2026-07-01T10:00:00.000Z",
+					"description": "We talk about signals, noise and the space between.",
+					"season_number": 2,
+					"episode_number": 4,
+					"audio": {
+						"url": "https://m.cdn.media/podcasts/test-signal/episode-one.mp3",
+						"content_type": "audio/mpeg",
+						"duration_seconds": 1843
+					},
+					"artwork": {
+						"url": "https://m.cdn.media/podcasts/test-signal/cover.jpg"
+					},
+					"links": {
+						"listen": "https://show.fm/test-signal/e/episode-two"
+					},
+					"podcast": {
+						"title": "Test Signal",
+						"links": {
+							"listen": "https://show.fm/test-signal"
+						},
+						"branding": {
+							"show_powered_by": true
+						}
+					}
+				}
+			]
+		],
+		"expected": "<ul><li>&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt; &amp; &#39;quoted&#39; &lt;b&gt;bold&lt;/b&gt;</li><li><a href=\"https://show.fm/test-signal/e/episode-two\">Episode Two</a></li></ul>"
+	},
+	{
+		"name": "list-limit.json",
+		"function": "renderEpisodeListHTML",
+		"args": [
+			{
+				"title": "Test Signal",
+				"links": {
+					"listen": "https://show.fm/test-signal"
+				}
+			},
+			[
+				{
+					"id": "11111111-2222-4333-8444-555555555555",
+					"title": "Episode One: The Signal",
+					"published_at": "2026-07-01T10:00:00.000Z",
+					"description": "We talk about signals, noise and the space between.",
+					"season_number": 2,
+					"episode_number": 4,
+					"audio": {
+						"url": "https://m.cdn.media/podcasts/test-signal/episode-one.mp3",
+						"content_type": "audio/mpeg",
+						"duration_seconds": 1843
+					},
+					"artwork": {
+						"url": "https://m.cdn.media/podcasts/test-signal/cover.jpg"
+					},
+					"links": {
+						"listen": "https://show.fm/test-signal/e/episode-one"
+					},
+					"podcast": {
+						"title": "Test Signal",
+						"links": {
+							"listen": "https://show.fm/test-signal"
+						},
+						"branding": {
+							"show_powered_by": true
+						}
+					}
+				},
+				{
+					"id": "11111111-2222-4333-8444-555555555555",
+					"title": "Episode Two",
+					"published_at": "2026-07-01T10:00:00.000Z",
+					"description": "We talk about signals, noise and the space between.",
+					"season_number": 2,
+					"episode_number": 4,
+					"audio": {
+						"url": "https://m.cdn.media/podcasts/test-signal/episode-one.mp3",
+						"content_type": "audio/mpeg",
+						"duration_seconds": 1843
+					},
+					"artwork": {
+						"url": "https://m.cdn.media/podcasts/test-signal/cover.jpg"
+					},
+					"links": {
+						"listen": "https://show.fm/test-signal/e/episode-two"
+					},
+					"podcast": {
+						"title": "Test Signal",
+						"links": {
+							"listen": "https://show.fm/test-signal"
+						},
+						"branding": {
+							"show_powered_by": true
+						}
+					}
+				},
+				{
+					"id": "11111111-2222-4333-8444-555555555555",
+					"title": "Episode Three",
+					"published_at": "2026-07-01T10:00:00.000Z",
+					"description": "We talk about signals, noise and the space between.",
+					"season_number": 2,
+					"episode_number": 4,
+					"audio": {
+						"url": "https://m.cdn.media/podcasts/test-signal/episode-one.mp3",
+						"content_type": "audio/mpeg",
+						"duration_seconds": 1843
+					},
+					"artwork": {
+						"url": "https://m.cdn.media/podcasts/test-signal/cover.jpg"
+					},
+					"links": {
+						"listen": "https://show.fm/test-signal/e/episode-three"
+					},
+					"podcast": {
+						"title": "Test Signal",
+						"links": {
+							"listen": "https://show.fm/test-signal"
+						},
+						"branding": {
+							"show_powered_by": true
+						}
+					}
+				}
+			],
+			{
+				"limit": 2
+			}
+		],
+		"expected": "<ul><li><a href=\"https://show.fm/test-signal/e/episode-one\">Episode One: The Signal</a></li><li><a href=\"https://show.fm/test-signal/e/episode-two\">Episode Two</a></li></ul>"
+	},
+	{
+		"name": "list.json",
+		"function": "renderEpisodeListHTML",
+		"args": [
+			{
+				"title": "Test Signal",
+				"links": {
+					"listen": "https://show.fm/test-signal"
+				}
+			},
+			[
+				{
+					"id": "11111111-2222-4333-8444-555555555555",
+					"title": "Episode One: The Signal",
+					"published_at": "2026-07-01T10:00:00.000Z",
+					"description": "We talk about signals, noise and the space between.",
+					"season_number": 2,
+					"episode_number": 4,
+					"audio": {
+						"url": "https://m.cdn.media/podcasts/test-signal/episode-one.mp3",
+						"content_type": "audio/mpeg",
+						"duration_seconds": 1843
+					},
+					"artwork": {
+						"url": "https://m.cdn.media/podcasts/test-signal/cover.jpg"
+					},
+					"links": {
+						"listen": "https://show.fm/test-signal/e/episode-one"
+					},
+					"podcast": {
+						"title": "Test Signal",
+						"links": {
+							"listen": "https://show.fm/test-signal"
+						},
+						"branding": {
+							"show_powered_by": true
+						}
+					}
+				},
+				{
+					"id": "11111111-2222-4333-8444-555555555555",
+					"title": "Episode Two",
+					"published_at": "2026-07-01T10:00:00.000Z",
+					"description": "We talk about signals, noise and the space between.",
+					"season_number": 2,
+					"episode_number": 4,
+					"audio": {
+						"url": "https://m.cdn.media/podcasts/test-signal/episode-one.mp3",
+						"content_type": "audio/mpeg",
+						"duration_seconds": 1843
+					},
+					"artwork": {
+						"url": "https://m.cdn.media/podcasts/test-signal/cover.jpg"
+					},
+					"links": {
+						"listen": "https://show.fm/test-signal/e/episode-two"
+					},
+					"podcast": {
+						"title": "Test Signal",
+						"links": {
+							"listen": "https://show.fm/test-signal"
+						},
+						"branding": {
+							"show_powered_by": true
+						}
+					}
+				},
+				{
+					"id": "11111111-2222-4333-8444-555555555555",
+					"title": "Episode Three",
+					"published_at": "2026-07-01T10:00:00.000Z",
+					"description": "We talk about signals, noise and the space between.",
+					"season_number": 2,
+					"episode_number": 4,
+					"audio": {
+						"url": "https://m.cdn.media/podcasts/test-signal/episode-one.mp3",
+						"content_type": "audio/mpeg",
+						"duration_seconds": 1843
+					},
+					"artwork": {
+						"url": "https://m.cdn.media/podcasts/test-signal/cover.jpg"
+					},
+					"links": {
+						"listen": "https://show.fm/test-signal/e/episode-three"
+					},
+					"podcast": {
+						"title": "Test Signal",
+						"links": {
+							"listen": "https://show.fm/test-signal"
+						},
+						"branding": {
+							"show_powered_by": true
+						}
+					}
+				}
+			]
+		],
+		"expected": "<ul><li><a href=\"https://show.fm/test-signal/e/episode-one\">Episode One: The Signal</a></li><li><a href=\"https://show.fm/test-signal/e/episode-two\">Episode Two</a></li><li><a href=\"https://show.fm/test-signal/e/episode-three\">Episode Three</a></li></ul>"
+	},
+	{
+		"name": "entities-and-url-quotes",
+		"function": "renderEpisodeHTML",
+		"args": [
+			{
+				"title": "&amp; <script>\"' café 🎙",
+				"links": {
+					"listen": " HTTPS://example.test/\" onclick=\"bad?a=1&b=2 "
+				},
+				"audio": {
+					"url": "javascript:alert(1)"
+				}
+			}
+		],
+		"expected": "<a href=\"HTTPS://example.test/&quot; onclick=&quot;bad?a=1&amp;b=2\">&amp;amp; &lt;script&gt;&quot;&#39; café 🎙</a>"
+	},
+	{
+		"name": "source-uri-component",
+		"function": "renderEpisodeHTML",
+		"args": [
+			{
+				"title": "Tagged",
+				"links": {
+					"listen": "data:text/html,hi"
+				},
+				"audio": {
+					"url": "https://example.test/a.mp3?x=1"
+				}
+			},
+			{
+				"sourceTag": "WP !'()* /?&é"
+			}
+		],
+		"expected": "Tagged<audio controls preload=\"none\" src=\"https://example.test/a.mp3?x=1&amp;src=WP%20!&#39;()*%20%2F%3F%26%C3%A9\"></audio>"
+	},
+	{
+		"name": "jsonld-offset-fraction",
+		"function": "episodeJsonLd",
+		"args": [
+			{
+				"title": "</script> & \"    ",
+				"links": {
+					"listen": "javascript:bad"
+				},
+				"published_at": "2026-10-07T10:20:30.123+01:00",
+				"audio": {
+					"url": "https://example.test/a",
+					"duration_seconds": 3600.5
+				},
+				"season_number": 0,
+				"episode_number": 0
+			}
+		],
+		"expected": "{\"@context\":\"https://schema.org\",\"@type\":\"PodcastEpisode\",\"name\":\"\\u003c/script\\u003e \\u0026 \\\" \\u2028 \\u2029\",\"datePublished\":\"2026-10-07T09:20:30.123Z\",\"duration\":\"PT1H1S\",\"episodeNumber\":0,\"partOfSeason\":{\"@type\":\"PodcastSeason\",\"seasonNumber\":0},\"associatedMedia\":{\"@type\":\"MediaObject\",\"contentUrl\":\"https://example.test/a\"}}"
+	},
+	{
+		"name": "negative-limit",
+		"function": "renderEpisodeListHTML",
+		"args": [
+			{
+				"title": "Empty & safe",
+				"links": {
+					"listen": "javascript:bad"
+				}
+			},
+			[
+				{
+					"title": "Hidden",
+					"links": {
+						"listen": "https://example.test"
+					}
+				}
+			],
+			{
+				"limit": -2
+			}
+		],
+		"expected": "Empty &amp; safe"
+	}
+]

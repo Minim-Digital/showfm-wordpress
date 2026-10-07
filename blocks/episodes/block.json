@@ -1,0 +1,80 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "showfm/episodes",
+	"version": "0.1.0",
+	"title": "show.fm Episodes",
+	"category": "embed",
+	"icon": "microphone",
+	"description": "A show.fm episodes with a server-rendered fallback.",
+	"textdomain": "showfm",
+	"attributes": {
+		"theme": {
+			"type": "string"
+		},
+		"accent": {
+			"type": "string"
+		},
+		"api": {
+			"type": "string"
+		},
+		"credit": {
+			"type": "string"
+		},
+		"load": {
+			"type": "string"
+		},
+		"lang": {
+			"type": "string"
+		},
+		"podcast": {
+			"type": "string"
+		},
+		"variant": {
+			"type": "string"
+		},
+		"layout": {
+			"type": "string"
+		},
+		"count": {
+			"type": "string"
+		},
+		"season": {
+			"type": "string"
+		},
+		"hide": {
+			"type": "string"
+		},
+		"descriptions": {
+			"type": "string"
+		},
+		"mini-player": {
+			"type": "string"
+		},
+		"heading-level": {
+			"type": "string"
+		},
+		"snapshot": {
+			"type": "object",
+			"default": {}
+		}
+	},
+	"supports": {
+		"html": false,
+		"color": {
+			"text": true,
+			"background": true
+		},
+		"spacing": {
+			"margin": true,
+			"padding": true
+		},
+		"typography": {
+			"fontSize": true,
+			"lineHeight": true,
+			"__experimentalFontFamily": true
+		}
+	},
+	"editorScript": "showfm-block-editor",
+	"providesContext": {}
+}

@@ -5,3 +5,6 @@
 /vendor
 /test-results
 /playwright-report
+
+/assets/showfm-embed
+/tests/fixtures/parity.json
