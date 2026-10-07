@@ -115,7 +115,7 @@ final class Plugin {
 	 * Registers the settings screen's REST routes.
 	 */
 	public static function register_admin_routes(): void {
-		$status = new Admin_Status( self::connection(), new Account( self::connection(), self::api_client() ), new Notices( self::connection() ) );
+		$status = new Admin_Status( self::connection() );
 		( new Admin_Endpoint( self::connect(), $status ) )->register();
 	}
 

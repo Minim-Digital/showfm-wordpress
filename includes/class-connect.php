@@ -245,9 +245,10 @@ final class Connect {
 	 * Starts the browser flow for a user and returns the my.show.fm address to send them to.
 	 * Any flow the user had in progress is replaced. Makes no HTTP request.
 	 *
-	 * @param int $user_id The admin starting the flow.
+	 * @param int                                    $user_id  The admin starting the flow.
+	 * @param array{credentials:bool,id:string}|null $snapshot The state read at the start of the request; read once now when not given.
 	 */
-	public function start( int $user_id ): string {
+	public function start( int $user_id, ?array $snapshot = null ): string {
 		$this->forget_flow( $user_id );
 
 		$pkce  = self::new_pkce();
@@ -259,6 +260,9 @@ final class Connect {
 				'verifier'  => $pkce['verifier'],
 				'challenge' => $pkce['challenge'],
 				'return'    => $token,
+				// The state this flow started from, read once: every outcome it records
+				// belongs to this state, never to one read later.
+				'snapshot'  => $snapshot ?? $this->connection->pinned()->snapshot(),
 			),
 			self::FLOW_TTL
 		);
@@ -324,11 +328,14 @@ final class Connect {
 	 */
 	public function handle_return( int $user_id, array $query ): ?string {
 		$clean = self::settings_url();
-		$flow  = get_transient( self::FLOW_PREFIX . $user_id );
+		if ( ! isset( $query['code'] ) && ! isset( $query['state'] ) && ! isset( $query[ self::RETURN_ARG ] ) ) {
+			return null;
+		}
+		// Read once for this request; the flow's own outcomes use the state it started from.
+		$here = $this->connection->pinned();
+		$flow = get_transient( self::FLOW_PREFIX . $user_id );
+		$from = self::flow_snapshot( $flow ) ?? $here->snapshot();
 		if ( ! isset( $query['code'] ) && ! isset( $query['state'] ) ) {
-			if ( ! isset( $query[ self::RETURN_ARG ] ) ) {
-				return null;
-			}
 			// Back from show.fm without approval. Only the flow's own token, while the flow
 			// still waits for its code, counts as cancelled: a stale or crafted link changes
 			// nothing.
@@ -341,7 +348,7 @@ final class Connect {
 				&& hash_equals( $flow['return'], $token )
 			) {
 				$this->forget_flow( $user_id );
-				$this->fail( $user_id, self::ERROR_CANCELLED );
+				$this->fail( $user_id, self::ERROR_CANCELLED, 0, $from );
 			}
 			return $clean;
 		}
@@ -352,11 +359,11 @@ final class Connect {
 		// A stray or crafted link neither cancels the flow in progress nor replaces a notice
 		// the admin has not seen yet.
 		if ( ! is_array( $flow ) || ! is_string( $flow['state'] ?? null ) || ! is_string( $flow['verifier'] ?? null ) ) {
-			$this->fail_unless_noted( $user_id, self::ERROR_EXPIRED );
+			$this->fail_unless_noted( $user_id, self::ERROR_EXPIRED, $here );
 			return $clean;
 		}
 		if ( ! hash_equals( $flow['state'], $state ) ) {
-			$this->fail_unless_noted( $user_id, self::ERROR_STATE_MISMATCH );
+			$this->fail_unless_noted( $user_id, self::ERROR_STATE_MISMATCH, $here );
 			return $clean;
 		}
 
@@ -364,7 +371,7 @@ final class Connect {
 		self::forget_challenge( $flow['state'] );
 		if ( ! preg_match( self::CODE_PATTERN, $code ) ) {
 			delete_transient( self::FLOW_PREFIX . $user_id );
-			$this->fail( $user_id, self::ERROR_EXCHANGE_REFUSED );
+			$this->fail( $user_id, self::ERROR_EXCHANGE_REFUSED, 0, $from );
 			return $clean;
 		}
 
@@ -373,6 +380,7 @@ final class Connect {
 			array(
 				'verifier' => $flow['verifier'],
 				'code'     => $code,
+				'snapshot' => $from,
 			),
 			self::FLOW_TTL
 		);
@@ -392,6 +400,7 @@ final class Connect {
 		}
 		// Taken before the request, so a reload cannot send the code twice.
 		delete_transient( self::FLOW_PREFIX . $user_id );
+		$from = self::flow_snapshot( $flow ) ?? $this->connection->pinned()->snapshot();
 
 		$code     = $flow['code'];
 		$verifier = $flow['verifier'];
@@ -405,7 +414,7 @@ final class Connect {
 		);
 
 		if ( ! $result->is( Api_Result::SUCCESS ) ) {
-			$this->fail( $user_id, self::error_for( $result, self::ERROR_EXCHANGE_REFUSED ), $result->retry_after() );
+			$this->fail( $user_id, self::error_for( $result, self::ERROR_EXCHANGE_REFUSED ), $result->retry_after(), $from );
 			return true;
 		}
 
@@ -415,11 +424,11 @@ final class Connect {
 			|| ! is_string( $data['api_key'] ?? null )
 			|| ! preg_match( self::KEY_PATTERN, $data['api_key'] )
 		) {
-			$this->fail( $user_id, self::ERROR_BAD_RESPONSE );
+			$this->fail( $user_id, self::ERROR_BAD_RESPONSE, 0, $from );
 			return true;
 		}
 
-		$this->record( $user_id, $this->store( $data['api_key'], $data ) );
+		$this->record( $user_id, $this->store( $data['api_key'], $data ), $from );
 		return true;
 	}
 
@@ -700,12 +709,30 @@ final class Connect {
 	/**
 	 * Records an error for the settings screen.
 	 *
-	 * @param int    $user_id     The admin.
-	 * @param string $error       Error type.
-	 * @param int    $retry_after Seconds to wait, for a rate limit.
+	 * @param int                                    $user_id     The admin.
+	 * @param string                                 $error       Error type.
+	 * @param int                                    $retry_after Seconds to wait, for a rate limit.
+	 * @param array{credentials:bool,id:string}|null $snapshot    The state the attempt started from; read once now when not given.
 	 */
-	public function fail( int $user_id, string $error, int $retry_after = 0 ): void {
-		$this->record( $user_id, self::outcome( $error, $retry_after ) );
+	public function fail( int $user_id, string $error, int $retry_after = 0, ?array $snapshot = null ): void {
+		$this->record( $user_id, self::outcome( $error, $retry_after ), $snapshot ?? $this->connection->pinned()->snapshot() );
+	}
+
+	/**
+	 * The snapshot a flow carries, if it is well formed.
+	 *
+	 * @param mixed $flow Flow transient.
+	 * @return array{credentials:bool,id:string}|null
+	 */
+	private static function flow_snapshot( $flow ): ?array {
+		$snapshot = is_array( $flow ) ? ( $flow['snapshot'] ?? null ) : null;
+		if ( ! is_array( $snapshot ) || ! is_bool( $snapshot['credentials'] ?? null ) || ! is_string( $snapshot['id'] ?? null ) ) {
+			return null;
+		}
+		return array(
+			'credentials' => $snapshot['credentials'],
+			'id'          => $snapshot['id'],
+		);
 	}
 
 	/**
@@ -713,33 +740,36 @@ final class Connect {
 	 * would hide (another connection, or a "Connected" whose key no longer works) is not
 	 * waiting, so it never keeps a new failure from being seen.
 	 *
-	 * @param int    $user_id The admin.
-	 * @param string $error   Error type.
+	 * @param int        $user_id The admin.
+	 * @param string     $error   Error type.
+	 * @param Connection $here    This request's pinned connection, read once.
 	 */
-	private function fail_unless_noted( int $user_id, string $error ): void {
-		$result  = self::result( $user_id );
-		$waiting = null !== $result
-			&& Connection::state_id() === $result['state_id']
-			&& ( self::STATUS_CONNECTED !== $result['status'] || $this->connection->is_connected() );
+	private function fail_unless_noted( int $user_id, string $error, Connection $here ): void {
+		$snapshot = $here->snapshot();
+		$result   = self::result( $user_id );
+		$waiting  = null !== $result
+			&& $snapshot['id'] === $result['state_id']
+			&& ( self::STATUS_CONNECTED !== $result['status'] || $here->is_connected() );
 		if ( ! $waiting ) {
-			$this->fail( $user_id, $error );
+			$this->fail( $user_id, $error, 0, $snapshot );
 		}
 	}
 
 	/**
 	 * Records an outcome for the settings screen.
 	 *
-	 * @param int                                                             $user_id The admin.
-	 * @param array{status:string,error:string,retry_after:int,reason:string} $outcome Outcome.
+	 * @param int                                                             $user_id  The admin.
+	 * @param array{status:string,error:string,retry_after:int,reason:string} $outcome  Outcome.
+	 * @param array{credentials:bool,id:string}                               $snapshot The state the attempt started from.
 	 */
-	private function record( int $user_id, array $outcome ): void {
+	private function record( int $user_id, array $outcome, array $snapshot ): void {
 		// The state the outcome belongs to: the id this connect wrote with its credentials,
 		// or for a failure the state it leaves (see Connection::failure_state_id()). The
 		// settings screen shows the outcome only while that id is still the stored one, so
 		// any later connect, reconnect or disconnect (another tab, another admin, WP-CLI)
 		// hides it for good, however the requests interleave. A "Connected" with no save of
 		// its own in this request gets null, which matches nothing.
-		$outcome['state_id'] = self::STATUS_CONNECTED === $outcome['status'] ? $this->connection->saved_state_id() : Connection::failure_state_id();
+		$outcome['state_id'] = self::STATUS_CONNECTED === $outcome['status'] ? $this->connection->saved_state_id() : Connection::failure_state_id( $snapshot );
 		set_transient( self::RESULT_PREFIX . $user_id, $outcome, self::RESULT_TTL );
 	}
 

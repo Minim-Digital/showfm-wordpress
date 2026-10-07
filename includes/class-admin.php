@@ -137,13 +137,15 @@ final class Admin {
 		}
 		check_admin_referer( Connect::ACTION );
 
+		// The state this attempt starts from, read once and passed to whatever it records.
+		$snapshot = $this->connection->pinned()->snapshot();
 		if ( ! Connect::site_is_https() ) {
-			$this->connect->fail( get_current_user_id(), Connect::ERROR_INSECURE );
+			$this->connect->fail( get_current_user_id(), Connect::ERROR_INSECURE, 0, $snapshot );
 			wp_safe_redirect( Connect::settings_url(), 303 );
 			exit;
 		}
 
-		$url = $this->connect->start( get_current_user_id() );
+		$url = $this->connect->start( get_current_user_id(), $snapshot );
 		add_filter( 'allowed_redirect_hosts', array( self::class, 'allow_app_host' ) );
 		wp_safe_redirect( $url, 303 );
 		exit;

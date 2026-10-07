@@ -448,11 +448,12 @@ class Test_Connect extends WP_UnitTestCase {
 				'error'       => '',
 				'retry_after' => 0,
 				'reason'      => '',
-			)
+			),
+			$this->connection->pinned()->snapshot()
 		);
 
 		$this->assertNull( Connect::result( $this->user_id )['state_id'], 'Never attached to another request\'s credentials.' );
-		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected' ) );
+		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected', Connection::state_id() ) );
 	}
 
 	/**
@@ -533,12 +534,147 @@ class Test_Connect extends WP_UnitTestCase {
 
 		$result = Connect::result( $this->user_id );
 		$this->assertSame( Connection::state_id(), $result['state_id'], 'It belongs to the connection it saved.' );
-		$this->assertNotNull( ShowFM\Admin_Status::current_result( $result, 'connected' ), 'Shown straight after its own save.' );
+		$this->assertNotNull( ShowFM\Admin_Status::current_result( $result, 'connected', Connection::state_id() ), 'Shown straight after its own save.' );
 
 		// WP-CLI or another tab stores a new connection in the same second.
 		$this->assertTrue( ( new Connection() )->save( 'showfm_live_OTHERKEYabcdefghijklmnopq', self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
 
-		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected' ) );
+		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected', Connection::state_id() ) );
+	}
+
+	public function test_a_failed_reconnect_stays_with_the_state_it_started_from_when_another_tab_saves(): void {
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		$started = Connection::state_id();
+		$this->returned();
+		$this->http->respond_with(
+			function () {
+				// Another tab reconnects while this exchange is in flight.
+				( new Connection() )->save( 'showfm_live_OTHERKEYabcdefghijklmnopq', self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS );
+				return array( 400, '{"error":{"code":"invalid_request","message":"The code is invalid."}}' );
+			}
+		);
+
+		$this->connect->complete_pending( $this->user_id );
+
+		$this->assertSame( $started, Connect::result( $this->user_id )['state_id'], 'Bound to the state the flow started from.' );
+		$this->assertNotSame( $started, Connection::state_id() );
+		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected', Connection::state_id() ), 'Never shown against the new connection.' );
+	}
+
+	public function test_a_failed_reconnect_stays_with_its_state_when_another_admin_disconnects(): void {
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		$started = Connection::state_id();
+		$this->returned();
+		$this->http->respond_with(
+			static function () {
+				( new Connection() )->disconnect();
+				return array( 400, '{"error":{"code":"invalid_request","message":"The code is invalid."}}' );
+			}
+		);
+
+		$this->connect->complete_pending( $this->user_id );
+
+		$this->assertSame( $started, Connect::result( $this->user_id )['state_id'] );
+		$this->assertSame( Connection::STATE_DISCONNECTED, ( new Connection() )->state(), 'The disconnect stands.' );
+		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'not_connected', Connection::state_id() ) );
+	}
+
+	public function test_a_state_changed_between_start_and_return_binds_the_cancel_to_the_start(): void {
+		$this->connection->disconnect();
+		$this->started_state();
+		$token = get_transient( Connect::FLOW_PREFIX . $this->user_id )['return'];
+		$this->assertFalse( get_transient( Connect::FLOW_PREFIX . $this->user_id )['snapshot']['credentials'] );
+
+		// WP-CLI connects while the admin is on show.fm.
+		$this->assertTrue( ( new Connection() )->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		$this->connect->handle_return( $this->user_id, array( Connect::RETURN_ARG => $token ) );
+
+		$this->assertSame( self::KEY, ( new Connection() )->key(), 'The new credentials are untouched.' );
+		$this->assertNull( Connect::result( $this->user_id )['state_id'], 'The cancel belongs to the state that has gone, so it matches nothing.' );
+		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected', Connection::state_id() ) );
+	}
+
+	public function test_the_flow_carries_the_state_it_started_from_without_the_credentials(): void {
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+
+		$this->started_state();
+
+		$flow = get_transient( Connect::FLOW_PREFIX . $this->user_id );
+		$this->assertSame(
+			array(
+				'credentials' => true,
+				'id'          => Connection::state_id(),
+			),
+			$flow['snapshot']
+		);
+		$this->assertStringNotContainsString( get_option( Connection::OPTION )['c'], maybe_serialize( $flow ), 'Only the id and a flag, never the ciphertext.' );
+	}
+
+	/**
+	 * @dataProvider one_read_flows
+	 *
+	 * @param string $flow Flow to run.
+	 */
+	public function test_each_flow_reads_the_connection_once( string $flow ): void {
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		$state = $this->started_state();
+		if ( 'exchange failure' === $flow ) {
+			$this->connect->handle_return(
+				$this->user_id,
+				array(
+					'code'  => self::CODE,
+					'state' => $state,
+				)
+			);
+			$this->http->respond( 400, '{"error":{"code":"invalid_request","message":"No."}}' );
+		}
+		$reads = 0;
+		$count = static function ( $value ) use ( &$reads ) {
+			++$reads;
+			return $value;
+		};
+		add_filter( 'option_' . Connection::OPTION, $count );
+		try {
+			switch ( $flow ) {
+				case 'state mismatch':
+					$this->connect->handle_return(
+						$this->user_id,
+						array(
+							'code'  => self::CODE,
+							'state' => str_repeat( 'x', 43 ),
+						)
+					);
+					break;
+				case 'cancel':
+					$this->connect->handle_return( $this->user_id, array( Connect::RETURN_ARG => get_transient( Connect::FLOW_PREFIX . $this->user_id )['return'] ) );
+					break;
+				case 'exchange failure':
+					$this->connect->complete_pending( $this->user_id );
+					break;
+				case 'settings view':
+					( new ShowFM\Admin_Status( $this->connection ) )->view( $this->user_id );
+					break;
+			}
+		} finally {
+			remove_filter( 'option_' . Connection::OPTION, $count );
+		}
+
+		if ( 'settings view' !== $flow ) {
+			$this->assertNotNull( Connect::result( $this->user_id ), 'The flow recorded its outcome.' );
+		}
+		$this->assertSame( 'exchange failure' === $flow ? 0 : 1, $reads, 'The exchange uses the snapshot its flow carries; every other request reads once.' );
+	}
+
+	/**
+	 * @return array<string,array{string}>
+	 */
+	public function one_read_flows(): array {
+		return array(
+			'state mismatch'   => array( 'state mismatch' ),
+			'cancel'           => array( 'cancel' ),
+			'exchange failure' => array( 'exchange failure' ),
+			'settings view'    => array( 'settings view' ),
+		);
 	}
 
 	public function test_every_state_writes_its_own_random_id(): void {
@@ -573,13 +709,13 @@ class Test_Connect extends WP_UnitTestCase {
 		$this->assertSame( array( 'i' ), array_keys( get_option( Connection::OPTION ) ), 'Created on first write.' );
 		$this->assertSame( Connection::state_id(), Connect::result( $this->user_id )['state_id'] );
 		$this->assertSame( Connection::STATE_DISCONNECTED, $this->connection->state() );
-		$this->assertNotNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'not_connected' ) );
+		$this->assertNotNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'not_connected', Connection::state_id() ) );
 	}
 
 	public function test_a_failure_then_connect_and_disconnect_never_brings_the_failure_back(): void {
 		// Admin A's attempt fails while the site is disconnected.
 		$this->connect->fail( $this->user_id, Connect::ERROR_CANCELLED );
-		$this->assertNotNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'not_connected' ) );
+		$this->assertNotNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'not_connected', Connection::state_id() ) );
 
 		// WP-CLI connects, then another admin disconnects (neither clears A's result).
 		$this->assertTrue( ( new Connection() )->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
@@ -587,7 +723,7 @@ class Test_Connect extends WP_UnitTestCase {
 
 		// A reloads: disconnected again, but a different disconnected state.
 		$this->assertSame( Connection::STATE_DISCONNECTED, $this->connection->state() );
-		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'not_connected' ), 'No stale failure.' );
+		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'not_connected', Connection::state_id() ), 'No stale failure.' );
 	}
 
 	public function test_failures_in_two_tabs_while_disconnected_each_start_a_new_state(): void {
@@ -599,7 +735,7 @@ class Test_Connect extends WP_UnitTestCase {
 
 		$this->assertNotSame( $first, Connect::result( $other )['state_id'] );
 		$this->assertSame( Connection::state_id(), Connect::result( $other )['state_id'], 'The newest attempt is the current state.' );
-		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'not_connected' ), 'The older one is overtaken.' );
+		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'not_connected', Connection::state_id() ), 'The older one is overtaken.' );
 	}
 
 	public function test_a_failure_never_removes_credentials_saved_at_the_same_moment(): void {
@@ -622,7 +758,7 @@ class Test_Connect extends WP_UnitTestCase {
 		$this->assertTrue( $nested );
 		$this->assertSame( self::KEY, ( new Connection() )->key(), 'The credentials saved meanwhile are kept.' );
 		$this->assertNull( Connect::result( $this->user_id )['state_id'], 'The failure matches nothing.' );
-		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected' ) );
+		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected', Connection::state_id() ) );
 	}
 
 	public function test_a_failed_reconnect_keeps_the_connections_state_id(): void {
@@ -666,7 +802,7 @@ class Test_Connect extends WP_UnitTestCase {
 		$this->http->respond( 200, $this->exchange_body() );
 		$this->http->respond( 200, '{"data":{"status":"active","activated":true}}' );
 		$this->connect->complete_pending( $this->user_id );
-		$this->assertNotNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected' ) );
+		$this->assertNotNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected', Connection::state_id() ) );
 
 		// `wp showfm connect` registers a new key in a separate process.
 		$cli_connection = new Connection();
@@ -675,7 +811,7 @@ class Test_Connect extends WP_UnitTestCase {
 		$this->http->respond( 200, '{"data":{"status":"active"}}' );
 		$this->assertSame( Connect::STATUS_CONNECTED, $cli->register_with_key( 'showfm_live_CLIKEYabcdefghijklmnopqrs' )['status'] );
 
-		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected' ) );
+		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected', Connection::state_id() ) );
 	}
 
 	public function test_reconnecting_after_a_disconnect_gets_a_new_id(): void {
@@ -684,15 +820,15 @@ class Test_Connect extends WP_UnitTestCase {
 		$this->connect->fail( $this->user_id, Connect::ERROR_EXPIRED );
 
 		$this->connection->disconnect();
-		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'not_connected' ), 'Recorded against the old connection.' );
+		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'not_connected', Connection::state_id() ), 'Recorded against the old connection.' );
 		$this->connect->fail( $this->user_id, Connect::ERROR_CANCELLED );
 		$this->assertSame( Connection::state_id(), Connect::result( $this->user_id )['state_id'], 'Recorded against this disconnected state.' );
-		$this->assertNotNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'not_connected' ), 'Shown while that state lasts.' );
+		$this->assertNotNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'not_connected', Connection::state_id() ), 'Shown while that state lasts.' );
 
 		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
 
 		$this->assertNotSame( $first, Connection::state_id() );
-		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected' ), 'The disconnected failure is hidden once connected.' );
+		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected', Connection::state_id() ), 'The disconnected failure is hidden once connected.' );
 	}
 
 	public function test_upgrade_from_the_counter(): void {
@@ -735,7 +871,7 @@ class Test_Connect extends WP_UnitTestCase {
 			60
 		);
 		$this->assertNull( Connect::result( $this->user_id )['state_id'], 'Nor one keyed by the connection id of the previous build.' );
-		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected' ) );
+		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected', Connection::state_id() ) );
 		$this->assertNotFalse( has_action( 'admin_init', array( Connection::class, 'upgrade' ) ) );
 
 		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
@@ -765,7 +901,7 @@ class Test_Connect extends WP_UnitTestCase {
 
 		$this->assertSame( 'showfm_live_BBBBKEYabcdefghijklmnopqr', ( new Connection() )->key() );
 		$this->assertNotSame( Connection::state_id(), Connect::result( $this->user_id )['state_id'] );
-		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected' ), 'A\'s "Connected" does not describe B\'s credentials.' );
+		$this->assertNull( ShowFM\Admin_Status::current_result( Connect::result( $this->user_id ), 'connected', Connection::state_id() ), 'A\'s "Connected" does not describe B\'s credentials.' );
 	}
 
 	public function test_exchange_stores_the_credentials_and_verifies(): void {

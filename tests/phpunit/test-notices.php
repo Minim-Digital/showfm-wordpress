@@ -193,6 +193,23 @@ class Test_Notices extends WP_UnitTestCase {
 		);
 	}
 
+	public function test_the_dashboard_notice_reads_the_connection_once(): void {
+		$this->connect( time() + 5 * DAY_IN_SECONDS );
+		update_option( Connection::PAUSED_OPTION, 1700000000 );
+		$reads = 0;
+		$count = static function ( $value ) use ( &$reads ) {
+			++$reads;
+			return $value;
+		};
+		add_filter( 'option_' . Connection::OPTION, $count );
+
+		$html = $this->render_on( 'dashboard' );
+
+		remove_filter( 'option_' . Connection::OPTION, $count );
+		$this->assertStringContainsString( 'paused:1700000000', $html );
+		$this->assertSame( 1, $reads );
+	}
+
 	public function test_users_who_cannot_manage_options_see_nothing(): void {
 		$this->connect( time() + 5 * DAY_IN_SECONDS );
 		wp_set_current_user( self::factory()->user->create( array( 'role' => 'editor' ) ) );

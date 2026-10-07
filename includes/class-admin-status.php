@@ -33,47 +33,38 @@ final class Admin_Status {
 	private $connection;
 
 	/**
-	 * Account details.
-	 *
-	 * @var Account
-	 */
-	private $account;
-
-	/**
-	 * Notices, for the other tabs.
-	 *
-	 * @var Notices
-	 */
-	private $notices;
-
-	/**
 	 * Builds the view.
 	 *
 	 * @param Connection $connection Connection store.
-	 * @param Account    $account    Account details.
-	 * @param Notices    $notices    Notices.
 	 */
-	public function __construct( Connection $connection, Account $account, Notices $notices ) {
+	public function __construct( Connection $connection ) {
 		$this->connection = $connection;
-		$this->account    = $account;
-		$this->notices    = $notices;
 	}
 
 	/**
-	 * The current state's name.
+	 * The current state's name, from one read of the connection.
 	 */
 	public function state(): string {
-		if ( Connection::STATE_DISCONNECTED === $this->connection->state() ) {
+		return self::state_of( $this->connection->pinned() );
+	}
+
+	/**
+	 * The state's name for a connection the caller has pinned.
+	 *
+	 * @param Connection $connection Pinned connection.
+	 */
+	private static function state_of( Connection $connection ): string {
+		if ( Connection::STATE_DISCONNECTED === $connection->state() ) {
 			return 'not_connected';
 		}
-		if ( $this->connection->is_unreadable() ) {
+		if ( $connection->is_unreadable() ) {
 			return 'unreadable';
 		}
-		$expires = (int) $this->connection->expires_at();
+		$expires = (int) $connection->expires_at();
 		if ( $expires > 0 && $expires <= time() ) {
 			return 'expired';
 		}
-		if ( ! $this->connection->is_connected() ) {
+		if ( ! $connection->is_connected() ) {
 			return 'refused';
 		}
 		if ( Connection::paused_at() > 0 ) {
@@ -93,18 +84,21 @@ final class Admin_Status {
 	 * The Connection tab's data for a user, including the outcome of their last connect
 	 * attempt. Reading has no side effect: the outcome stays until the admin dismisses it,
 	 * starts again, or `Connect::RESULT_TTL` passes, so a reload or another tab still shows it.
+	 * The connection is read once, and every part of the answer (state, key, account, the
+	 * outcome's match and the notice) comes from that one read.
 	 *
 	 * @param int $user_id The admin.
 	 * @return array<string,mixed>
 	 */
 	public function view( int $user_id ): array {
-		$state   = $this->state();
-		$result  = self::current_result( Connect::result( $user_id ), $state );
+		$pinned  = $this->connection->pinned();
+		$state   = self::state_of( $pinned );
+		$result  = self::current_result( Connect::result( $user_id ), $state, $pinned->snapshot()['id'] );
 		$details = 'not_connected' === $state || 'unreadable' === $state ? array(
 			'name'  => '',
 			'shows' => array(),
-		) : $this->account->details();
-		$expires = 'unreadable' === $state ? 0 : (int) $this->connection->expires_at();
+		) : Account::details_for( $pinned->site_id() );
+		$expires = 'unreadable' === $state ? 0 : (int) $pinned->expires_at();
 		$checked = (int) get_option( Health::LAST_SYNC_OPTION, 0 );
 		$next    = wp_next_scheduled( Sync::POLL_HOOK );
 
@@ -115,7 +109,7 @@ final class Admin_Status {
 			'account'     => $details['name'],
 			'shows'       => array_map( array( self::class, 'show' ), $details['shows'] ),
 			'key'         => array(
-				'masked'    => 'not_connected' === $state ? '' : $this->connection->masked_key(),
+				'masked'    => 'not_connected' === $state ? '' : $pinned->masked_key(),
 				'expiresOn' => $expires > 0 ? self::date( $expires ) : '',
 				'refusedOn' => Connection::refused_at() > 0 ? self::date( Connection::refused_at() ) : '',
 			),
@@ -129,7 +123,7 @@ final class Admin_Status {
 			),
 			'planUrl'     => Notices::plan_url(),
 			'sitesUrl'    => self::sites_url( $details['shows'] ),
-			'notice'      => $this->notices->current( $user_id ),
+			'notice'      => ( new Notices( $pinned ) )->current( $user_id ),
 		);
 	}
 
@@ -144,12 +138,13 @@ final class Admin_Status {
 	 * - "Connected" also shows only while the stored key works: not after an expiry, a
 	 *   refusal such as a password change, or a salt change.
 	 *
-	 * @param array{status:string,error:string,retry_after:int,reason:string,state_id:string|null}|null $result Stored outcome.
-	 * @param string                                                                                    $state  Live state.
+	 * @param array{status:string,error:string,retry_after:int,reason:string,state_id:string|null}|null $result   Stored outcome.
+	 * @param string                                                                                    $state    Live state.
+	 * @param string                                                                                    $state_id The state id read with it.
 	 * @return array{status:string,error:string,retry_after:int,reason:string,state_id:string|null}|null
 	 */
-	public static function current_result( ?array $result, string $state ): ?array {
-		if ( null === $result || null === $result['state_id'] || Connection::state_id() !== $result['state_id'] ) {
+	public static function current_result( ?array $result, string $state, string $state_id ): ?array {
+		if ( null === $result || null === $result['state_id'] || $state_id !== $result['state_id'] ) {
 			return null;
 		}
 		$working = in_array( $state, array( 'connected', 'expiring', 'paused', 'scheduled' ), true );
@@ -179,7 +174,7 @@ final class Admin_Status {
 	 * The Connected sites link for the stored connection, read before it is removed.
 	 */
 	public function current_sites_url(): string {
-		return self::sites_url( $this->account->details()['shows'] );
+		return self::sites_url( Account::details_for( $this->connection->pinned()->site_id() )['shows'] );
 	}
 
 	/**

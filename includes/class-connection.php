@@ -58,6 +58,20 @@ final class Connection {
 	 */
 	private $saved_id = null;
 
+	/**
+	 * Whether this instance reads one fixed value instead of the option (see `pinned()`).
+	 *
+	 * @var bool
+	 */
+	private $is_pinned = false;
+
+	/**
+	 * The value a pinned instance reads.
+	 *
+	 * @var mixed
+	 */
+	private $pinned_value = false;
+
 	/** No connection stored. */
 	const STATE_DISCONNECTED = 'disconnected';
 
@@ -86,8 +100,9 @@ final class Connection {
 	 * @return bool Whether the credentials were stored.
 	 */
 	public function save( string $key, string $ping_secret, string $site_id, int $expires_at ): bool {
-		// Only a save that succeeds now may name a connection id as its own.
-		$this->saved_id = null;
+		// Only a save that succeeds now may name a state id as its own.
+		$this->saved_id  = null;
+		$this->is_pinned = false;
 		foreach ( array( $key, $ping_secret, $site_id ) as $value ) {
 			if ( '' === $value || strlen( $value ) > self::MAX_LENGTH || preg_match( '/[\x00-\x20\x7f]/', $value ) ) {
 				return false;
@@ -144,7 +159,7 @@ final class Connection {
 	 * Current state: disconnected, connected or reconnect needed.
 	 */
 	public function state(): string {
-		if ( ! self::has_credentials() ) {
+		if ( ! self::stores_credentials( $this->stored() ) ) {
 			return self::STATE_DISCONNECTED;
 		}
 		if ( self::STATE_RECONNECT_NEEDED === get_option( self::STATE_OPTION ) ) {
@@ -167,15 +182,44 @@ final class Connection {
 	 * changed.
 	 */
 	public function is_unreadable(): bool {
-		return self::has_credentials() && null === $this->credentials();
+		return self::stores_credentials( $this->stored() ) && null === $this->credentials();
 	}
 
 	/**
-	 * Whether credentials (readable or not) are stored. Nothing stored, or only a state id
-	 * after a disconnect, means no connection.
+	 * A copy of this connection that reads the option once, now, and from then on answers
+	 * every question (state, expiry, key, state id) from that one value. A flow takes one at
+	 * its start, so a save or disconnect by another request part way through can never mix
+	 * two states into one answer. Writing through the copy unpins it.
 	 */
-	private static function has_credentials(): bool {
-		return self::stores_credentials( get_option( self::OPTION, false ) );
+	public function pinned(): self {
+		wp_cache_delete( self::OPTION, 'options' );
+		$copy               = new self();
+		$copy->is_pinned    = true;
+		$copy->pinned_value = get_option( self::OPTION, false );
+		return $copy;
+	}
+
+	/**
+	 * The state as a flow carries it: whether credentials were stored, and the state id.
+	 * Small enough to keep in the flow's transient; it never holds the credentials.
+	 *
+	 * @return array{credentials:bool,id:string}
+	 */
+	public function snapshot(): array {
+		$stored = $this->stored();
+		return array(
+			'credentials' => self::stores_credentials( $stored ),
+			'id'          => self::id_of( $stored ),
+		);
+	}
+
+	/**
+	 * The stored value: the pinned one, or the option.
+	 *
+	 * @return mixed
+	 */
+	private function stored() {
+		return $this->is_pinned ? $this->pinned_value : get_option( self::OPTION, false );
 	}
 
 	/**
@@ -332,6 +376,7 @@ final class Connection {
 	 * an outcome recorded before it never matches it.
 	 */
 	public function disconnect(): void {
+		$this->is_pinned = false;
 		update_option( self::OPTION, array( 'i' => wp_generate_uuid4() ), false );
 		delete_option( self::STATE_OPTION );
 		delete_option( self::REFUSED_AT_OPTION );
@@ -346,7 +391,15 @@ final class Connection {
 	 * stored before state ids existed. Only ever compared for equality.
 	 */
 	public static function state_id(): string {
-		$stored = get_option( self::OPTION, false );
+		return self::id_of( get_option( self::OPTION, false ) );
+	}
+
+	/**
+	 * The state id held in a stored value.
+	 *
+	 * @param mixed $stored Stored option value.
+	 */
+	private static function id_of( $stored ): string {
 		if ( false === $stored ) {
 			return '';
 		}
@@ -362,32 +415,36 @@ final class Connection {
 	}
 
 	/**
-	 * The state a failed connect attempt belongs to.
+	 * The state a failed connect attempt belongs to, from the snapshot its flow took at the
+	 * start. It never reads the option again.
 	 *
-	 * - With credentials stored (a failed reconnect keeps them), the stored state id.
-	 * - With no connection, a fresh state of its own: a new random id replaces the stored
-	 *   value only if that value is still exactly what was read (one conditional UPDATE, or an
-	 *   INSERT before anything was ever stored), so it can never remove credentials another
-	 *   request has just saved. If another request got there first, null, which matches
-	 *   nothing.
+	 * - Credentials were stored (a failed reconnect keeps them): the snapshot's state id. If
+	 *   another request has saved or disconnected since, that id no longer matches, so the
+	 *   failure is never shown against the new state.
+	 * - No connection: a fresh state of its own. A new random id replaces the stored value
+	 *   only if it is still exactly the snapshot's state (one conditional UPDATE, or an INSERT
+	 *   when nothing was stored), so it can never remove credentials another request has
+	 *   saved. If another request got there first, null, which matches nothing.
+	 *
+	 * @param array{credentials:bool,id:string} $snapshot The flow's snapshot.
 	 */
-	public static function failure_state_id(): ?string {
+	public static function failure_state_id( array $snapshot ): ?string {
 		global $wpdb;
 
-		wp_cache_delete( self::OPTION, 'options' );
-		$stored = get_option( self::OPTION, false );
-		if ( self::stores_credentials( $stored ) ) {
-			return self::state_id();
+		if ( $snapshot['credentials'] ) {
+			return $snapshot['id'];
 		}
 
 		$id    = wp_generate_uuid4();
 		$value = array( 'i' => $id );
-		if ( false === $stored ) {
+		if ( '' === $snapshot['id'] ) {
 			$swapped = add_option( self::OPTION, $value, '', false );
-		} else {
+		} elseif ( wp_is_uuid( $snapshot['id'], 4 ) ) {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- A compare-and-swap; the options API cannot make a write conditional.
-			$swapped = 1 === $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND option_value = %s", maybe_serialize( $value ), self::OPTION, maybe_serialize( $stored ) ) );
+			$swapped = 1 === $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND option_value = %s", maybe_serialize( $value ), self::OPTION, maybe_serialize( array( 'i' => $snapshot['id'] ) ) ) );
 			wp_cache_delete( self::OPTION, 'options' );
+		} else {
+			$swapped = false;
 		}
 		return $swapped ? $id : null;
 	}
@@ -433,7 +490,7 @@ final class Connection {
 	 * @return array{key:string,ping_secret:string,site_id:string,expires_at:int}|null Null when missing or unreadable.
 	 */
 	private function credentials(): ?array {
-		$stored = get_option( self::OPTION, false );
+		$stored = $this->stored();
 		if (
 			! is_array( $stored )
 			|| self::FORMAT_VERSION !== ( $stored['v'] ?? null )

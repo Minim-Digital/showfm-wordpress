@@ -70,7 +70,8 @@ final class Notices {
 		if ( null === $screen || ! in_array( $screen->id, self::SCREENS, true ) || ! current_user_can( Admin::CAPABILITY ) ) {
 			return;
 		}
-		$notice = $this->current( get_current_user_id() );
+		// One read of the connection answers every question the notice asks.
+		$notice = ( new self( $this->connection->pinned() ) )->current( get_current_user_id() );
 		if ( null === $notice ) {
 			return;
 		}
@@ -173,7 +174,7 @@ final class Notices {
 			);
 		}
 
-		$problem = Health::sync_problem();
+		$problem = Health::sync_problem( $this->connection );
 		if ( '' !== $problem ) {
 			$texts     = array(
 				'row_post_type' => __( 'New episodes aren’t being posted here because the chosen post type isn’t available.', 'showfm' ),

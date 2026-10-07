@@ -79,7 +79,11 @@ undo behaviour and the current server contract gaps. No Migrate tab is included 
   belongs to and shows only while that id is still the stored one, compared for equality
   only, so it never comes back after any later connect or disconnect, from another tab,
   another admin or WP-CLI. "Connected" also shows only while the stored key works, and
-  Disconnect clears the admin's outcome. The counter of earlier development builds
+  Disconnect clears the admin's outcome. Each flow reads the connection once
+  (`Connection::pinned()`): the browser flow keeps that snapshot (`{credentials, id}`, never the
+  ciphertext) in its transient from the start to the exchange, every outcome it records is bound
+  to it, and the settings view, its notice and the Dashboard notice answer from one read. The
+  counter of earlier development builds
   (`showfm_connection_generation`) is deleted on `admin_init` and on uninstall.
 - Disconnect removes the local connection only. The show.fm API has no route for a site key to
   revoke itself, so the key stays valid at show.fm until the site is disconnected there. The

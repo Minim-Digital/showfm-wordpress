@@ -110,9 +110,12 @@ final class Health {
 	/**
 	 * The blocking sync problem recorded for this connection: `row_post_type`, `row_author`,
 	 * `invalid_feed`, or '' for none. Reads local state only.
+	 *
+	 * @param Connection|null $connection The connection to ask, such as a caller's pinned
+	 *                                    copy; the shared one when not given.
 	 */
-	public static function sync_problem(): string {
-		$connection = Plugin::connection();
+	public static function sync_problem( ?Connection $connection = null ): string {
+		$connection = $connection ?? Plugin::connection();
 		if ( ! $connection->is_connected() ) {
 			return '';
 		}

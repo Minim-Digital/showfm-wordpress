@@ -108,12 +108,22 @@ final class Account {
 	 * @return array{name:string,shows:array<int,array{id:string,title:string,slug:string}>}
 	 */
 	public function details(): array {
+		return self::details_for( $this->connection->site_id() );
+	}
+
+	/**
+	 * The stored details for a site id the caller has already read, or empty ones.
+	 *
+	 * @param string|null $site_id Connected site id.
+	 * @return array{name:string,shows:array<int,array{id:string,title:string,slug:string}>}
+	 */
+	public static function details_for( ?string $site_id ): array {
 		$empty  = array(
 			'name'  => '',
 			'shows' => array(),
 		);
 		$stored = get_option( self::OPTION, array() );
-		if ( ! is_array( $stored ) || ( $stored['site'] ?? null ) !== $this->connection->site_id() ) {
+		if ( null === $site_id || ! is_array( $stored ) || ( $stored['site'] ?? null ) !== $site_id ) {
 			return $empty;
 		}
 
