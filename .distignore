@@ -1,0 +1,64 @@
+# Paths kept out of the distribution zip (bin/build-zip.sh, and the WordPress.org deploy).
+# The zip holds only what runs in WordPress: showfm.php, uninstall.php, includes/,
+# build/ and assets/ once they exist, readme.txt and LICENSE.
+
+# Version control and CI
+/.git
+/.github
+/.gitignore
+/.gitattributes
+/.distignore
+
+# AI tool directories and instruction files
+/.claude
+/.codex
+/.cursor
+/.agents
+/.gemini
+/.windsurf
+/.aider*
+/.continue
+/.mcp.json
+
+# Editors and OS files
+/.editorconfig
+/.vscode
+/.idea
+.DS_Store
+
+# Dependencies (the plugin has no Composer runtime dependencies)
+/node_modules
+/vendor
+
+# Tests and test output
+/tests
+/artifacts
+/test-results
+/playwright-report
+/playwright.config.js
+/phpunit.xml.dist
+/phpunit-multisite.xml.dist
+/.phpunit.result.cache
+
+# Development configuration and scripts
+/.wp-env.json
+/.wp-env.override.json
+/.npmrc
+/.nvmrc
+/.prettierrc*
+/.prettierignore
+/.eslintrc*
+/eslint.config.*
+/.stylelintrc*
+/composer.json
+/composer.lock
+/package.json
+/package-lock.json
+/phpcs.xml.dist
+/phpstan.neon.dist
+/bin
+/scripts
+/dist
+
+# Markdown (readme.txt is the WordPress.org readme)
+*.md

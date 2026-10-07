@@ -1,0 +1,9 @@
+parameters:
+	level: 6
+	phpVersion: 70400
+	paths:
+		- showfm.php
+		- uninstall.php
+		- includes/
+	bootstrapFiles:
+		- tests/phpstan-bootstrap.php

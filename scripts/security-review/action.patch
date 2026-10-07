@@ -1,0 +1,205 @@
+--- a/claudecode/github_action_audit.py
++++ b/claudecode/github_action_audit.py
+@@ -58,83 +58,72 @@ class GitHubActionClient:
+         if self.excluded_dirs:
+             print(f"[Debug] Excluded directories: {self.excluded_dirs}", file=sys.stderr)
+     
++    def _git(self, *arguments: str) -> str:
++        workspace = Path(os.environ['GITHUB_WORKSPACE']).resolve()
++        result = subprocess.run(
++            ['git', '--literal-pathspecs', '-C', str(workspace), *arguments],
++            check=True, capture_output=True, timeout=60,
++        )
++        return result.stdout.decode('utf-8', errors='surrogateescape')
++
+     def get_pr_data(self, repo_name: str, pr_number: int) -> Dict[str, Any]:
+-        """Get PR metadata and files from GitHub API.
+-        
+-        Args:
+-            repo_name: Repository name in format "owner/repo"
+-            pr_number: Pull request number
+-            
+-        Returns:
+-            Dictionary containing PR data
+-        """
+-        # Get PR metadata
+-        pr_url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}"
+-        response = requests.get(pr_url, headers=self.headers)
++        """Bind GitHub metadata to the event and a complete local Git snapshot."""
++        event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
++        pull = event['pull_request']
++        if event['repository']['full_name'] != repo_name or pull['number'] != pr_number:
++            raise ValueError('PR event does not match requested repository and number')
++        base_sha, head_sha = pull['base']['sha'], pull['head']['sha']
++        if not all(re.fullmatch(r'[0-9a-f]{40}', sha) for sha in (base_sha, head_sha)):
++            raise ValueError('PR event contains an invalid commit SHA')
++        if self._git('rev-parse', 'HEAD').strip() != head_sha:
++            raise ValueError('Checked-out HEAD does not match the PR event')
++        if Path(self._git('rev-parse', '--show-toplevel').strip()).resolve() != Path(os.environ['GITHUB_WORKSPACE']).resolve():
++            raise ValueError('The PR workspace is not the checkout root')
++
++        response = requests.get(
++            f'https://api.github.com/repos/{repo_name}/pulls/{pr_number}',
++            headers=self.headers, timeout=30,
++        )
+         response.raise_for_status()
+         pr_data = response.json()
+-        
+-        # Get PR files with pagination support
+-        files_url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}/files?per_page=100"
+-        response = requests.get(files_url, headers=self.headers)
+-        response.raise_for_status()
+-        files_data = response.json()
+-        
++        if pr_data['head']['sha'] != head_sha or pr_data['base']['sha'] != base_sha:
++            raise ValueError('PR changed after this event; review the current event instead')
++        merge_base = self._git('merge-base', base_sha, head_sha).strip()
++        # NUL-delimited paths and argv avoid shell interpretation of PR filenames.
++        # Disable rename folding so old/new paths are both represented consistently.
++        comparison = f'{base_sha}...{head_sha}'
++        paths = self._git('diff', '--no-ext-diff', '--no-textconv', '--no-renames',
++                          '--name-only', '-z', comparison, '--').split('\0')
++        files = [{'filename': path} for path in paths if path and not self._is_excluded(path)]
++        # Select exactly the same literal paths as the manifest. Parsing quoted
++        # diff headers or treating an incidental '@generated' string as an
++        # exclusion can silently lose source files or leak excluded directories.
++        self._local_diff = self._git(
++            'diff', '--no-ext-diff', '--no-textconv', '--no-renames', comparison,
++            '--', *[file['filename'] for file in files],
++        ) if files else ''
++        self._local_scope = (repo_name, pr_number)
++        self._input_scope = {
++            'base_sha': base_sha, 'head_sha': head_sha, 'merge_base_sha': merge_base,
++            'file_count': len(files), 'files': [file['filename'] for file in files],
++        }
++        if files and not self._local_diff.strip():
++            raise ValueError('Nonempty PR file manifest produced an empty review diff')
+         return {
+-            'number': pr_data['number'],
+-            'title': pr_data['title'],
+-            'body': pr_data.get('body', ''),
+-            'user': pr_data['user']['login'],
+-            'created_at': pr_data['created_at'],
+-            'updated_at': pr_data['updated_at'],
+-            'state': pr_data['state'],
+-            'head': {
+-                'ref': pr_data['head']['ref'],
+-                'sha': pr_data['head']['sha'],
+-                'repo': {
+-                    'full_name': pr_data['head']['repo']['full_name'] if pr_data['head']['repo'] else repo_name
+-                }
+-            },
+-            'base': {
+-                'ref': pr_data['base']['ref'],
+-                'sha': pr_data['base']['sha']
+-            },
+-            'files': [
+-                {
+-                    'filename': f['filename'],
+-                    'status': f['status'],
+-                    'additions': f['additions'],
+-                    'deletions': f['deletions'],
+-                    'changes': f['changes'],
+-                    'patch': f.get('patch', '')
+-                }
+-                for f in files_data
+-                if not self._is_excluded(f['filename'])
+-            ],
+-            'additions': pr_data['additions'],
+-            'deletions': pr_data['deletions'],
+-            'changed_files': pr_data['changed_files']
++            'number': pr_data['number'], 'title': pr_data['title'],
++            'body': pr_data.get('body', ''), 'user': pr_data['user']['login'],
++            'created_at': pr_data['created_at'], 'updated_at': pr_data['updated_at'],
++            'state': pr_data['state'], 'head': pr_data['head'], 'base': pr_data['base'],
++            'files': files, 'additions': pr_data['additions'],
++            'deletions': pr_data['deletions'], 'changed_files': len(files),
+         }
+-    
++
+     def get_pr_diff(self, repo_name: str, pr_number: int) -> str:
+-        """Get complete PR diff in unified format.
+-        
+-        Args:
+-            repo_name: Repository name in format "owner/repo"
+-            pr_number: Pull request number
+-            
+-        Returns:
+-            Complete PR diff in unified format
+-        """
+-        url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}"
+-        headers = dict(self.headers)
+-        headers['Accept'] = 'application/vnd.github.diff'
+-        
+-        response = requests.get(url, headers=headers)
+-        response.raise_for_status()
+-        
+-        return self._filter_generated_files(response.text)
+-    
++        """Use the complete event-pinned diff; GitHub truncates large PR diffs."""
++        if getattr(self, '_local_scope', None) != (repo_name, pr_number):
++            self.get_pr_data(repo_name, pr_number)
++        return self._local_diff
++
+     def _is_excluded(self, filepath: str) -> bool:
+         """Check if a file should be excluded based on directory patterns."""
+         for excluded_dir in self.excluded_dirs:
+@@ -581,6 +570,30 @@ def main():
+             print(json.dumps({'error': f'Failed to fetch PR data: {str(e)}'}))
+             sys.exit(EXIT_GENERAL_ERROR)
+                 
++        # Input provenance survives the upstream prompt-too-long retry. It is
++        # transport evidence, not a claim that the model reviewed every body.
++        scope = github_client._input_scope
++        custom_scan_instructions = (custom_scan_instructions or '') + (
++            f"\nPR input snapshot: base {scope['base_sha']}, "
++            f"merge base {scope['merge_base_sha']}, head {scope['head_sha']}. "
++            f"The complete input manifest contains {scope['file_count']} files. "
++            "If the inline diff is omitted, inspect all listed changes using the "
++            "local Git comparison from merge base to head. Omitted diff text does "
++            "not mean no changes. "
++            "Inspect the changes in every file in the input manifest, "
++            "regardless of extension or generated status; the configured directory "
++            "exclusions have already been applied. Package manifests and lockfiles "
++            "are review inputs: examine dependency sources, version changes, integrity and lifecycle scripts "
++            "for security implications, even when upgrades are repetitive. Inspect "
++            "documentation, instruction and certificate changes for weakened security "
++            "requirements, unsafe operational guidance or trust changes. A file with "
++            "no finding still needs inspection. Findings-category exclusions do not "
++            "exclude files from review. Track the manifest paths actually inspected "
++            "and report their honest count in files_reviewed. Do not copy the input count or inflate files_reviewed "
++            "to satisfy the gate. If any manifest file remains unreviewed, "
++            "set review_completed to false and report the actual partial count."
++        )
++
+         # Generate security audit prompt
+         prompt = get_security_audit_prompt(pr_data, pr_diff, custom_scan_instructions=custom_scan_instructions)
+         
+@@ -621,6 +634,7 @@ def main():
+         output = {
+             'pr_number': pr_number,
+             'repo': repo_name,
++            'input_scope': scope,
+             'findings': kept_findings,
+             'analysis_summary': results.get('analysis_summary', {}),
+             'filtering_summary': {
+diff --git a/action.yml b/action.yml
+index 8183089..8ee3665 100644
+--- a/action.yml
++++ b/action.yml
+@@ -72,3 +72,6 @@ runs:
+         # Install GitHub CLI for PR operations
+-        sudo apt-get update && sudo apt-get install -y gh
++        if ! command -v gh >/dev/null 2>&1; then
++          sudo apt-get update && sudo apt-get install -y gh
++        fi
++        gh --version
+         echo "::endgroup::"
+@@ -177,3 +180,6 @@ runs:
+         fi
+-        sudo apt-get update && sudo apt-get install -y jq
++        if ! command -v jq >/dev/null 2>&1; then
++          sudo apt-get update && sudo apt-get install -y jq
++        fi
++        jq --version
+         echo "::endgroup::"

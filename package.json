@@ -1,0 +1,32 @@
+{
+	"name": "showfm-wordpress",
+	"version": "0.1.0",
+	"private": true,
+	"description": "show.fm WordPress plugin. Development tooling only.",
+	"license": "GPL-2.0-or-later",
+	"engines": {
+		"node": ">=20.10"
+	},
+	"scripts": {
+		"build": "wp-scripts build",
+		"start": "wp-scripts start",
+		"format": "wp-scripts format",
+		"lint:js": "wp-scripts lint-js --max-warnings=0",
+		"lint:md": "wp-scripts lint-md-docs",
+		"env": "wp-env",
+		"env:start": "wp-env start",
+		"env:stop": "wp-env stop",
+		"test:php": "wp-env run tests-cli --env-cwd=wp-content/plugins/showfm vendor/bin/phpunit",
+		"test:e2e": "WP_BASE_URL=http://localhost:8888 wp-scripts test-playwright",
+		"zip": "bash bin/build-zip.sh",
+		"test:php:multisite": "wp-env run tests-cli --env-cwd=wp-content/plugins/showfm vendor/bin/phpunit -c phpunit-multisite.xml.dist",
+		"format:check": "prettier --check ."
+	},
+	"devDependencies": {
+		"@playwright/test": "1.63.0",
+		"@wordpress/e2e-test-utils-playwright": "2.1.0",
+		"@wordpress/env": "11.16.0",
+		"@wordpress/prettier-config": "4.56.0",
+		"@wordpress/scripts": "36.0.0"
+	}
+}
