@@ -1,0 +1,219 @@
+[
+	{
+		"file": "buzzsprout-script.html",
+		"host": "buzzsprout",
+		"expected": {
+			"episode_id": "1234567",
+			"show_id": "1234"
+		},
+		"meta": {}
+	},
+	{
+		"file": "buzzsprout-iframe.html",
+		"host": "buzzsprout",
+		"expected": {
+			"episode_id": "1234567"
+		},
+		"meta": {}
+	},
+	{
+		"file": "buzzsprout-shortcode.html",
+		"host": "buzzsprout",
+		"expected": {
+			"episode_id": "1234567"
+		},
+		"meta": {}
+	},
+	{
+		"file": "buzzsprout-oembed.html",
+		"host": "buzzsprout",
+		"expected": {
+			"episode_id": "1234567"
+		},
+		"meta": {}
+	},
+	{
+		"file": "libsyn-old.html",
+		"host": "libsyn",
+		"expected": {
+			"episode_id": "123456"
+		},
+		"meta": {}
+	},
+	{
+		"file": "libsyn-new.html",
+		"host": "libsyn",
+		"expected": {
+			"episode_id": "123456"
+		},
+		"meta": {}
+	},
+	{
+		"file": "libsyn-shortcode.html",
+		"host": "libsyn",
+		"expected": {
+			"episode_id": "123456"
+		},
+		"meta": {}
+	},
+	{
+		"file": "captivate-old.html",
+		"host": "captivate",
+		"expected": {
+			"episode_id": "11111111-2222-4333-8444-555555555555"
+		},
+		"meta": {}
+	},
+	{
+		"file": "captivate-new.html",
+		"host": "captivate",
+		"expected": {
+			"episode_id": "11111111-2222-4333-8444-555555555555"
+		},
+		"meta": {}
+	},
+	{
+		"file": "captivate-shortcode.html",
+		"host": "captivate",
+		"expected": {
+			"episode_id": "11111111-2222-4333-8444-555555555555"
+		},
+		"meta": {}
+	},
+	{
+		"file": "transistor-old.html",
+		"host": "transistor",
+		"expected": {
+			"episode_id": "abc123de"
+		},
+		"meta": {}
+	},
+	{
+		"file": "transistor-new.html",
+		"host": "transistor",
+		"expected": {
+			"episode_id": "abc123de"
+		},
+		"meta": {}
+	},
+	{
+		"file": "transistor-oembed.html",
+		"host": "transistor",
+		"expected": {
+			"episode_id": "abc123de"
+		},
+		"meta": {}
+	},
+	{
+		"file": "spotify-old.html",
+		"host": "spotify",
+		"expected": {
+			"episode_id": "6AbCdEfGh123"
+		},
+		"meta": {}
+	},
+	{
+		"file": "spotify-new.html",
+		"host": "spotify",
+		"expected": {
+			"episode_id": "6AbCdEfGh123"
+		},
+		"meta": {}
+	},
+	{
+		"file": "spotify-block.html",
+		"host": "spotify",
+		"expected": {
+			"episode_id": "6AbCdEfGh123"
+		},
+		"meta": {}
+	},
+	{
+		"file": "podbean-old.html",
+		"host": "podbean",
+		"expected": {
+			"episode_id": "abcde-123456"
+		},
+		"meta": {}
+	},
+	{
+		"file": "podbean-new.html",
+		"host": "podbean",
+		"expected": {
+			"episode_id": "abcde-123456-pb"
+		},
+		"meta": {}
+	},
+	{
+		"file": "podbean-oembed.html",
+		"host": "podbean",
+		"expected": {
+			"episode_id": "pb-abcde-123456"
+		},
+		"meta": {}
+	},
+	{
+		"file": "powerpress-old.html",
+		"host": "powerpress",
+		"expected": {
+			"audio_url": "https://media.example/Hello.mp3"
+		},
+		"meta": {
+			"enclosure": "https://media.example/Hello.mp3\n12345\naudio/mpeg"
+		}
+	},
+	{
+		"file": "powerpress-new.html",
+		"host": "powerpress",
+		"expected": {
+			"audio_url": "https://media.example/Hello.mp3"
+		},
+		"meta": {}
+	},
+	{
+		"file": "ssp-old.html",
+		"host": "ssp",
+		"expected": {
+			"audio_url": "https://media.example/Hello.mp3"
+		},
+		"meta": {
+			"audio_file": "https://media.example/Hello.mp3"
+		}
+	},
+	{
+		"file": "ssp-shortcode.html",
+		"host": "ssp",
+		"expected": {
+			"audio_url": "https://media.example/Hello.mp3"
+		},
+		"meta": {
+			"audio_file": "https://media.example/Hello.mp3"
+		}
+	},
+	{
+		"file": "ssp-block.html",
+		"host": "ssp",
+		"expected": {
+			"audio_url": "https://media.example/Hello.mp3"
+		},
+		"meta": {}
+	},
+	{
+		"file": "ssp-new-block.html",
+		"host": "ssp",
+		"expected": {
+			"audio_url": "https://media.example/Hello.mp3"
+		},
+		"meta": {
+			"audio_file": "https://media.example/Hello.mp3"
+		}
+	},
+	{
+		"file": "podbean-shortcode.html",
+		"host": "podbean",
+		"expected": {
+			"episode_id": "abcde-123456"
+		},
+		"meta": {}
+	}
+]

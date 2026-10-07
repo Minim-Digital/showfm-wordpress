@@ -62,3 +62,89 @@ test( 'each server block exposes its element and fallback without JavaScript', a
 		} );
 	}
 } );
+
+/** Caption fragments remain Custom HTML blocks around an editable Player. */
+test( 'migrated caption markup survives an editor save without Classic blocks', async ( {
+	admin,
+	page,
+	requestUtils,
+} ) => {
+	await requestUtils.rest( {
+		method: 'PUT',
+		path: '/wp/v2/plugins/showfm/showfm',
+		data: { status: 'active' },
+	} );
+	const prefix =
+		'<figure class="wp-block-embed"><div class="wp-block-embed__wrapper">';
+	const suffix =
+		'</div><figcaption class="wp-element-caption">Été &amp; <a href="https://example.test"><abbr>more</abbr></a></figcaption></figure>';
+	const content = `<!-- wp:html -->${ prefix }<!-- /wp:html --><!-- wp:showfm/player ${ JSON.stringify( { episode, podcast } ) } /--><!-- wp:html -->${ suffix }<!-- /wp:html -->`;
+	const post = await requestUtils.rest( {
+		method: 'POST',
+		path: '/wp/v2/posts',
+		data: { title: 'Migrated caption test', status: 'draft', content },
+	} );
+	try {
+		await admin.editPost( post.id );
+		await expect
+			.poll( () =>
+				page.evaluate(
+					() =>
+						window.wp.data.select( 'core/block-editor' ).getBlocks()
+							.length
+				)
+			)
+			.toBe( 3 );
+		const blocks = await page.evaluate( () =>
+			window.wp.data
+				.select( 'core/block-editor' )
+				.getBlocks()
+				.map( ( block ) => ( {
+					name: block.name,
+					isValid: block.isValid,
+					content: window.wp.blocks.getBlockContent( block ),
+				} ) )
+		);
+		expect( blocks.map( ( block ) => block.name ) ).toEqual( [
+			'core/html',
+			'showfm/player',
+			'core/html',
+		] );
+		expect( blocks.every( ( block ) => block.isValid ) ).toBe( true );
+		expect( blocks[ 0 ].content ).toBe( prefix );
+		expect( blocks[ 2 ].content ).toBe( suffix );
+		await page.evaluate( async () => {
+			window.wp.data
+				.dispatch( 'core/editor' )
+				.editPost( { title: 'Saved migrated caption' } );
+			await window.wp.data.dispatch( 'core/editor' ).savePost();
+		} );
+		const saved = await requestUtils.rest( {
+			path: `/wp/v2/posts/${ post.id }`,
+			params: { context: 'edit' },
+		} );
+		expect( saved.title.raw ).toBe( 'Saved migrated caption' );
+		const roundTrip = await page.evaluate(
+			( raw ) =>
+				window.wp.blocks.parse( raw ).map( ( block ) => ( {
+					name: block.name,
+					content: window.wp.blocks.getBlockContent( block ).trim(),
+				} ) ),
+			saved.content.raw
+		);
+		expect( roundTrip.map( ( block ) => block.name ) ).toEqual( [
+			'core/html',
+			'showfm/player',
+			'core/html',
+		] );
+		expect( roundTrip[ 0 ].content ).toBe( prefix );
+		expect( roundTrip[ 2 ].content ).toBe( suffix );
+		expect( saved.content.raw ).toContain( '<!-- wp:showfm/player' );
+	} finally {
+		await requestUtils.rest( {
+			method: 'DELETE',
+			path: `/wp/v2/posts/${ post.id }`,
+			params: { force: true },
+		} );
+	}
+} );

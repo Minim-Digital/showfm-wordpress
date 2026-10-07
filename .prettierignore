@@ -8,3 +8,6 @@
 
 /assets/showfm-embed
 /tests/fixtures/parity.json
+
+# Byte-exact source samples for migration range and preservation tests.
+/tests/fixtures/migrator/*.html
