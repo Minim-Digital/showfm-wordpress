@@ -67,6 +67,52 @@ final class Health {
 	}
 
 	/**
+	 * Register a local Site Health test; viewing health never sends HTTP.
+	 *
+	 * @param array<string,mixed> $tests WordPress tests.
+	 * @return array<string,mixed>
+	 */
+	public static function site_tests( array $tests ): array {
+		$tests['direct']['showfm_sync'] = array(
+			'label' => __( 'show.fm sync', 'showfm' ),
+			'test'  => array( self::class, 'test_sync' ),
+		);
+		return $tests;
+	}
+
+	/**
+	 * Explain actionable sync failures without changing the remote health contract.
+	 *
+	 * @return array<string,mixed>
+	 */
+	public static function test_sync(): array {
+		$connection = Plugin::connection();
+		$retry      = $connection->sync_status()['retry'];
+		$state      = Sync::state();
+		$code       = $connection->is_connected() ? ( $retry['code'] ?? '' ) : '';
+		if ( $connection->is_connected() && $state['site'] === $connection->site_id() && 'invalid_feed' === $state['error'] ) {
+			$code = 'invalid_feed';
+		}
+		$messages = array(
+			'row_post_type' => __( 'The selected post type is unavailable or is not public. Enable it or choose an available public post type. The episode is kept for retry and syncing resumes automatically after the setting is fixed, with retries at most an hour apart.', 'showfm' ),
+			'row_author'    => __( 'Sync needs an existing author who can publish the selected post type. Choose a publishing author for this site. The episode is kept for retry and syncing resumes automatically after the setting is fixed, with retries at most an hour apart.', 'showfm' ),
+			'invalid_feed'  => __( 'The show.fm change feed has a server contract problem. The cursor is kept before the invalid page and the plugin retries automatically. Contact show.fm support if this persists.', 'showfm' ),
+		);
+		$problem  = isset( $messages[ $code ] );
+		return array(
+			'label'       => $problem ? __( 'show.fm sync needs attention', 'showfm' ) : __( 'show.fm has no blocking configuration or contract problem', 'showfm' ),
+			'status'      => $problem ? 'critical' : 'good',
+			'badge'       => array(
+				'label' => 'show.fm',
+				'color' => 'blue',
+			),
+			'description' => '<p>' . esc_html( $messages[ $code ] ?? __( 'No blocking configuration or server contract problem is recorded for this connection.', 'showfm' ) ) . '</p>',
+			'actions'     => '',
+			'test'        => 'showfm_sync',
+		);
+	}
+
+	/**
 	 * Schedules the daily report unless it is already scheduled.
 	 */
 	public static function schedule(): void {

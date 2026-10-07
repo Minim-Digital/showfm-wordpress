@@ -17,7 +17,7 @@ final class Sync_Local_Reports {
 	const SCAN   = 'showfm_local_report_scan';
 
 	/**
-	 * Queue one terminal state without making HTTP in a WordPress editing request.
+	 * Queue the latest local state without making HTTP in a WordPress editing request.
 	 *
 	 * @param string              $site Original connection.
 	 * @param string              $episode Original episode.
@@ -25,18 +25,19 @@ final class Sync_Local_Reports {
 	 * @throws \RuntimeException If the outbox cannot be saved.
 	 */
 	public static function queue( string $site, string $episode, array $body ): void {
-		$key = self::PREFIX . $site . '_' . $episode;
-		if ( ! get_option( $key ) && ! add_option(
-			$key,
-			array(
-				'episode'  => $episode,
-				'body'     => $body,
-				'attempts' => 0,
-				'next'     => 0,
-			),
-			'',
-			false
-		) && null === get_option( $key, null ) ) {
+		$key      = self::PREFIX . $site . '_' . $episode;
+		$previous = get_option( $key );
+		if ( is_array( $previous ) && $previous['body'] === $body ) {
+			return;
+		}
+		$entry = array(
+			'episode'  => $episode,
+			'body'     => $body,
+			'token'    => wp_generate_uuid4(),
+			'attempts' => 0,
+			'next'     => 0,
+		);
+		if ( ! update_option( $key, $entry, false ) && get_option( $key ) !== $entry ) {
 			throw new \RuntimeException( 'Local post report could not be saved.' );
 		}
 		Sync::wake( time() + 1 );
@@ -67,7 +68,7 @@ final class Sync_Local_Reports {
 			}
 			if ( null === Sync::validate_post_url( $entry['body']['post_url'] ) ) {
 				Sync_Log::record( 'report_invalid_url' );
-				delete_option( $key );
+				self::acknowledge( $key, $entry );
 				continue;
 			}
 			$response = Plugin::api_client()->post_keyed( '/v1/me/sites/' . rawurlencode( $site ) . '/episodes/' . rawurlencode( $entry['episode'] ) . '/post', $entry['body'] );
@@ -76,9 +77,10 @@ final class Sync_Local_Reports {
 				return $response;
 			}
 			if ( $response->is( Api_Result::TRANSIENT_FAILURE ) ) {
+				$previous = $entry;
 				++$entry['attempts'];
 				$entry['next'] = time() + min( 3600, 30 * ( 2 ** min( 7, $entry['attempts'] - 1 ) ) );
-				update_option( $key, $entry, false );
+				self::acknowledge( $key, $previous, $entry );
 				Sync_Log::record( 'report_retry' );
 				Sync::wake( $entry['next'] );
 			} else {
@@ -86,7 +88,7 @@ final class Sync_Local_Reports {
 					$code = in_array( $response->status(), array( 400, 403, 404 ), true ) ? 'report_' . $response->status() : 'report_terminal';
 					Sync_Log::record( $code );
 				}
-				delete_option( $key );
+				self::acknowledge( $key, $entry );
 			}
 		}
 		if ( $keys ) {
@@ -97,6 +99,32 @@ final class Sync_Local_Reports {
 		}
 		return null;
 	}
+	/**
+	 * Acknowledge only the snapshot sent, preserving a concurrent restore or trash.
+	 *
+	 * @param string                   $key Indexed outbox key.
+	 * @param array<string,mixed>      $sent Snapshot sent.
+	 * @param array<string,mixed>|null $retry Updated retry or null to remove.
+	 * @throws \RuntimeException If storage fails.
+	 */
+	private static function acknowledge( string $key, array $sent, ?array $retry = null ): void {
+		global $wpdb;
+		if ( null === $retry ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Compare and delete protects a newer local state.
+			$result = $wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->options} WHERE option_name = %s AND option_value = %s", $key, maybe_serialize( $sent ) ) );
+		} else {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Compare and update protects a newer local state.
+			$result = $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND option_value = %s", maybe_serialize( $retry ), $key, maybe_serialize( $sent ) ) );
+		}
+		wp_cache_delete( $key, 'options' );
+		if ( false === $result ) {
+			throw new \RuntimeException( 'Local report acknowledgement failed.' );
+		}
+		if ( 0 === $result ) {
+			Sync::wake( time() + 1 );
+		}
+	}
+
 	/**
 	 * Read one indexed range of pending reports for this connection.
 	 *

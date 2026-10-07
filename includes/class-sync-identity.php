@@ -100,6 +100,9 @@ final class Sync_Identity {
 			return;
 		}
 		$receipt = self::get( $post->guid );
+		if ( ! array_key_exists( 'edited_before_detach', $receipt ) ) {
+			$receipt['edited_before_detach'] = (bool) get_post_meta( $id, '_showfm_edited', true );
+		}
 		// Capture while the post still exists; permanent deletion removes all its meta.
 		if ( ! isset( $receipt['local_report'] ) ) {
 			$receipt['local_report'] = array(
@@ -133,7 +136,43 @@ final class Sync_Identity {
 		if ( 'trash' === $new_status && 'trash' !== $old ) {
 			self::detach( $post->ID );
 			self::report_detachment( $post->ID, $post );
+		} elseif ( 'trash' === $old && 'trash' !== $new_status ) {
+			self::reattach( $post );
 		}
+	}
+
+	/**
+	 * Restore local attachment and report the actual restored status once.
+	 *
+	 * @param \WP_Post $post Restored post.
+	 */
+	private static function reattach( \WP_Post $post ): void {
+		$receipt = self::get( $post->guid );
+		$parts   = explode( ':', $post->guid );
+		if ( empty( $receipt['detached'] ) || Sync_Posts::is_writing( $post->ID ) || 4 !== count( $parts ) || 'urn' !== $parts[0] || 'showfm' !== $parts[1] || '' === Attributes::uuid( $parts[2] ) || '' === Attributes::uuid( $parts[3] ) ) {
+			return;
+		}
+		// Old receipts without this flag conservatively retain their edit protection.
+		if ( isset( $receipt['edited_before_detach'] ) && ! $receipt['edited_before_detach'] ) {
+			delete_post_meta( $post->ID, '_showfm_edited' );
+		}
+		( new Sync_Posts() )->edited( $post );
+		update_post_meta( $post->ID, '_showfm_sync_state', 'synced' );
+		$states = array(
+			'publish' => 'published',
+			'future'  => 'scheduled',
+		);
+		Sync_Local_Reports::queue(
+			$parts[2],
+			$parts[3],
+			array(
+				'wp_post_id' => $post->ID,
+				'post_url'   => Sync::post_url( $post ),
+				'state'      => $states[ $post->post_status ] ?? 'draft',
+			)
+		);
+		unset( $receipt['detached'], $receipt['local_report'], $receipt['report_queued'], $receipt['edited_before_detach'] );
+		self::save( $post->guid, $receipt );
 	}
 
 	/**

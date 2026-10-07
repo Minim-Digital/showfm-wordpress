@@ -71,6 +71,7 @@ final class Plugin {
 	 */
 	public static function boot(): void {
 		add_action( Cache::REFRESH_HOOK, array( self::cache(), 'refresh' ) );
+		add_filter( 'site_status_tests', array( Health::class, 'site_tests' ) );
 		add_action( Health::HOOK, array( self::health(), 'run' ) );
 		// phpcs:ignore WordPress.WP.CronInterval.ChangeDetected -- Sync::schedules sets a 900-second interval.
 		add_filter( 'cron_schedules', array( Sync::class, 'schedules' ) );

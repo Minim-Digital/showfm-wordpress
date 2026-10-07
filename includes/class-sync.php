@@ -184,7 +184,7 @@ final class Sync {
 					if ( ! $dry_run ) {
 						self::require_lock();
 						$retry = $connection->sync_status()['retry'];
-						if ( ( $retry['seq'] ?? 0 ) === $row['seq'] && $retry['attempts'] >= self::APPLY_ATTEMPTS ) {
+						if ( ( $retry['seq'] ?? 0 ) === $row['seq'] && 'row_write_failed' === ( $retry['code'] ?? '' ) && $retry['attempts'] >= self::APPLY_ATTEMPTS ) {
 							$state['cursor'] = $row['seq'];
 							continue; // Recover a crash after exhaustion was recorded, before the cursor was saved.
 						}
@@ -275,6 +275,10 @@ final class Sync {
 		if ( empty( $data['data'] ) ) {
 			return $cursor['next'] === $after && ! $cursor['has_more'];
 		}
+		$tail = end( $data['data'] );
+		if ( ! is_array( $tail ) || ! is_int( $tail['seq'] ?? null ) ) {
+			return false;
+		}
 		// Content may be poison; sequence boundaries still have to account for the cursor.
 		$boundary = $after;
 		foreach ( $data['data'] as $row ) {
@@ -306,10 +310,14 @@ final class Sync {
 	 * @param string $code Own reason code.
 	 */
 	private static function exhausted( int $seq, string $code ): bool {
-		$connection      = Plugin::connection();
-		$status          = $connection->sync_status();
-		$previous        = $status['retry'];
-		$attempts        = ( $previous['seq'] ?? 0 ) === $seq ? $previous['attempts'] + 1 : 1;
+		$connection = Plugin::connection();
+		$status     = $connection->sync_status();
+		$previous   = $status['retry'];
+		$attempts   = ( $previous['seq'] ?? 0 ) === $seq && ( $previous['code'] ?? '' ) === $code ? $previous['attempts'] + 1 : 1;
+		// Configuration cannot recover by discarding an episode. Retain it indefinitely.
+		if ( in_array( $code, array( 'row_post_type', 'row_author' ), true ) ) {
+			$attempts = 0;
+		}
 		$entry           = array(
 			'seq'      => $seq,
 			'code'     => $code,
@@ -505,7 +513,7 @@ final class Sync {
 		$error = in_array( $error, array( Api_Result::UNAUTHORISED, Api_Result::RATE_LIMITED, Api_Result::TRANSIENT_FAILURE, Api_Result::FAILED, Api_Result::UNAVAILABLE, Api_Result::NOT_MODIFIED, 'invalid_feed', 'apply_failed', 'row_post_type', 'row_author', 'row_write_failed' ), true ) ? $error : 'apply_failed';
 		++$state['failures'];
 		$state['error']    = $error;
-		$state['retry_at'] = time() + max( $retry_after, min( 3600, 30 * ( 2 ** min( 7, $state['failures'] - 1 ) ) ) + wp_rand( 0, 15 ) );
+		$state['retry_at'] = time() + max( $retry_after, min( 3600, 30 * ( 2 ** min( 7, $state['failures'] - 1 ) ) + wp_rand( 0, 15 ) ) );
 		self::save( $state );
 		update_option( Health::SYNC_ERRORS_OPTION, min( 1000000, 1 + (int) get_option( Health::SYNC_ERRORS_OPTION, 0 ) ), false );
 		if ( Plugin::connection()->is_connected() ) {
