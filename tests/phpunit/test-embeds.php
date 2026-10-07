@@ -324,6 +324,43 @@ class Test_Embeds extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'credit="on"', $this->block( 'player', array( 'episode' => self::ID ) ) );
 	}
 
+	public function test_display_settings_are_registered_for_rest_with_their_defaults(): void {
+		$settings = get_registered_settings();
+		$expected = array(
+			'showfm_show_credit'   => false,
+			'showfm_load_on_click' => false,
+			'showfm_json_ld'       => true,
+			'showfm_theme_styles'  => true,
+		);
+		foreach ( $expected as $name => $default ) {
+			$this->assertSame( $default, $settings[ $name ]['default'], $name );
+			$this->assertTrue( $settings[ $name ]['show_in_rest'], $name );
+			$this->assertSame( 'boolean', $settings[ $name ]['type'], $name );
+		}
+	}
+
+	public function test_load_on_click_applies_to_every_embed_when_on(): void {
+		$this->assertStringNotContainsString( 'load="click"', $this->block( 'player', array( 'episode' => self::ID ) ) );
+
+		update_option( 'showfm_load_on_click', true );
+
+		$this->assertStringContainsString( 'load="click"', $this->block( 'player', array( 'episode' => self::ID ) ) );
+		$this->assertStringContainsString( 'load="click"', do_shortcode( '[showfm type="episodes" podcast="test"]' ) );
+	}
+
+	public function test_theme_styles_can_be_turned_off(): void {
+		$styles = wp_styles();
+		$this->block( 'player', array( 'episode' => self::ID ) );
+		$this->assertNotEmpty( $styles->get_data( Assets::HANDLE, 'after' ), 'Theme colours and fonts by default.' );
+
+		wp_dequeue_style( Assets::HANDLE );
+		$styles->remove( Assets::HANDLE );
+		update_option( 'showfm_theme_styles', false );
+		$this->block( 'player', array( 'episode' => self::ID ) );
+
+		$this->assertEmpty( $styles->get_data( Assets::HANDLE, 'after' ), 'show.fm defaults only.' );
+	}
+
 	public function test_bindings_use_context_or_authorised_sanitised_post_meta(): void {
 		$id         = self::factory()->post->create();
 		$registered = get_registered_meta_keys( 'post' )['_showfm_episode_id'];

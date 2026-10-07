@@ -96,8 +96,10 @@ final class Plugin {
 
 		add_action( 'rest_api_init', array( Challenge_Endpoint::class, 'register' ) );
 		add_action( 'rest_api_init', array( new Ping_Endpoint( self::connection() ), 'register' ) );
+		add_action( 'rest_api_init', array( self::class, 'register_admin_routes' ) );
 
 		add_action( 'admin_init', array( Privacy::class, 'register' ) );
+		add_action( 'admin_init', array( Connection::class, 'upgrade' ) );
 		add_action( 'admin_init', array( self::health(), 'ensure_scheduled' ) );
 		if ( is_admin() ) {
 			( new Admin( self::connect(), self::connection() ) )->boot();
@@ -107,6 +109,14 @@ final class Plugin {
 			Cli::register( new Cli( self::connect(), self::connection() ) );
 			\WP_CLI::add_command( 'showfm migrate-embeds', new Migration_Cli( new Migrator( self::connection(), self::api_client() ) ) );
 		}
+	}
+
+	/**
+	 * Registers the settings screen's REST routes.
+	 */
+	public static function register_admin_routes(): void {
+		$status = new Admin_Status( self::connection() );
+		( new Admin_Endpoint( self::connect(), $status ) )->register();
 	}
 
 	/**

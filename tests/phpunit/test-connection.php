@@ -91,7 +91,7 @@ class Test_Connection extends WP_UnitTestCase {
 		$this->assertNull( $this->connection->ping_secret() );
 		$this->assertNull( $this->connection->site_id() );
 		$this->assertSame( '', $this->connection->masked_key() );
-		$this->assertSame( Connection::STATE_RECONNECT_NEEDED, get_option( Connection::STATE_OPTION ) );
+		$this->assertFalse( get_option( Connection::STATE_OPTION ), 'Reading the state never writes.' );
 	}
 
 	public function test_tampered_ciphertext_gives_reconnect_needed(): void {
@@ -172,7 +172,8 @@ class Test_Connection extends WP_UnitTestCase {
 
 		$this->connection->disconnect();
 
-		$this->assertFalse( get_option( Connection::OPTION ) );
+		$this->assertSame( array( 'i' ), array_keys( get_option( Connection::OPTION ) ), 'Only a fresh state id is left.' );
+		$this->assertNull( $this->connection->key() );
 		$this->assertFalse( get_option( Connection::STATE_OPTION ) );
 		$this->assertSame( Connection::STATE_DISCONNECTED, $this->connection->state() );
 	}

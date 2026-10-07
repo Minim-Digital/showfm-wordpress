@@ -120,7 +120,11 @@ final class Attributes {
 				$output[ $name ] = $value;
 			}
 		}
-		$output['credit'] = get_option( 'showfm_show_credit', false ) ? ( $output['credit'] ?? 'on' ) : 'off';
+		$output['credit'] = Embed_Settings::enabled( Embed_Settings::CREDIT ) ? ( $output['credit'] ?? 'on' ) : 'off';
+		// Consent mode is the site owner's choice: it applies to every embed when on.
+		if ( Embed_Settings::enabled( Embed_Settings::LOAD_ON_CLICK ) ) {
+			$output['load'] = 'click';
+		}
 		// A per-embed origin would make browser and server cache disagree. Staging is site-wide.
 		$output['api'] = Api_Client::base_url();
 		return $output;

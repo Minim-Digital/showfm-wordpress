@@ -72,7 +72,7 @@ class Test_Health extends WP_UnitTestCase {
 		$result = $this->health->report();
 
 		$this->assertTrue( $result->is( Api_Result::SUCCESS ) );
-		$request = $this->http->last();
+		$request = $this->http->requests[0];
 		$this->assertSame( 'https://api.show.fm/v1/me/sites/' . self::SITE_ID . '/health', $request['url'] );
 		$this->assertSame( 'POST', $request['args']['method'] );
 		$this->assertSame( 'Bearer ' . self::KEY, $request['args']['headers']['Authorization'] );
@@ -124,9 +124,10 @@ class Test_Health extends WP_UnitTestCase {
 
 		$this->health->report();
 
-		$this->assertSame( 2, $this->http->count() );
+		$this->assertSame( 3, $this->http->count(), 'Verify, health, then the account refresh (blocked here).' );
 		$this->assertStringEndsWith( '/verify', $this->http->requests[0]['url'] );
 		$this->assertStringEndsWith( '/health', $this->http->requests[1]['url'] );
+		$this->assertStringEndsWith( '/v1/me', $this->http->requests[2]['url'] );
 		$this->assertFalse( Connect::verify_pending() );
 	}
 
@@ -160,7 +161,7 @@ class Test_Health extends WP_UnitTestCase {
 		update_option( Api_Client::RATE_LIMIT_OPTION, time() - 1 );
 		$this->http->respond( 200, '{"data":{}}' );
 		$this->assertTrue( $this->health->report()->is( Api_Result::SUCCESS ) );
-		$this->assertSame( 2, $this->http->count() );
+		$this->assertSame( 3, $this->http->count(), 'The health report, then the account refresh (blocked here).' );
 	}
 
 	public function test_cron_event_runs_the_report(): void {
@@ -168,8 +169,7 @@ class Test_Health extends WP_UnitTestCase {
 
 		do_action( Health::HOOK );
 
-		$this->assertSame( 1, $this->http->count() );
-		$this->assertStringEndsWith( '/health', $this->http->last()['url'] );
+		$this->assertStringEndsWith( '/health', $this->http->requests[0]['url'] );
 	}
 
 	public function test_schedule_is_daily_and_not_duplicated(): void {

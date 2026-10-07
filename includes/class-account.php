@@ -1,0 +1,202 @@
+<?php
+/**
+ * The connected account's name and shows, kept for the settings screen.
+ *
+ * @package ShowFM
+ */
+
+namespace ShowFM;
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+/**
+ * The show.fm API has no keyed route for a site's details, so the plugin asks `GET /v1/me` for the
+ * account holder's name and `GET /v1/me/podcasts` for the shows the site key can read. It
+ * does so right after connecting and with the daily health report, never while a page
+ * renders. The answer is stored in one option (autoload off) for the settings screen.
+ */
+final class Account {
+
+	/** Option holding the account details (autoload off). */
+	const OPTION = 'showfm_account';
+
+	/** Most shows kept. A site key covers the shows the admin chose when connecting. */
+	const MAX_SHOWS = 50;
+
+	/** Longest name or title kept. */
+	const MAX_TEXT = 200;
+
+	/**
+	 * Connection store.
+	 *
+	 * @var Connection
+	 */
+	private $connection;
+
+	/**
+	 * API client.
+	 *
+	 * @var Api_Client
+	 */
+	private $api_client;
+
+	/**
+	 * Builds the store.
+	 *
+	 * @param Connection $connection Connection store.
+	 * @param Api_Client $api_client API client.
+	 */
+	public function __construct( Connection $connection, Api_Client $api_client ) {
+		$this->connection = $connection;
+		$this->api_client = $api_client;
+	}
+
+	/**
+	 * Fetches and stores the account name and shows. Keeps the stored copy when either call
+	 * fails, so a brief outage does not empty the screen, and when the connection changed while
+	 * the calls were in flight.
+	 */
+	public function refresh(): bool {
+		return $this->refresh_from( $this->connection->pinned() );
+	}
+
+	/**
+	 * Fetches and stores the account name and shows for the state a pinned connection holds.
+	 * The stored site id comes from that same state, and the data is kept only when both
+	 * keyed requests used that state's key and it is still the stored state, checked under
+	 * the connection lock. Data fetched with another state's key is discarded.
+	 *
+	 * @param Connection $pinned The connection, pinned when the refresh starts.
+	 */
+	public function refresh_from( Connection $pinned ): bool {
+		$state   = $pinned->snapshot()['id'];
+		$site_id = $pinned->site_id();
+		if ( null === $site_id || ! $pinned->is_connected() ) {
+			return false;
+		}
+
+		$me = $this->api_client->get_keyed( '/v1/me' );
+		if ( ! $me->is( Api_Result::SUCCESS ) ) {
+			return false;
+		}
+		$podcasts = $this->api_client->get_keyed( '/v1/me/podcasts?limit=' . self::MAX_SHOWS );
+		if ( ! $podcasts->is( Api_Result::SUCCESS ) ) {
+			return false;
+		}
+
+		$me_data   = $me->data();
+		$user      = is_array( $me_data ) && is_array( $me_data['data']['user'] ?? null ) ? $me_data['data']['user'] : array();
+		$list_data = $podcasts->data();
+		$list      = is_array( $list_data ) && is_array( $list_data['data'] ?? null ) ? $list_data['data'] : array();
+
+		$shows = array();
+		foreach ( array_slice( $list, 0, self::MAX_SHOWS ) as $podcast ) {
+			if ( ! is_array( $podcast ) || ! is_string( $podcast['id'] ?? null ) || ! preg_match( Connect::SITE_ID_PATTERN, strtolower( $podcast['id'] ) ) ) {
+				continue;
+			}
+			$slug    = is_string( $podcast['slug'] ?? null ) && preg_match( '/^[a-z0-9]+(?:-[a-z0-9]+)*\z/', $podcast['slug'] ) ? $podcast['slug'] : '';
+			$shows[] = array(
+				'id'    => strtolower( $podcast['id'] ),
+				'title' => self::text( $podcast['title'] ?? null ),
+				'slug'  => $slug,
+			);
+		}
+
+		$details = array(
+			'state' => $state,
+			'site'  => $site_id,
+			'name'  => self::text( $user['name'] ?? null ),
+			'shows' => $shows,
+		);
+		// The site id and both answers must belong to one state: the one pinned at the start.
+		// A connection replaced at any point between them means the data is discarded, never
+		// stored under another state's site id. Written under the connection lock, and only
+		// while that state is still the stored one.
+		if ( $me->state_id() !== $state || $podcasts->state_id() !== $state ) {
+			return false;
+		}
+		try {
+			return (bool) Connection::mutate(
+				static function ( Connection $fresh ) use ( $state, $details ): bool {
+					if ( $fresh->snapshot()['id'] !== $state ) {
+						return false;
+					}
+					Connection::write( self::OPTION, $details );
+					return true;
+				}
+			);
+		} catch ( Connection_Busy $busy ) {
+			return false;
+		}
+	}
+
+	/**
+	 * The stored details for the connection as it is now, or empty ones.
+	 *
+	 * @return array{name:string,shows:array<int,array{id:string,title:string,slug:string}>}
+	 */
+	public function details(): array {
+		return self::details_of( $this->connection->pinned() );
+	}
+
+	/**
+	 * The stored details for a connection the caller has already pinned, or empty ones.
+	 *
+	 * @param Connection $pinned Pinned connection.
+	 * @return array{name:string,shows:array<int,array{id:string,title:string,slug:string}>}
+	 */
+	public static function details_of( Connection $pinned ): array {
+		return self::details_for( $pinned->site_id(), $pinned->snapshot()['id'] );
+	}
+
+	/**
+	 * The stored details, or empty ones. They show only for the state they were fetched for:
+	 * a reconnect, even with the same site id, is a new state, so the old key's account and
+	 * shows stay hidden until a fetch for the new state succeeds. Details stored without a
+	 * state are never shown; the next refresh replaces them.
+	 *
+	 * @param string|null $site_id  Connected site id.
+	 * @param string      $state_id The connection state id read with it.
+	 * @return array{name:string,shows:array<int,array{id:string,title:string,slug:string}>}
+	 */
+	public static function details_for( ?string $site_id, string $state_id ): array {
+		$empty  = array(
+			'name'  => '',
+			'shows' => array(),
+		);
+		$stored = get_option( self::OPTION, array() );
+		if ( null === $site_id || ! is_array( $stored ) || ( $stored['site'] ?? null ) !== $site_id || ( $stored['state'] ?? null ) !== $state_id ) {
+			return $empty;
+		}
+
+		$shows = array();
+		foreach ( is_array( $stored['shows'] ?? null ) ? $stored['shows'] : array() as $show ) {
+			if ( is_array( $show ) && is_string( $show['id'] ?? null ) ) {
+				$shows[] = array(
+					'id'    => $show['id'],
+					'title' => self::text( $show['title'] ?? null ),
+					'slug'  => is_string( $show['slug'] ?? null ) ? $show['slug'] : '',
+				);
+			}
+		}
+		return array(
+			'name'  => self::text( $stored['name'] ?? null ),
+			'shows' => $shows,
+		);
+	}
+
+	/**
+	 * Plain text of at most 200 characters, or ''.
+	 *
+	 * @param mixed $value Value from the API.
+	 */
+	private static function text( $value ): string {
+		if ( ! is_string( $value ) ) {
+			return '';
+		}
+		$text = trim( wp_strip_all_tags( $value ) );
+		return function_exists( 'mb_substr' ) ? mb_substr( $text, 0, self::MAX_TEXT ) : substr( $text, 0, self::MAX_TEXT );
+	}
+}

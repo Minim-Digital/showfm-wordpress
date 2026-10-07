@@ -24,6 +24,9 @@ final class Uninstaller {
 	 * Cleans every site on a network, or the single site.
 	 */
 	public static function run(): void {
+		// Dismissed notices are user meta, which a network shares: remove them once.
+		delete_metadata( 'user', 0, Notices::META, '', true );
+
 		if ( ! is_multisite() ) {
 			self::clean_site();
 			return;

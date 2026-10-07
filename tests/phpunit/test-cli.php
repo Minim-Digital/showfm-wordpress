@@ -109,7 +109,7 @@ class Test_Cli extends WP_UnitTestCase {
 
 		$this->cli->connect( array(), array( 'key' => self::KEY ) );
 
-		$this->assertSame( 2, $this->http->count() );
+		$this->assertSame( 3, $this->http->count(), 'Register, verify, then the account refresh (blocked here).' );
 		$this->assertSame( 'https://api.show.fm/v1/me/sites', $this->http->requests[0]['url'] );
 		$this->assertSame( 'POST', $seen['method'] );
 		$this->assertSame( 'Bearer ' . self::KEY, $seen['headers']['Authorization'] );
@@ -343,6 +343,59 @@ class Test_Cli extends WP_UnitTestCase {
 		$this->assertContains( 'Last sync: never', $lines );
 	}
 
+	public function test_disconnect_leaves_a_reconnect_that_lands_meanwhile_alone(): void {
+		$this->connection->save( self::KEY, self::SECRET, self::SITE_ID, 0 );
+		$held = new ShowFM\Sync_Lock( Connection::LOCK_OPTION, Connection::LOCK_TTL );
+		$this->assertTrue( $held->acquire(), 'Another request holds the connection lock.' );
+		$ran  = false;
+		$hook = static function () use ( $held, &$ran ): void {
+			if ( ! $ran ) {
+				// That request reconnects, then lets go.
+				$ran = true;
+				$held->release();
+				( new Connection() )->save( 'showfm_live_FRESHKEYabcdefghijklmnopq', self::SECRET, self::SITE_ID, 0 );
+			}
+		};
+		add_action( 'showfm_connection_lock_waiting', $hook );
+		try {
+			$this->assert_halts(
+				function () {
+					$this->cli->disconnect( array(), array( 'yes' => true ) );
+				}
+			);
+		} finally {
+			remove_action( 'showfm_connection_lock_waiting', $hook );
+			$held->release();
+		}
+
+		$this->assertTrue( $ran );
+		$this->assertSame( 'showfm_live_FRESHKEYabcdefghijklmnopq', ( new Connection() )->key(), 'The reconnect stands.' );
+		$this->assertStringContainsString( 'nothing was disconnected', end( WP_CLI::$output )[1] );
+	}
+
+	public function test_disconnect_says_busy_when_the_lock_is_held_too_long(): void {
+		$this->connection->save( self::KEY, self::SECRET, self::SITE_ID, 0 );
+		$held = new ShowFM\Sync_Lock( Connection::LOCK_OPTION, Connection::LOCK_TTL );
+		$this->assertTrue( $held->acquire() );
+		$short = static function (): int {
+			return 100;
+		};
+		add_filter( 'showfm_connection_lock_wait_ms', $short );
+		try {
+			$this->assert_halts(
+				function () {
+					$this->cli->disconnect( array(), array( 'yes' => true ) );
+				}
+			);
+		} finally {
+			remove_filter( 'showfm_connection_lock_wait_ms', $short );
+			$held->release();
+		}
+
+		$this->assertSame( Connect::message( Connect::ERROR_BUSY ), end( WP_CLI::$output )[1] );
+		$this->assertSame( Connection::STATE_CONNECTED, $this->connection->state(), 'Nothing changed.' );
+	}
+
 	public function test_disconnect_asks_first(): void {
 		$this->connection->save( self::KEY, self::SECRET, self::SITE_ID, 0 );
 		Health::schedule();
@@ -368,7 +421,7 @@ class Test_Cli extends WP_UnitTestCase {
 		$this->cli->disconnect( array(), array( 'yes' => true ) );
 
 		$this->assertSame( Connection::STATE_DISCONNECTED, $this->connection->state() );
-		$this->assertFalse( get_option( Connection::OPTION ) );
+		$this->assertSame( array( 'i' ), array_keys( get_option( Connection::OPTION ) ), 'Only a fresh state id is left.' );
 		$this->assertFalse( wp_next_scheduled( Health::HOOK ) );
 		$this->assertFalse( wp_next_scheduled( Ping_Endpoint::PULL_HOOK ) );
 		$this->assertFalse( get_option( Ping_Endpoint::LAST_PING_OPTION ) );
