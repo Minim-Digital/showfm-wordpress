@@ -16,6 +16,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class Plugin {
 
+	/** Sites handled per query during network deactivation. */
+	const SITES_PER_BATCH = 100;
+
 	/**
 	 * Every WP-Cron hook the plugin schedules. Deactivation and uninstall clear them all.
 	 *
@@ -62,8 +65,41 @@ final class Plugin {
 
 	/**
 	 * Deactivation only unschedules events. Settings and the connection stay until uninstall.
+	 *
+	 * @param bool $network_wide Whether the plugin is being deactivated for the network.
 	 */
-	public static function deactivate(): void {
+	public static function deactivate( bool $network_wide = false ): void {
+		if ( ! $network_wide || ! is_multisite() ) {
+			self::unschedule_events();
+			return;
+		}
+
+		$offset = 0;
+		do {
+			$site_ids = get_sites(
+				array(
+					'fields' => 'ids',
+					'number' => self::SITES_PER_BATCH,
+					'offset' => $offset,
+				)
+			);
+			foreach ( $site_ids as $site_id ) {
+				switch_to_blog( (int) $site_id );
+				try {
+					self::unschedule_events();
+				} finally {
+					restore_current_blog();
+				}
+			}
+			$offset    += self::SITES_PER_BATCH;
+			$batch_size = count( $site_ids );
+		} while ( self::SITES_PER_BATCH === $batch_size );
+	}
+
+	/**
+	 * Removes the plugin's scheduled events on the current site.
+	 */
+	private static function unschedule_events(): void {
 		foreach ( self::CRON_HOOKS as $hook ) {
 			wp_unschedule_hook( $hook );
 		}

@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * - A 403 or 404 stores an "unavailable" marker. Callers then render nothing, never a
  *   snapshot, so an unpublished episode's audio URL does not linger in page HTML.
  * - Network errors, 429 and 5xx keep the last good copy and back off, doubling up to an hour.
- * - Keys carry a version. Flushing bumps the version; it never calls wp_cache_flush().
+ * - Keys carry a per-install namespace and version. Flushing bumps the version only.
  */
 final class Cache {
 
@@ -29,6 +29,9 @@ final class Cache {
 
 	/** Option holding the key version. */
 	const VERSION_OPTION = 'showfm_cache_version';
+
+	/** Option holding the random namespace, removed on uninstall. */
+	const NAMESPACE_OPTION = 'showfm_cache_namespace';
 
 	/** Data is fresh for 15 minutes. */
 	const FRESH_FOR = 900;
@@ -190,12 +193,18 @@ final class Cache {
 	}
 
 	/**
-	 * Transient name for a path under the current version. Short enough for any install.
+	 * Transient name under this installation's namespace and current version.
 	 *
 	 * @param string $path Public API path.
 	 */
 	public static function key( string $path ): string {
-		return 'showfm_c' . self::version() . '_' . md5( $path );
+		$namespace = get_option( self::NAMESPACE_OPTION, '' );
+		if ( '' === $namespace ) {
+			add_option( self::NAMESPACE_OPTION, wp_generate_uuid4() );
+			$namespace = get_option( self::NAMESPACE_OPTION );
+		}
+
+		return 'showfm_c' . $namespace . '_' . self::version() . '_' . md5( $path );
 	}
 
 	/**

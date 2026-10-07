@@ -2,6 +2,7 @@ name: Security Review
 
 # Ported from Minim-Digital/podcaster-plus-app (.github/workflows/security-review.yml at
 # 0e568357), trimmed to this repo. Read that file's header for the full history.
+# Fork PRs are explicitly excluded from the secret-bearing job. See Minim-Digital/podcaster-plus-app#734.
 #
 # HOW TO USE IT. Nothing scans until a PR has the `security-review` label. Add the label
 # when the PR is ready to merge, so the scan covers the final state. Any push while the
@@ -37,7 +38,7 @@ concurrency:
 
 jobs:
   security:
-    if: contains(github.event.pull_request.labels.*.name, 'security-review')
+    if: github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'security-review')
     runs-on: ubuntu-latest
     # Caps everything outside the analysis, including a wedged apt step in the action.
     timeout-minutes: 20

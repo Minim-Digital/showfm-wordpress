@@ -191,12 +191,14 @@ class Test_Cache extends WP_UnitTestCase {
 		$this->http->respond( 200, '{"title":"Before"}' );
 		$this->cache->refresh( self::PATH );
 		wp_cache_set( 'unrelated', 'kept', 'showfm-test' );
-		$version = Cache::version();
-		$old_key = Cache::key( self::PATH );
+		$version   = Cache::version();
+		$old_key   = Cache::key( self::PATH );
+		$namespace = get_option( Cache::NAMESPACE_OPTION );
 
 		$this->cache->flush();
 
 		$this->assertSame( $version + 1, Cache::version() );
+		$this->assertSame( $namespace, get_option( Cache::NAMESPACE_OPTION ) );
 		$this->assertNotSame( $old_key, Cache::key( self::PATH ) );
 		$this->assertNull( $this->cache->get( self::PATH ) );
 		$this->assertSame( 'kept', wp_cache_get( 'unrelated', 'showfm-test' ) );

@@ -59,7 +59,8 @@ final class Uninstaller {
 		}
 
 		// Options and transients carry the `showfm_` prefix. Direct queries are the only way
-		// to find transients whose names are hashed.
+		// to find options-table transients whose names are hashed. Deleting the namespace
+		// option also makes retained external-cache entries unreachable after reinstall.
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Uninstall cleanup.
 		$options = $wpdb->get_col(
 			$wpdb->prepare(
