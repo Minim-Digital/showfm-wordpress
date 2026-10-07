@@ -61,6 +61,13 @@ final class Connection {
 	 */
 	private static $depth = array();
 
+	/**
+	 * The lock each site's change in this request holds, to renew and check before writes.
+	 *
+	 * @var array<int,Sync_Lock>
+	 */
+	private static $locks = array();
+
 	/** The error code show.fm sends when no podcast on the key may sync to a site. */
 	const PLAN_ERROR = 'plan_upgrade_required';
 
@@ -170,13 +177,13 @@ final class Connection {
 		// the lock for too long.
 		$saved = self::mutate(
 			static function () use ( $stored ): bool {
-				if ( ! update_option( self::OPTION, $stored, false ) ) {
+				if ( ! self::write( self::OPTION, $stored ) ) {
 					return false;
 				}
-				delete_option( self::STATE_OPTION );
-				delete_option( self::REFUSED_AT_OPTION );
-				delete_option( self::PAUSED_OPTION );
-				update_option( self::CONNECTED_AT_OPTION, time(), false );
+				self::remove( self::STATE_OPTION );
+				self::remove( self::REFUSED_AT_OPTION );
+				self::remove( self::PAUSED_OPTION );
+				self::write( self::CONNECTED_AT_OPTION, time() );
 				return true;
 			}
 		);
@@ -218,13 +225,72 @@ final class Connection {
 			usleep( 50000 );
 		}
 
+		$outer                = self::$locks[ $blog ] ?? null;
+		self::$locks[ $blog ] = $lock;
 		self::$depth[ $blog ] = ( self::$depth[ $blog ] ?? 0 ) + 1;
 		try {
 			return $change( ( new self() )->pinned() );
 		} finally {
 			--self::$depth[ $blog ];
+			if ( null === $outer ) {
+				unset( self::$locks[ $blog ] );
+			} else {
+				self::$locks[ $blog ] = $outer;
+			}
 			$lock->release();
 		}
+	}
+
+	/**
+	 * Before each write inside a change: renews the lease and checks, by compare-and-swap on
+	 * its token, that this change still owns it. A change that took longer than its lease,
+	 * so that the lock expired or another request took it over, stops here: nothing more is
+	 * written, and Connection_Lost is thrown. Writes inside a change go through `write()`,
+	 * `remove()` and `guarded()`, which call this.
+	 *
+	 * @throws Connection_Lost When the lock was lost.
+	 */
+	public static function hold(): void {
+		$lock = self::$locks[ get_current_blog_id() ] ?? null;
+		if ( null === $lock || ! $lock->owned() ) {
+			throw new Connection_Lost( 'The connection lock was lost part way through a change; nothing more was changed.' );
+		}
+	}
+
+	/**
+	 * Writes an option inside a change, once the lease is renewed and still owned.
+	 *
+	 * @param string $name  Option name.
+	 * @param mixed  $value Value.
+	 * @throws Connection_Lost When the lock was lost.
+	 */
+	public static function write( string $name, $value ): bool {
+		self::hold();
+		return update_option( $name, $value, false );
+	}
+
+	/**
+	 * Deletes an option inside a change, once the lease is renewed and still owned.
+	 *
+	 * @param string $name Option name.
+	 * @throws Connection_Lost When the lock was lost.
+	 */
+	public static function remove( string $name ): bool {
+		self::hold();
+		return delete_option( $name );
+	}
+
+	/**
+	 * Runs one other write step inside a change (a transient, unscheduling jobs), once the
+	 * lease is renewed and still owned.
+	 *
+	 * @param callable():mixed $step The write.
+	 * @return mixed What the step returns.
+	 * @throws Connection_Lost When the lock was lost.
+	 */
+	public static function guarded( callable $step ) {
+		self::hold();
+		return $step();
 	}
 
 	/**
@@ -390,16 +456,15 @@ final class Connection {
 					$mine   = is_array( $paused ) ? ( $paused['id'] ?? null ) === $id : (int) $paused > 0;
 					if ( $result->is( Api_Result::SUCCESS ) ) {
 						if ( $mine ) {
-							delete_option( self::PAUSED_OPTION );
+							self::remove( self::PAUSED_OPTION );
 						}
 					} elseif ( 403 === $result->status() && self::PLAN_ERROR === $result->error_code() && ! $mine ) {
-						update_option(
+						self::write(
 							self::PAUSED_OPTION,
 							array(
 								'id' => $id,
 								'at' => time(),
-							),
-							false
+							)
 						);
 					}
 					return true;
@@ -535,8 +600,8 @@ final class Connection {
 						return false;
 					}
 					if ( self::fresh_option( self::STATE_OPTION ) !== $expected ) {
-						update_option( self::STATE_OPTION, $expected, false );
-						update_option( self::REFUSED_AT_OPTION, time(), false );
+						self::write( self::STATE_OPTION, $expected );
+						self::write( self::REFUSED_AT_OPTION, time() );
 					}
 					return true;
 				}
@@ -566,11 +631,12 @@ final class Connection {
 				if ( null !== $expected && $fresh->snapshot()['id'] !== $expected ) {
 					return false;
 				}
-				update_option( self::OPTION, array( 'i' => wp_generate_uuid4() ), false );
-				delete_option( self::STATE_OPTION );
-				delete_option( self::REFUSED_AT_OPTION );
-				delete_option( self::CONNECTED_AT_OPTION );
-				delete_option( self::PAUSED_OPTION );
+				// The swap comes first: if the lock is lost after it, the rest only tidies up.
+				self::write( self::OPTION, array( 'i' => wp_generate_uuid4() ) );
+				self::remove( self::STATE_OPTION );
+				self::remove( self::REFUSED_AT_OPTION );
+				self::remove( self::CONNECTED_AT_OPTION );
+				self::remove( self::PAUSED_OPTION );
 				return true;
 			}
 		);
@@ -630,7 +696,7 @@ final class Connection {
 					return null;
 				}
 				$id = wp_generate_uuid4();
-				update_option( self::OPTION, array( 'i' => $id ), false );
+				self::write( self::OPTION, array( 'i' => $id ) );
 				return $id;
 			}
 		);

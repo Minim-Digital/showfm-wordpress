@@ -59,8 +59,21 @@ final class Account {
 	 * the calls were in flight.
 	 */
 	public function refresh(): bool {
-		$site_id = $this->connection->site_id();
-		if ( null === $site_id || ! $this->connection->is_connected() ) {
+		return $this->refresh_from( $this->connection->pinned() );
+	}
+
+	/**
+	 * Fetches and stores the account name and shows for the state a pinned connection holds.
+	 * The stored site id comes from that same state, and the data is kept only when both
+	 * keyed requests used that state's key and it is still the stored state, checked under
+	 * the connection lock. Data fetched with another state's key is discarded.
+	 *
+	 * @param Connection $pinned The connection, pinned when the refresh starts.
+	 */
+	public function refresh_from( Connection $pinned ): bool {
+		$state   = $pinned->snapshot()['id'];
+		$site_id = $pinned->site_id();
+		if ( null === $site_id || ! $pinned->is_connected() ) {
 			return false;
 		}
 
@@ -96,11 +109,11 @@ final class Account {
 			'name'  => self::text( $user['name'] ?? null ),
 			'shows' => $shows,
 		);
-		// Written under the connection lock, and only while the state whose key fetched the
-		// details is still the stored one: a refresh for a connection that was replaced or
-		// disconnected meanwhile never writes over the current one's details.
-		$state = $me->state_id();
-		if ( null === $state || $podcasts->state_id() !== $state ) {
+		// The site id and both answers must belong to one state: the one pinned at the start.
+		// A connection replaced at any point between them means the data is discarded, never
+		// stored under another state's site id. Written under the connection lock, and only
+		// while that state is still the stored one.
+		if ( $me->state_id() !== $state || $podcasts->state_id() !== $state ) {
 			return false;
 		}
 		try {
@@ -109,7 +122,7 @@ final class Account {
 					if ( $fresh->snapshot()['id'] !== $state ) {
 						return false;
 					}
-					update_option( self::OPTION, $details, false );
+					Connection::write( self::OPTION, $details );
 					return true;
 				}
 			);

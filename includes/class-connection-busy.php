@@ -14,5 +14,5 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Another change to the connection is in progress. Nothing was changed; try again.
  */
-final class Connection_Busy extends \RuntimeException {
+class Connection_Busy extends \RuntimeException {
 }

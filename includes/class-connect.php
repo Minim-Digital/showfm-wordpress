@@ -149,6 +149,9 @@ final class Connect {
 	/** Another change to the connection held the lock for too long; nothing was changed. */
 	const ERROR_BUSY = 'busy';
 
+	/** A change outlived its lock part way through; it stopped before its next write. */
+	const ERROR_LOST = 'lock_lost';
+
 	/** The credentials could not be stored (for example, no libsodium). */
 	const ERROR_STORAGE = 'storage_failed';
 
@@ -523,9 +526,9 @@ final class Connect {
 					}
 					Connection::note_report( $result );
 					if ( $result->is( Api_Result::SUCCESS ) ) {
-						delete_option( self::VERIFY_PENDING_OPTION );
+						Connection::remove( self::VERIFY_PENDING_OPTION );
 					} else {
-						update_option( self::VERIFY_PENDING_OPTION, 1, false );
+						Connection::write( self::VERIFY_PENDING_OPTION, 1 );
 					}
 				}
 			);
@@ -563,15 +566,21 @@ final class Connect {
 				if ( $fresh->snapshot()['id'] !== $expected || ! $fresh->disconnect() ) {
 					return false;
 				}
-				Plugin::unschedule_events();
-				delete_option( self::VERIFY_PENDING_OPTION );
-				delete_option( Api_Client::RATE_LIMIT_OPTION );
-				delete_option( Ping_Endpoint::LAST_PING_OPTION );
-				delete_option( Ping_Endpoint::MISSED_OPTION );
-				delete_option( Account::OPTION );
-				Ping_Endpoint::forget_nonces();
+				// Short steps, each after a lease check: a change that outlived its lease stops
+				// before touching whatever a later change has set up.
+				Connection::guarded( array( Plugin::class, 'unschedule_events' ) );
+				Connection::remove( self::VERIFY_PENDING_OPTION );
+				Connection::remove( Api_Client::RATE_LIMIT_OPTION );
+				Connection::remove( Ping_Endpoint::LAST_PING_OPTION );
+				Connection::remove( Ping_Endpoint::MISSED_OPTION );
+				Connection::remove( Account::OPTION );
+				Connection::guarded( array( Ping_Endpoint::class, 'forget_nonces' ) );
 				if ( $user_id > 0 ) {
-					self::clear_result( $user_id );
+					Connection::guarded(
+						static function () use ( $user_id ): void {
+							self::clear_result( $user_id );
+						}
+					);
 				}
 				return true;
 			}
@@ -641,6 +650,8 @@ final class Connect {
 				return __( 'The connection was cancelled.', 'showfm' );
 			case self::ERROR_INSECURE:
 				return __( 'This site’s address must use https.', 'showfm' );
+			case self::ERROR_LOST:
+				return __( 'The change took too long and another change took over part way through. Reload to see the connection as it is now.', 'showfm' );
 			case self::ERROR_BUSY:
 				return __( 'Another change to this site’s show.fm connection was in progress. Try again in a moment.', 'showfm' );
 			case self::ERROR_STORAGE:
@@ -679,13 +690,15 @@ final class Connect {
 					if ( ! $this->connection->save( $key, $ping_secret, $site_id, $expires_at ) ) {
 						return false;
 					}
-					delete_option( Api_Client::RATE_LIMIT_OPTION );
-					update_option( self::VERIFY_PENDING_OPTION, 1, false );
-					Health::schedule();
-					Sync::schedule();
+					Connection::remove( Api_Client::RATE_LIMIT_OPTION );
+					Connection::write( self::VERIFY_PENDING_OPTION, 1 );
+					Connection::guarded( array( Health::class, 'schedule' ) );
+					Connection::guarded( array( Sync::class, 'schedule' ) );
 					return true;
 				}
 			);
+		} catch ( Connection_Lost $lost ) {
+			return self::outcome( self::ERROR_LOST );
 		} catch ( Connection_Busy $busy ) {
 			return self::outcome( self::ERROR_BUSY );
 		}
@@ -841,7 +854,11 @@ final class Connect {
 			Connection::mutate(
 				static function () use ( $user_id, $outcome, $snapshot, $saved ): void {
 					$outcome['state_id'] = self::STATUS_CONNECTED === $outcome['status'] ? $saved : Connection::failure_state_id( $snapshot );
-					set_transient( self::RESULT_PREFIX . $user_id, $outcome, self::RESULT_TTL );
+					Connection::guarded(
+						static function () use ( $user_id, $outcome ): bool {
+							return set_transient( self::RESULT_PREFIX . $user_id, $outcome, self::RESULT_TTL );
+						}
+					);
 				}
 			);
 		} catch ( Connection_Busy $busy ) {

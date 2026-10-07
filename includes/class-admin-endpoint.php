@@ -162,6 +162,8 @@ final class Admin_Endpoint {
 			if ( ! $this->connect->disconnect( $pinned, get_current_user_id() ) ) {
 				return $this->moved_on();
 			}
+		} catch ( Connection_Lost $lost ) {
+			return new \WP_Error( 'showfm_lock_lost', Connect::message( Connect::ERROR_LOST ), array( 'status' => 503 ) );
 		} catch ( Connection_Busy $busy ) {
 			return new \WP_Error( 'showfm_busy', Connect::message( Connect::ERROR_BUSY ), array( 'status' => 503 ) );
 		}

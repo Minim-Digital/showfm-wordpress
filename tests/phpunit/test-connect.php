@@ -1028,6 +1028,163 @@ class Test_Connect extends WP_UnitTestCase {
 		return 150;
 	}
 
+	/**
+	 * Rewrites the connection lock's lease row, as time passing or another request would.
+	 *
+	 * @param callable $edit Gets the lease parts (token, expiry, mode, session) and returns new ones.
+	 */
+	private function edit_lease( callable $edit ): void {
+		global $wpdb;
+		$row   = (string) $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", Connection::LOCK_OPTION ) );
+		$parts = $edit( explode( '|', $row ) );
+		$wpdb->update( $wpdb->options, array( 'option_value' => implode( '|', $parts ) ), array( 'option_name' => Connection::LOCK_OPTION ) );
+		wp_cache_delete( Connection::LOCK_OPTION, 'options' );
+	}
+
+	/**
+	 * @dataProvider lost_leases
+	 *
+	 * @param string $how How the lease is lost.
+	 */
+	public function test_a_change_that_outlives_its_lease_stops_before_its_next_write( string $how ): void {
+		add_filter( 'showfm_sync_use_named_lock', '__return_false' );
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		try {
+			Connection::mutate(
+				function () use ( $how ): void {
+					Connection::write( Connection::REFUSED_AT_OPTION, 111 );
+					$this->edit_lease(
+						static function ( array $parts ) use ( $how ): array {
+							if ( 'expired' === $how ) {
+								// The holder was slow: its lease ran out.
+								$parts[1] = (string) ( time() - 1 );
+							} else {
+								// Its lease ran out and another request took the lock over.
+								$parts[0] = wp_generate_uuid4();
+								$parts[1] = (string) ( time() + Connection::LOCK_TTL );
+							}
+							return $parts;
+						}
+					);
+					Connection::write( Connection::REFUSED_AT_OPTION, 222 );
+				}
+			);
+			$this->fail( 'Expected Connection_Lost.' );
+		} catch ( ShowFM\Connection_Lost $lost ) {
+			$this->assertSame( 111, (int) get_option( Connection::REFUSED_AT_OPTION ), 'The write after the lease was lost never happened.' );
+		} finally {
+			remove_filter( 'showfm_sync_use_named_lock', '__return_false' );
+			// The other request's lease, so this test's teardown can take the lock.
+			delete_option( Connection::LOCK_OPTION );
+		}
+	}
+
+	/**
+	 * @return array<string,array{string}>
+	 */
+	public function lost_leases(): array {
+		return array(
+			'expired'    => array( 'expired' ),
+			'taken over' => array( 'taken over' ),
+		);
+	}
+
+	public function test_the_lease_is_renewed_before_each_write(): void {
+		add_filter( 'showfm_sync_use_named_lock', '__return_false' );
+		$expiry = static function (): int {
+			global $wpdb;
+			$row = (string) $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", Connection::LOCK_OPTION ) );
+			return (int) explode( '|', $row )[1];
+		};
+		try {
+			Connection::mutate(
+				static function () use ( $expiry ): void {
+					$before = $expiry();
+					// A slow step: time passes inside the change.
+					sleep( 1 );
+					Connection::write( Connection::REFUSED_AT_OPTION, 333 );
+					$after = $expiry();
+					if ( $after <= $before ) {
+						throw new LogicException( 'The lease was not renewed before the write.' );
+					}
+				}
+			);
+		} finally {
+			remove_filter( 'showfm_sync_use_named_lock', '__return_false' );
+		}
+		$this->assertSame( 333, (int) get_option( Connection::REFUSED_AT_OPTION ) );
+	}
+
+	public function test_a_disconnect_that_loses_its_lease_leaves_the_rest_to_whoever_took_over(): void {
+		add_filter( 'showfm_sync_use_named_lock', '__return_false' );
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		update_option( Connect::VERIFY_PENDING_OPTION, 1, false );
+		wp_schedule_single_event( time() + HOUR_IN_SECONDS, Health::HOOK );
+		$pinned   = $this->connection->pinned();
+		$takeover = function ( string $option ): void {
+			if ( Connection::OPTION === $option ) {
+				// Straight after the swap, the lease is lost to another request.
+				$this->edit_lease(
+					static function ( array $parts ): array {
+						$parts[0] = wp_generate_uuid4();
+						return $parts;
+					}
+				);
+			}
+		};
+		add_action( 'updated_option', $takeover );
+		try {
+			$this->connect->disconnect( $pinned );
+			$this->fail( 'Expected Connection_Lost.' );
+		} catch ( ShowFM\Connection_Lost $lost ) {
+			$this->assertSame( Connection::STATE_DISCONNECTED, ( new Connection() )->state(), 'The swap, made while the lock was held, stands.' );
+			$this->assertNotFalse( wp_next_scheduled( Health::HOOK ), 'Nothing after the loss ran: the jobs are untouched.' );
+			$this->assertTrue( Connect::verify_pending(), 'The verify marker is untouched.' );
+		} finally {
+			remove_action( 'updated_option', $takeover );
+			remove_filter( 'showfm_sync_use_named_lock', '__return_false' );
+			delete_option( Connection::LOCK_OPTION );
+		}
+	}
+
+	public function test_account_details_fetched_with_another_states_key_are_discarded(): void {
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		$stale = $this->connection->pinned();
+		// The connection is replaced after the refresh read its site id, before the requests.
+		$this->assertTrue( ( new Connection() )->save( 'showfm_live_BBBBKEYabcdefghijklmnopqr', self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		$this->http->respond( 200, '{"data":{"user":{"name":"Someone"}}}' );
+		$this->http->respond( 200, '{"data":[]}' );
+
+		$account = new ShowFM\Account( $this->connection, new Api_Client( $this->connection ) );
+
+		$this->assertFalse( $account->refresh_from( $stale ), 'Both answers carry the new state, not the one the site id came from.' );
+		$this->assertFalse( get_option( ShowFM\Account::OPTION ), 'Nothing is stored under the old state.' );
+	}
+
+	public function test_account_details_are_discarded_when_the_state_changes_between_the_requests(): void {
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		$this->http->respond_with(
+			static function () {
+				( new Connection() )->save( 'showfm_live_BBBBKEYabcdefghijklmnopqr', self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS );
+				return array( 200, '{"data":{"user":{"name":"Someone"}}}' );
+			}
+		);
+		$this->http->respond( 200, '{"data":[]}' );
+
+		$this->assertFalse( ( new ShowFM\Account( $this->connection, new Api_Client( $this->connection ) ) )->refresh() );
+		$this->assertFalse( get_option( ShowFM\Account::OPTION ) );
+	}
+
+	public function test_account_details_from_one_state_are_stored_with_its_site_id(): void {
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		$this->http->respond( 200, '{"data":{"user":{"name":"Maya"}}}' );
+		$this->http->respond( 200, '{"data":[]}' );
+
+		$this->assertTrue( ( new ShowFM\Account( $this->connection, new Api_Client( $this->connection ) ) )->refresh() );
+		$this->assertSame( self::SITE_ID, get_option( ShowFM\Account::OPTION )['site'] );
+		$this->assertSame( 'Maya', ShowFM\Account::details_for( self::SITE_ID )['name'] );
+	}
+
 	public function test_every_state_writes_its_own_random_id(): void {
 		delete_option( Connection::OPTION );
 		$this->assertSame( '', Connection::state_id(), 'A new install: nothing stored yet.' );

@@ -212,6 +212,9 @@ final class Cli {
 
 		try {
 			$done = $this->connect->disconnect( $pinned );
+		} catch ( Connection_Lost $lost ) {
+			\WP_CLI::error( Connect::message( Connect::ERROR_LOST ) );
+			return;
 		} catch ( Connection_Busy $busy ) {
 			\WP_CLI::error( Connect::message( Connect::ERROR_BUSY ) );
 			return;

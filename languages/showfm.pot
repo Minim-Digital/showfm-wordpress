@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-07T19:47:23+00:00\n"
+"POT-Creation-Date: 2026-10-07T20:00:22+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: showfm\n"
@@ -48,11 +48,11 @@ msgstr ""
 msgid "Disconnect needs the connection state the screen showed. Reload the page, then try again."
 msgstr ""
 
-#: includes/class-admin-endpoint.php:183
+#: includes/class-admin-endpoint.php:185
 msgid "The connection changed in another tab or by another admin, so nothing was disconnected. Check it, then try again."
 msgstr ""
 
-#: includes/class-admin-endpoint.php:199
+#: includes/class-admin-endpoint.php:201
 msgid "That notice can’t be dismissed."
 msgstr ""
 
@@ -224,93 +224,97 @@ msgstr ""
 msgid "Disconnect this site from show.fm? Posts already created stay."
 msgstr ""
 
-#: includes/class-cli.php:220
+#: includes/class-cli.php:223
 msgid "The connection changed while this command ran, so nothing was disconnected. Check it with wp showfm status, then run the command again."
 msgstr ""
 
-#: includes/class-cli.php:223
+#: includes/class-cli.php:226
 msgid "Disconnected. Revoke the key in show.fm under Connected sites if you no longer need it."
 msgstr ""
 
-#: includes/class-cli.php:262
+#: includes/class-cli.php:265
 msgid "Use wp showfm sync or wp showfm sync status."
 msgstr ""
 
 #. translators: 1: sync outcome, 2: rows handled, 3: cursor.
-#: includes/class-cli.php:268
+#: includes/class-cli.php:271
 #, php-format
 msgid "Sync: %1$s; rows: %2$d; cursor: %3$d."
 msgstr ""
 
-#: includes/class-cli.php:291
+#: includes/class-cli.php:294
 msgid "A key given as --key=VALUE stays in your shell history and shows in the process list. Use SHOWFM_KEY or --key=- next time."
 msgstr ""
 
-#: includes/class-cli.php:301
+#: includes/class-cli.php:304
 msgid "Site key from show.fm (input hidden)"
 msgstr ""
 
-#: includes/class-connect.php:619
+#: includes/class-connect.php:628
 msgid "This connection request did not come from this browser session. Start again with Connect to show.fm."
 msgstr ""
 
-#: includes/class-connect.php:621
+#: includes/class-connect.php:630
 msgid "The connection request expired or was already used. Start again with Connect to show.fm."
 msgstr ""
 
-#: includes/class-connect.php:623
+#: includes/class-connect.php:632
 msgid "show.fm did not accept the connection. Codes last five minutes and work once. Start again with Connect to show.fm."
 msgstr ""
 
-#: includes/class-connect.php:625
+#: includes/class-connect.php:634
 msgid "That is not a show.fm site key. Copy the key from Connected sites in show.fm."
 msgstr ""
 
-#: includes/class-connect.php:627
+#: includes/class-connect.php:636
 msgid "show.fm did not accept that key. Site keys must be registered within 24 hours. Create a new one in show.fm under Connected sites."
 msgstr ""
 
-#: includes/class-connect.php:629
+#: includes/class-connect.php:638
 msgid "show.fm could not confirm that this site belongs to you. Check that the site is public, uses https and has the show.fm plugin active, then try again."
 msgstr ""
 
 #. translators: %d: number of seconds.
-#: includes/class-connect.php:633
+#: includes/class-connect.php:642
 #, php-format
 msgid "show.fm asked this site to wait. Try again in %d second."
 msgid_plural "show.fm asked this site to wait. Try again in %d seconds."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/class-connect.php:637
+#: includes/class-connect.php:646
 msgid "show.fm could not be reached. Try again in a few minutes."
 msgstr ""
 
-#: includes/class-connect.php:639
+#: includes/class-connect.php:648
 msgid "show.fm sent an answer this plugin does not understand. Update the plugin, then try again."
 msgstr ""
 
-#: includes/class-connect.php:641
+#: includes/class-connect.php:650
 msgid "The connection was cancelled."
 msgstr ""
 
-#: includes/class-connect.php:643
+#: includes/class-connect.php:652
 msgid "This site’s address must use https."
 msgstr ""
 
-#: includes/class-connect.php:645
+#: includes/class-connect.php:654
+msgid "The change took too long and another change took over part way through. Reload to see the connection as it is now."
+msgstr ""
+
+#: includes/class-connect.php:656
 msgid "Another change to this site’s show.fm connection was in progress. Try again in a moment."
 msgstr ""
 
-#: includes/class-connect.php:647
+#: includes/class-connect.php:658
 msgid "The connection could not be saved. Your server needs the PHP sodium extension, or WordPress 6.6 or later. Then try again."
 msgstr ""
 
-#: includes/class-connect.php:649
+#: includes/class-connect.php:660
 msgid "Connected, but this site could not report in to show.fm yet. It tries again automatically."
 msgstr ""
 
-#: includes/class-connect.php:651
+#: includes/class-connect.php:662
 msgid "Something went wrong. Start again with Connect to show.fm."
 msgstr ""
 
