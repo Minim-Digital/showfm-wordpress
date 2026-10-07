@@ -23,6 +23,12 @@ final class Sync {
 	 * @var array<int,bool>
 	 */
 	private static $running = array();
+	/**
+	 * Active lease objects, per blog.
+	 *
+	 * @var array<int,Sync_Lock>
+	 */
+	private static $locks = array();
 
 	/**
 	 * Per-site durable state.
@@ -33,12 +39,13 @@ final class Sync {
 		$state = (array) get_option( self::OPTION, array() );
 		return array_merge(
 			array(
-				'site'     => '',
-				'cursor'   => 0,
-				'reports'  => array(),
-				'failures' => 0,
-				'retry_at' => 0,
-				'error'    => '',
+				'site'           => '',
+				'cursor'         => 0,
+				'reports'        => array(),
+				'report_retries' => array(),
+				'failures'       => 0,
+				'retry_at'       => 0,
+				'error'          => '',
 			),
 			$state
 		);
@@ -93,10 +100,14 @@ final class Sync {
 		$blog = get_current_blog_id();
 		$lock = new Sync_Lock();
 		if ( ! empty( self::$running[ $blog ] ) || ! $lock->acquire() ) {
+			if ( ! $dry_run ) {
+				self::wake( time() + 15 );
+			}
 			$result['status'] = 'locked';
 			return $result;
 		}
 		self::$running[ $blog ] = true;
+		self::$locks[ $blog ]   = $lock;
 		try {
 			// Reread after acquiring, bypassing a stale per-request options cache.
 			wp_cache_delete( self::OPTION, 'options' );
@@ -104,16 +115,20 @@ final class Sync {
 			$site  = (string) $connection->site_id();
 			if ( $site !== $state['site'] ) {
 				$state = array(
-					'site'     => $site,
-					'cursor'   => 0,
-					'reports'  => array(),
-					'failures' => 0,
-					'retry_at' => 0,
-					'error'    => '',
+					'site'           => $site,
+					'cursor'         => 0,
+					'reports'        => array(),
+					'report_retries' => array(),
+					'failures'       => 0,
+					'retry_at'       => 0,
+					'error'          => '',
 				);
 			}
 			$result['cursor'] = (int) $state['cursor'];
 			if ( $state['retry_at'] > time() || Api_Client::rate_limit_remaining() ) {
+				if ( ! $dry_run ) {
+					self::wake( max( (int) $state['retry_at'], time() + Api_Client::rate_limit_remaining() ) );
+				}
 				$result['status'] = 'backoff';
 				return $result;
 			}
@@ -148,18 +163,35 @@ final class Sync {
 				if ( ! self::valid_page( $data, (int) $state['cursor'] ) ) {
 					return $dry_run ? array_merge( $result, array( 'status' => 'invalid_feed' ) ) : $this->failure( $state, $result, 'invalid_feed' );
 				}
+				$seen = (int) $state['cursor'];
 				foreach ( $data['data'] as $row ) {
+					++$result['rows'];
+					if ( ! is_array( $row ) || ! Sync_Posts::valid( $row ) || $row['seq'] <= $seen || $row['seq'] > $data['cursor']['next'] ) {
+						if ( ! $dry_run ) {
+							Sync_Log::record( 'row_invalid', is_array( $row ) && is_int( $row['seq'] ?? null ) ? $row['seq'] : 0 );
+						}
+						continue;
+					}
+					$seen = $row['seq'];
 					if ( ! $dry_run ) {
 						self::require_lock();
-						$id = ( new Sync_Posts() )->apply( $site, $row );
-						if ( is_wp_error( $id ) ) {
-							return $this->failure( $state, $result, $id->get_error_code(), Api_Client::rate_limit_remaining() );
+						try {
+							$id = ( new Sync_Posts() )->apply( $site, $row );
+						} catch ( \Throwable $error ) {
+							self::require_lock();
+							$id = new \WP_Error( 'showfm_row_failed' );
 						}
-						if ( $id ) {
+						if ( is_wp_error( $id ) ) {
+							Sync_Log::record( 'row_apply_failed', $row['seq'] );
+							continue;
+						}
+						$detached = in_array( $row['reason'] ?? null, array( 'access_removed', 'plan_or_policy' ), true );
+						if ( $id && ! $detached ) {
 							$state['reports'][ $row['episode_id'] ] = $id;
+						} else {
+							unset( $state['reports'][ $row['episode_id'] ], $state['report_retries'][ $row['episode_id'] ] );
 						}
 					}
-					++$result['rows'];
 				}
 				$state['cursor']  = $data['cursor']['next'];
 				$result['cursor'] = $state['cursor'];
@@ -176,9 +208,7 @@ final class Sync {
 				// Always GET once more at the applied cursor, even on the last non-empty page.
 				// That acknowledges last_pulled_seq to show.fm after all local applies.
 				if ( empty( $data['data'] ) ) {
-					if ( $state['reports'] ) {
-						return $this->failure( $state, $result, 'reports_pending' );
-					}
+					( new Sync_Artwork() )->retry();
 					$result['status']  = 'caught_up';
 					$state['failures'] = 0;
 					$state['retry_at'] = 0;
@@ -198,7 +228,7 @@ final class Sync {
 			// Do not retain hook exception messages: third-party hooks can include secrets.
 			return $dry_run ? array_merge( $result, array( 'status' => 'apply_failed' ) ) : $this->failure( $state, $result, 'apply_failed' );
 		} finally {
-			unset( self::$running[ $blog ] );
+			unset( self::$running[ $blog ], self::$locks[ $blog ] );
 			$lock->release();
 		}
 	}
@@ -217,14 +247,7 @@ final class Sync {
 		if ( ( $cursor['after'] ?? null ) !== $after || ! is_int( $cursor['next'] ?? null ) || ! is_int( $cursor['latest'] ?? null ) || ! is_bool( $cursor['has_more'] ?? null ) ) {
 			return false;
 		}
-		$last = $after;
-		foreach ( $data['data'] as $row ) {
-			if ( ! is_array( $row ) || ! Sync_Posts::valid( $row ) || $row['seq'] <= $last ) {
-				return false;
-			}
-			$last = $row['seq'];
-		}
-		return $last === $cursor['next'] && $last <= $cursor['latest'] && ( ! $cursor['has_more'] || $last > $after );
+		return $cursor['next'] >= $after && $cursor['next'] <= $cursor['latest'] && ( empty( $data['data'] ) ? $cursor['next'] === $after && ! $cursor['has_more'] : $cursor['next'] > $after );
 	}
 
 	/**
@@ -236,23 +259,29 @@ final class Sync {
 	 */
 	private function reports( array &$state, array &$deferred ): ?Api_Result {
 		foreach ( array_slice( array_diff_key( $state['reports'], $deferred ), 0, self::PAGE_SIZE, true ) as $episode => $id ) {
-			if ( isset( $deferred[ $episode ] ) ) {
+			$retry  = $state['report_retries'][ $episode ] ?? array(
+				'attempts' => 0,
+				'next'     => 0,
+			);
+			$post   = get_post( $id );
+			$reason = ! $post ? 'report_missing_post' : '';
+			if ( $post && in_array( get_post_meta( $id, '_showfm_sync_state', true ), array( 'detached', 'paused', 'local_detached' ), true ) ) {
+				$reason = 'report_detached';
+			}
+			$url = $post ? self::post_url( $post ) : null;
+			if ( '' === $reason && null === $url ) {
+				$reason = 'report_invalid_url';
+			}
+			if ( '' !== $reason ) {
+				$this->drop_report( $state, (string) $episode, $reason );
 				continue;
 			}
-			$post = get_post( $id );
-			if ( ! $post ) {
+			if ( $retry['next'] > time() ) {
 				$deferred[ (string) $episode ] = true;
 				unset( $state['reports'][ $episode ] );
 				$state['reports'][ $episode ] = $id;
 				self::save( $state );
-				continue;
-			}
-			$url = self::post_url( $post );
-			if ( null === $url ) {
-				$deferred[ (string) $episode ] = true;
-				unset( $state['reports'][ $episode ] );
-				$state['reports'][ $episode ] = $id;
-				self::save( $state );
+				self::wake( $retry['next'] );
 				continue;
 			}
 			$states = array(
@@ -266,25 +295,50 @@ final class Sync {
 				'state'      => $states[ $post->post_status ] ?? 'draft',
 			);
 			$hash   = get_post_meta( $id, '_showfm_content_hash', true );
-			if ( is_string( $hash ) && '' !== $hash ) {
+			if ( is_string( $hash ) && 1 === preg_match( '/^[0-9A-Za-z:_-]{1,128}$/', $hash ) ) {
 				$body['content_hash'] = $hash;
 			}
 			self::require_lock();
 			$response = Plugin::api_client()->post_keyed( '/v1/me/sites/' . rawurlencode( $state['site'] ) . '/episodes/' . rawurlencode( $episode ) . '/post', $body );
-			if ( in_array( $response->status(), array( 400, 403, 404 ), true ) ) {
-				$deferred[ (string) $episode ] = true;
+			if ( $response->is( Api_Result::UNAUTHORISED ) || $response->is( Api_Result::RATE_LIMITED ) ) {
+				return $response; // Connection-wide auth/rate limits still apply to feed reads.
+			}
+			if ( $response->is( Api_Result::SUCCESS ) ) {
+				unset( $state['reports'][ $episode ], $state['report_retries'][ $episode ] );
+				self::save( $state );
+			} elseif ( $response->is( Api_Result::TRANSIENT_FAILURE ) ) {
+				++$retry['attempts'];
+				$retry['next']                       = time() + min( 3600, 30 * ( 2 ** min( 7, $retry['attempts'] - 1 ) ) );
+				$state['report_retries'][ $episode ] = $retry;
+				$deferred[ (string) $episode ]       = true;
+				// Rotate deferred entries so a large outbox cannot starve later reports.
 				unset( $state['reports'][ $episode ] );
 				$state['reports'][ $episode ] = $id;
+				Sync_Log::record( 'report_retry' );
 				self::save( $state );
-				continue;
+				self::wake( $retry['next'] );
+			} else {
+				$code = in_array( $response->status(), array( 400, 403, 404 ), true ) ? 'report_' . $response->status() : 'report_terminal';
+				$this->drop_report( $state, (string) $episode, $code );
 			}
-			if ( ! $response->is( Api_Result::SUCCESS ) ) {
-				return $response;
-			}
-			unset( $state['reports'][ $episode ] );
-			self::save( $state );
+		}
+		if ( array_diff_key( $state['reports'], $deferred ) ) {
+			self::wake( time() + 15 );
 		}
 		return null;
+	}
+
+	/**
+	 * Discard a terminal report with a content-free audit receipt.
+	 *
+	 * @param array<string,mixed> $state Consumer state.
+	 * @param string              $episode Episode ID.
+	 * @param string              $reason Own reason code.
+	 */
+	private function drop_report( array &$state, string $episode, string $reason ): void {
+		Sync_Log::record( $reason );
+		unset( $state['reports'][ $episode ], $state['report_retries'][ $episode ] );
+		self::save( $state );
 	}
 
 	/**
@@ -320,13 +374,21 @@ final class Sync {
 		}
 	}
 
+	/** Guard writes after optional artwork HTTP when called inside a pull. */
+	public static function guard(): void {
+		if ( isset( self::$locks[ get_current_blog_id() ] ) ) {
+			self::require_lock();
+		}
+	}
+
 	/**
 	 * Refuse further work if WordPress reconnected and lost the session lock.
 	 *
 	 * @throws \RuntimeException If the database session no longer owns the lock.
 	 */
-	private static function require_lock(): void {
-		if ( ! ( new Sync_Lock() )->owned() ) {
+	public static function require_lock(): void {
+		$lock = self::$locks[ get_current_blog_id() ] ?? null;
+		if ( ! $lock || ! $lock->owned() ) {
 			throw new \RuntimeException( 'Sync lock lost.' );
 		}
 	}
@@ -341,6 +403,7 @@ final class Sync {
 	 * @return array{status:string,rows:int,cursor:int}
 	 */
 	private function failure( array $state, array $result, string $error, int $retry_after = 0 ): array {
+		$error = in_array( $error, array( Api_Result::UNAUTHORISED, Api_Result::RATE_LIMITED, Api_Result::TRANSIENT_FAILURE, Api_Result::FAILED, Api_Result::UNAVAILABLE, Api_Result::NOT_MODIFIED, 'invalid_feed', 'apply_failed' ), true ) ? $error : 'apply_failed';
 		++$state['failures'];
 		$state['error']    = $error;
 		$state['retry_at'] = time() + max( $retry_after, min( 3600, 30 * ( 2 ** min( 7, $state['failures'] - 1 ) ) ) + wp_rand( 0, 15 ) );
@@ -359,9 +422,9 @@ final class Sync {
 	 *
 	 * @param int $at Timestamp.
 	 */
-	private static function wake( int $at ): void {
+	public static function wake( int $at ): void {
 		$next = wp_next_scheduled( Ping_Endpoint::PULL_HOOK );
-		if ( $next && $next < $at ) {
+		if ( $next && $next > $at ) {
 			wp_clear_scheduled_hook( Ping_Endpoint::PULL_HOOK );
 			$next = false;
 		}

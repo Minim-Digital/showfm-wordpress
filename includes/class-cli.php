@@ -236,6 +236,12 @@ final class Cli {
 				\WP_CLI::line( $key . ': ' . $state[ $key ] );
 			}
 			\WP_CLI::line( 'pending_reports: ' . count( $state['reports'] ) );
+			\WP_CLI::line( 'pending_artwork: ' . count( (array) get_option( Sync_Artwork::QUEUE, array() ) ) );
+			$log = (array) get_option( Sync_Log::OPTION, array() );
+			\WP_CLI::line( 'recent_errors: ' . count( $log ) );
+			foreach ( $log as $entry ) {
+				\WP_CLI::line( 'sync_error: ' . $entry['code'] . '; seq: ' . $entry['seq'] . '; at: ' . $entry['at'] );
+			}
 			return;
 		}
 		if ( $args ) {

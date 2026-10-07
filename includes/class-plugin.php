@@ -77,6 +77,8 @@ final class Plugin {
 		add_action( Sync::POLL_HOOK, array( Sync::class, 'run' ) );
 		add_action( Ping_Endpoint::PULL_HOOK, array( Sync::class, 'run' ) );
 		add_action( 'init', array( Sync::class, 'schedule' ) );
+		add_action( 'transition_post_status', array( Sync_Identity::class, 'transition' ), 10, 3 );
+		add_action( 'before_delete_post', array( Sync_Identity::class, 'detach' ) );
 
 		add_action( 'init', array( Blocks::class, 'register' ) );
 		add_action( 'init', array( Bindings::class, 'register' ) );

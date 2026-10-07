@@ -122,29 +122,40 @@ records contact and the requested `after` cursor, so a dry run never requests th
 page at a cursor it has not applied. `dry_run_limit` means more rows remain beyond the
 preview. Authentication and rate-limit protection remain active during a dry run.
 
-A per-database, per-blog MySQL session lock prevents overlapping consumers, including
-across PHP workers and object caches. It is released by `finally` or by the database
-when a crashed process disconnects. It has no time lease that could expire under a
-slow live worker. Hosts must support MySQL/MariaDB named session locks on the same
-connection used by `$wpdb`; transaction-pooling database proxies are not supported.
+A per-blog options lease uses a unique row and conditional updates to prevent
+concurrent claims. It renews before work and expires after five minutes if a worker
+crashes. A MySQL session lock adds immediate crash recovery when supported. Unsupported
+GET_LOCK or session ownership falls back to the lease; hosts with multiplexed database
+connections can disable named locks through `showfm_sync_use_named_lock`. A contending
+pull queues another attempt after 15 seconds. A stale worker cannot release a new lease.
 
-The consumer validates a complete page before applying its rows, then stores its
-cursor and pending reports together in the non-autoloaded `showfm_sync` option. The
-next GET sends the applied cursor, including an extra read after the final page, to
-acknowledge `last_pulled_seq`. A stable post GUID recovers inserts interrupted before
-meta was written. `_showfm_content_hash` skips unchanged content, while
-`_showfm_synced_revision` hashes the stored title, content and excerpt. A detected
-WordPress edit permanently sets `_showfm_edited`; only status and dates then change.
+The consumer validates the page envelope, then handles rows individually. Unknown or
+malformed rows and failed post writes are skipped with a plugin-owned error code and
+sequence number. After handling the page it stores the cursor and pending reports
+together in the non-autoloaded `showfm_sync` option. The next GET acknowledges
+`last_pulled_seq`, including an extra read after the final page. Indexed identity
+receipts and a bounded primary-key lookup recover interrupted inserts; existing posts
+migrate through their episode meta. `_showfm_content_hash`, lifecycle fields and
+pending artwork together determine whether a row needs work. `_showfm_synced_revision`
+hashes the stored title, content and excerpt. A WordPress edit permanently sets
+`_showfm_edited`; content is then protected. User trash or permanent deletion records
+a durable local detachment and is never undone by an upsert or replay.
 The player is the WP-2a `showfm/player` block. Description/show notes are sanitised,
 saved block HTML, rather than a live binding that would bypass edit protection.
 
 The per-blog `showfm_publishing` option accepts `post_type` (default `post`), `author`
-(default first site administrator), `categories` (array of IDs) and `featured_image`
+(default first site member who can publish the post type), `categories` (array of IDs) and `featured_image`
 (default false). WP-4b will add the Publishing tab and post panel. The default template
 is a player followed by show notes, falling back to the plain description. Transcript
 insertion and template controls are not exposed by this engine. Public artwork is
-sideloaded once with a 10 MB cap, HTTPS, no redirects, safe HTTP validation and image
-MIME checks; the attachment GUID deduplicates its source URL. Scheduled artwork is
+sideloaded once from the exact show.fm media hosts `m.cdn.media`, `m.showfm.dev`,
+`media.podcasterplus.com` or `media.podcasterplus.dev`. Downloads require HTTPS, no
+credentials, explicit ports or redirects, and safe HTTP validation. Limits are 10 MB,
+8000 pixels per side and 40 million pixels, checked before image processing; only
+JPEG, PNG, WebP and GIF are accepted. Indexed attachment receipts deduplicate source
+URLs. Permanent failures are recorded per post and skipped; network errors, 429,
+5xx and temporarily missing public metadata retry up to three times independently
+of the feed cursor. Scheduled artwork is
 not exposed by the merged feed, so it waits for the public episode on publication.
 
 Scheduled/published rows become future/published posts; removed or unpublished rows
@@ -155,12 +166,15 @@ post and still respects the permanent edit flag. Tombstones without a local post
 not create empty posts or send a report, since the API requires a positive post ID.
 
 The server has a per-episode report endpoint, not a bulk endpoint. Reports are drained
-in batches of twenty requests, retained until acknowledged and retried idempotently.
-HTTP 400/403/404 reports remain queued but do not block feed reads: access-removed or
-plan-paused reports can be refused by the server until access returns. Invalid local
-permalinks are also retained without being sent. A valid report URL must use HTTPS,
+in batches of twenty requests. Network and server failures retry idempotently with
+separate backoff, without holding up feed reads or pings. HTTP 400/403/404 responses,
+missing posts and invalid local permalinks drop that report with a local reason code.
+Detached and paused rows do not send reports. A valid report URL must use HTTPS,
 the home host and a path beneath the home path. A 401 stops keyed requests and asks for
-reconnection; 429 honours the full Retry-After; other failures back off to an hour.
+reconnection; 429 honours Retry-After up to a one-day cap. Feed failures and report
+retries back off to an hour. `wp showfm sync status` shows pending report/artwork counts
+and the latest 50 local diagnostic entries (own codes, sequence numbers and timestamps,
+never remote error text or post content).
 A new connection ID starts its own cursor and outbox without claiming the old
 connection's posts. Uninstall removes plugin receipts, never posts or media files.
 
