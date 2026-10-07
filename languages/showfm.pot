@@ -1,0 +1,1192 @@
+# Copyright (C) 2026 show.fm
+# This file is distributed under the GPLv2 or later.
+msgid ""
+msgstr ""
+"Project-Id-Version: show.fm 0.1.0\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/showfm\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-10-07T19:07:21+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: showfm\n"
+
+#. Plugin Name of the plugin
+#. Author of the plugin
+#: showfm.php
+#: includes/class-admin.php:63
+#: includes/class-admin.php:64
+#: includes/class-admin.php:128
+#: includes/class-privacy.php:27
+#: src/sidebar/index.js:39
+msgid "show.fm"
+msgstr ""
+
+#. Plugin URI of the plugin
+#: showfm.php
+msgid "https://github.com/Minim-Digital/showfm-wordpress"
+msgstr ""
+
+#. Description of the plugin
+#: showfm.php
+msgid "Podcast player, episode lists and auto-posting for show.fm shows."
+msgstr ""
+
+#. Author URI of the plugin
+#: showfm.php
+msgid "https://show.fm"
+msgstr ""
+
+#: includes/class-admin.php:81
+msgid "Sorry, you are not allowed to connect this site to show.fm."
+msgstr ""
+
+#: includes/class-admin.php:132
+msgid "This site is connected to show.fm."
+msgstr ""
+
+#. translators: %s: the site key with all but its last four characters hidden.
+#: includes/class-admin.php:138
+#, php-format
+msgid "Connected with key %s."
+msgstr ""
+
+#: includes/class-admin.php:140
+msgid "show.fm no longer accepts this site's key. Reconnect to keep publishing."
+msgstr ""
+
+#: includes/class-admin.php:142
+msgid "Connect this site to your show.fm account to publish episodes as posts."
+msgstr ""
+
+#: includes/class-admin.php:148
+#: src/components/show-placeholder.js:225
+msgid "Connect to show.fm"
+msgstr ""
+
+#: includes/class-admin.php:148
+msgid "Reconnect to show.fm"
+msgstr ""
+
+#: includes/class-bindings.php:34
+msgid "show.fm episode"
+msgstr ""
+
+#. translators: %s: season number.
+#: includes/class-bindings.php:66
+#, php-format
+msgid "Season %s"
+msgstr ""
+
+#. translators: %s: episode number.
+#: includes/class-bindings.php:70
+#, php-format
+msgid "Episode %s"
+msgstr ""
+
+#: includes/class-cli.php:114
+msgid "Give the site key from show.fm: set SHOWFM_KEY, pipe it in with --key=-, or run this in a terminal to be asked for it."
+msgstr ""
+
+#. translators: %s: reason code from show.fm, for example "mismatch".
+#: includes/class-cli.php:123
+#, php-format
+msgid "(show.fm reason: %s)"
+msgstr ""
+
+#. translators: %s: the site key with all but its last four characters hidden.
+#: includes/class-cli.php:135
+#, php-format
+msgid "Connected to show.fm with key %s."
+msgstr ""
+
+#: includes/class-cli.php:150
+msgid "never"
+msgstr ""
+
+#: includes/class-cli.php:153
+msgid "connected"
+msgstr ""
+
+#: includes/class-cli.php:154
+msgid "not connected"
+msgstr ""
+
+#: includes/class-cli.php:155
+msgid "reconnect needed"
+msgstr ""
+
+#. translators: %s: connection state.
+#: includes/class-cli.php:159
+#, php-format
+msgid "State: %s"
+msgstr ""
+
+#. translators: %s: site id at show.fm.
+#: includes/class-cli.php:168
+#, php-format
+msgid "Site ID: %s"
+msgstr ""
+
+#. translators: %s: masked site key.
+#: includes/class-cli.php:170
+#, php-format
+msgid "Key: %s"
+msgstr ""
+
+#. translators: %s: masked site key.
+#: includes/class-cli.php:170
+msgid "unreadable"
+msgstr ""
+
+#. translators: %s: date and time.
+#: includes/class-cli.php:172
+#, php-format
+msgid "Key expires: %s"
+msgstr ""
+
+#. translators: %s: date and time.
+#: includes/class-cli.php:172
+msgid "unknown"
+msgstr ""
+
+#. translators: %s: date and time.
+#: includes/class-cli.php:174
+#, php-format
+msgid "Last sync: %s"
+msgstr ""
+
+#. translators: %s: date and time.
+#: includes/class-cli.php:176
+#, php-format
+msgid "Last ping: %s"
+msgstr ""
+
+#: includes/class-cli.php:178
+msgid "Reported in: not yet (retried by the daily health check)"
+msgstr ""
+
+#. translators: %d: seconds.
+#: includes/class-cli.php:183
+#, php-format
+msgid "Rate limited: waiting %d more seconds"
+msgstr ""
+
+#: includes/class-cli.php:206
+msgid "This site is not connected to show.fm."
+msgstr ""
+
+#: includes/class-cli.php:209
+msgid "Disconnect this site from show.fm? Posts already created stay."
+msgstr ""
+
+#: includes/class-cli.php:212
+msgid "Disconnected. Revoke the key in show.fm under Connected sites if you no longer need it."
+msgstr ""
+
+#: includes/class-cli.php:251
+msgid "Use wp showfm sync or wp showfm sync status."
+msgstr ""
+
+#. translators: 1: sync outcome, 2: rows handled, 3: cursor.
+#: includes/class-cli.php:257
+#, php-format
+msgid "Sync: %1$s; rows: %2$d; cursor: %3$d."
+msgstr ""
+
+#: includes/class-cli.php:280
+msgid "A key given as --key=VALUE stays in your shell history and shows in the process list. Use SHOWFM_KEY or --key=- next time."
+msgstr ""
+
+#: includes/class-cli.php:290
+msgid "Site key from show.fm (input hidden)"
+msgstr ""
+
+#: includes/class-connect.php:513
+msgid "This connection request did not come from this browser session. Start again with Connect to show.fm."
+msgstr ""
+
+#: includes/class-connect.php:515
+msgid "The connection request expired or was already used. Start again with Connect to show.fm."
+msgstr ""
+
+#: includes/class-connect.php:517
+msgid "show.fm did not accept the connection. Codes last five minutes and work once. Start again with Connect to show.fm."
+msgstr ""
+
+#: includes/class-connect.php:519
+msgid "That is not a show.fm site key. Copy the key from Connected sites in show.fm."
+msgstr ""
+
+#: includes/class-connect.php:521
+msgid "show.fm did not accept that key. Site keys must be registered within 24 hours. Create a new one in show.fm under Connected sites."
+msgstr ""
+
+#: includes/class-connect.php:523
+msgid "show.fm could not confirm that this site belongs to you. Check that the site is public, uses https and has the show.fm plugin active, then try again."
+msgstr ""
+
+#. translators: %d: number of seconds.
+#: includes/class-connect.php:527
+#, php-format
+msgid "show.fm asked this site to wait. Try again in %d second."
+msgid_plural "show.fm asked this site to wait. Try again in %d seconds."
+msgstr[0] ""
+msgstr[1] ""
+
+#: includes/class-connect.php:531
+msgid "show.fm could not be reached. Try again in a few minutes."
+msgstr ""
+
+#: includes/class-connect.php:533
+msgid "show.fm sent an answer this plugin does not understand. Update the plugin, then try again."
+msgstr ""
+
+#: includes/class-connect.php:535
+msgid "The connection could not be saved. Your server needs the PHP sodium extension, or WordPress 6.6 or later. Then try again."
+msgstr ""
+
+#: includes/class-connect.php:537
+msgid "Connected, but this site could not report in to show.fm yet. It tries again automatically."
+msgstr ""
+
+#: includes/class-connect.php:539
+msgid "Something went wrong. Start again with Connect to show.fm."
+msgstr ""
+
+#: includes/class-editor.php:36
+msgid "show.fm sync status for this post."
+msgstr ""
+
+#: includes/class-embed-settings.php:25
+msgid "Show 'Powered by show.fm'"
+msgstr ""
+
+#: includes/class-health.php:77
+msgid "show.fm sync"
+msgstr ""
+
+#: includes/class-health.php:97
+msgid "The selected post type is unavailable or is not public. Enable it or choose an available public post type. The episode is kept for retry and syncing resumes automatically after the setting is fixed, with retries at most an hour apart."
+msgstr ""
+
+#: includes/class-health.php:98
+msgid "Sync needs an existing author who can publish the selected post type. Choose a publishing author for this site. The episode is kept for retry and syncing resumes automatically after the setting is fixed, with retries at most an hour apart."
+msgstr ""
+
+#: includes/class-health.php:99
+msgid "The show.fm change feed has a server contract problem. The cursor is kept before the invalid page and the plugin retries automatically. Contact show.fm support if this persists."
+msgstr ""
+
+#: includes/class-health.php:103
+msgid "show.fm sync needs attention"
+msgstr ""
+
+#: includes/class-health.php:103
+msgid "show.fm has no blocking configuration or contract problem"
+msgstr ""
+
+#: includes/class-health.php:109
+msgid "No blocking configuration or server contract problem is recorded for this connection."
+msgstr ""
+
+#: includes/class-migration-catalogue.php:52
+msgid "The catalogue is waiting for API backoff. Resume the dry run after the retry time."
+msgstr ""
+
+#: includes/class-migration-catalogue.php:104
+msgid "The catalogue is incomplete. The episode list must expose provenance fingerprints. Saved pages and the previous report are retained; resume the dry run after backoff."
+msgstr ""
+
+#: includes/class-migration-cli.php:83
+msgid "Use --reset alone or with --dry-run; it cannot apply or resume an existing report."
+msgstr ""
+
+#: includes/class-migration-cli.php:92
+msgid "Pending catalogue pages discarded. The active report, posts and revisions are unchanged."
+msgstr ""
+
+#: includes/class-migration-cli.php:102
+msgid "Use --dry-run to review or --yes to replace matched embeds."
+msgstr ""
+
+#: includes/class-migration-cli.php:107
+msgid "Use --format=table or --format=json."
+msgstr ""
+
+#: includes/class-migration-cli.php:112
+msgid "Post and batch limits must be positive integers."
+msgstr ""
+
+#: includes/class-migration-cli.php:125
+msgid "Complete a dry run before using --yes. Only that saved report can be applied."
+msgstr ""
+
+#: includes/class-migration-cli.php:136
+msgid "There is no scan to resume."
+msgstr ""
+
+#: includes/class-migration-cli.php:140
+msgid "The post restriction differs from the saved scan. Start a new scan."
+msgstr ""
+
+#: includes/class-migration-cli.php:162
+msgid "Each choice must name an ambiguous embed and one of its reported candidates."
+msgstr ""
+
+#: includes/class-migration-cli.php:197
+msgid "Scan paused. Continue with --resume; no posts have been changed."
+msgstr ""
+
+#: includes/class-migration-cli.php:200
+msgid "Some posts could not be migrated. Review the report."
+msgstr ""
+
+#: includes/class-migration-cli.php:215
+msgid "Use --choose=post:embed:episode-uuid, with one choice per ambiguous embed."
+msgstr ""
+
+#: includes/class-migration-cli.php:229
+msgid "Already show.fm"
+msgstr ""
+
+#: includes/class-migration-detectors.php:27
+msgid "The scan exceeded the 10,000-token limit (candidate < and [ starts). No embeds from this post were accepted. Shorten or split the content before rescanning."
+msgstr ""
+
+#: includes/class-migration-detectors.php:29
+msgid "The content could not be scanned safely. Review the malformed or oversized embed markup."
+msgstr ""
+
+#: includes/class-migration-scanner.php:90
+msgid "Matching failed safely. Check the content encoding and PHP regular expression limits."
+msgstr ""
+
+#: includes/class-migration-store.php:146
+msgid "Another migration request is active. Resume when it finishes."
+msgstr ""
+
+#: includes/class-migration-swap.php:26
+msgid "Use a site administrator who can edit this post."
+msgstr ""
+
+#: includes/class-migration-swap.php:29
+#: includes/class-migrator.php:50
+msgid "Connect this site to show.fm before migrating embeds."
+msgstr ""
+
+#: includes/class-migration-swap.php:33
+msgid "The published post or page is no longer available."
+msgstr ""
+
+#: includes/class-migration-swap.php:39
+msgid "This post has no safe, reviewed embed ranges. Start a new scan."
+msgstr ""
+
+#: includes/class-migration-swap.php:42
+msgid "The post or source player changed after scanning. Start a new scan."
+msgstr ""
+
+#: includes/class-migration-swap.php:47
+msgid "This embed has no matching scan evidence. Start a new scan."
+msgstr ""
+
+#: includes/class-migration-swap.php:50
+msgid "The embed ranges overlap or changed. This post needs manual review."
+msgstr ""
+
+#: includes/class-migration-swap.php:67
+msgid "Choose an episode from this ambiguous embed's candidates."
+msgstr ""
+
+#: includes/class-migration-swap.php:72
+msgid "The episode identifiers are invalid. Start a new scan."
+msgstr ""
+
+#: includes/class-migration-swap.php:100
+msgid "The chosen embed does not exist in this report."
+msgstr ""
+
+#: includes/class-migration-swap.php:106
+msgid "Enable WordPress revisions before migrating so the change can be undone."
+msgstr ""
+
+#: includes/class-migration-swap.php:135
+msgid "Could not save the undo revision. The post has not been changed."
+msgstr ""
+
+#: includes/class-migration-swap.php:139
+msgid "The post or source player changed during migration. Start a new scan."
+msgstr ""
+
+#: includes/class-migration-swap.php:146
+msgid "The post changed at write time. The migration was refused."
+msgstr ""
+
+#: includes/class-migration-swap.php:177
+msgid "The post was migrated, but another save callback removed or changed its undo revision. Review the post before continuing."
+msgstr ""
+
+#: includes/class-migrator.php:47
+msgid "Use --user=<administrator> for a site administrator who can edit these posts."
+msgstr ""
+
+#: includes/class-migrator.php:70
+msgid "Choose a published post or page you can edit."
+msgstr ""
+
+#: includes/class-migrator.php:80
+msgid "Resume the pending catalogue or use --dry-run --reset to change the post restriction."
+msgstr ""
+
+#: includes/class-migrator.php:125
+msgid "Start a new scan for this connection."
+msgstr ""
+
+#: includes/class-migrator.php:164
+msgid "Complete a scan for this connection before swapping."
+msgstr ""
+
+#: includes/class-migrator.php:168
+msgid "This post has no migration report."
+msgstr ""
+
+#: includes/class-migrator.php:200
+msgid "Use --user=<administrator> to reset pending migration data."
+msgstr ""
+
+#: includes/class-migrator.php:228
+#: includes/class-migrator.php:244
+msgid "The active scan changed."
+msgstr ""
+
+#: includes/class-oembed.php:66
+msgid "Listen on show.fm"
+msgstr ""
+
+#: includes/class-privacy.php:35
+msgid "This site uses the show.fm plugin to show podcast episodes. show.fm is a podcast hosting service run by show.fm Ltd."
+msgstr ""
+
+#: includes/class-privacy.php:36
+msgid "When a podcast player loads, the visitor's browser requests public episode details from api.show.fm and may load artwork from its image host. It loads audio and transcript files from show.fm (m.cdn.media) only when the visitor plays an episode or opens a transcript. show.fm then sees the visitor's IP address and browser details, as with any audio file on the web. This site's server sends no visitor data to show.fm."
+msgstr ""
+
+#: includes/class-privacy.php:37
+msgid "When this site is connected to a show.fm account, the site's server sends show.fm: the site's address, its name, the WordPress, PHP and plugin versions, the site key show.fm issued, sync times and error counts, the feed sequence number, and the address, ID, publication state and source content hash of each post synced from show.fm. It never uploads the WordPress post text. When featured images are enabled, the server downloads public artwork into the media library; the image host sees the server IP address, but never the site key. It does not send visitor data. show.fm sends this site signed wake-up requests that carry no personal data."
+msgstr ""
+
+#: includes/class-privacy.php:38
+msgid "show.fm's privacy policy is at https://show.fm/privacy."
+msgstr ""
+
+#: includes/class-sync-artwork.php:160
+msgid "Artwork must use a public HTTPS address."
+msgstr ""
+
+#: includes/class-sync-artwork.php:172
+msgid "A temporary artwork file could not be created."
+msgstr ""
+
+#: includes/class-sync-artwork.php:209
+msgid "Artwork must be a JPEG, PNG, WebP or GIF image."
+msgstr ""
+
+#: includes/class-sync-posts.php:153
+msgid "No longer synced from show.fm"
+msgstr ""
+
+#: includes/class-sync-posts.php:164
+msgid "The post could not be moved to the bin."
+msgstr ""
+
+#: includes/class-sync.php:64
+msgid "Every 15 minutes (show.fm)"
+msgstr ""
+
+#: src/blocks/episodes.js:63
+msgid "Show"
+msgstr ""
+
+#: src/blocks/episodes.js:68
+#: src/components/block-edit.js:291
+msgid "Change show"
+msgstr ""
+
+#: src/blocks/episodes.js:72
+msgid "Episodes"
+msgstr ""
+
+#: src/blocks/episodes.js:76
+msgid "Number of episodes"
+msgstr ""
+
+#: src/blocks/episodes.js:89
+#: src/components/episode-picker.js:178
+msgid "Season"
+msgstr ""
+
+#: src/blocks/episodes.js:96
+#: src/components/episode-picker.js:182
+msgid "All seasons"
+msgstr ""
+
+#. translators: %d: season number.
+#: src/blocks/episodes.js:102
+#: src/components/episode-picker.js:186
+#, js-format
+msgid "Season %d"
+msgstr ""
+
+#: src/blocks/episodes.js:111
+msgid "Hide trailers"
+msgstr ""
+
+#: src/blocks/episodes.js:125
+msgid "Hide bonus episodes"
+msgstr ""
+
+#: src/blocks/episodes.js:134
+#: src/blocks/play.js:37
+#: src/blocks/player.js:75
+msgid "Appearance"
+msgstr ""
+
+#: src/blocks/episodes.js:136
+msgid "Style"
+msgstr ""
+
+#: src/blocks/episodes.js:142
+msgid "Card"
+msgstr ""
+
+#: src/blocks/episodes.js:146
+msgid "Minimal"
+msgstr ""
+
+#: src/blocks/episodes.js:151
+msgid "Layout"
+msgstr ""
+
+#: src/blocks/episodes.js:154
+msgid "Auto uses a grid when the block is wide and most episodes have their own artwork."
+msgstr ""
+
+#: src/blocks/episodes.js:161
+#: src/blocks/player.js:102
+msgid "Auto"
+msgstr ""
+
+#: src/blocks/episodes.js:165
+msgid "List"
+msgstr ""
+
+#: src/blocks/episodes.js:169
+msgid "Grid"
+msgstr ""
+
+#: src/blocks/episodes.js:175
+msgid "Show descriptions"
+msgstr ""
+
+#: src/blocks/episodes.js:185
+#: src/blocks/play.js:70
+msgid "Mini-player"
+msgstr ""
+
+#: src/blocks/episodes.js:186
+msgid "Keeps playing in a bar at the bottom of the page while visitors scroll."
+msgstr ""
+
+#: src/blocks/episodes.js:232
+msgid "show.fm Episode list"
+msgstr ""
+
+#: src/blocks/episodes.js:234
+msgid "Add a public show from show.fm."
+msgstr ""
+
+#: src/blocks/play.js:30
+#: src/blocks/player.js:68
+#: src/components/episode-picker.js:203
+msgid "Episode"
+msgstr ""
+
+#: src/blocks/play.js:33
+#: src/blocks/player.js:71
+#: src/components/block-edit.js:290
+msgid "Change episode"
+msgstr ""
+
+#: src/blocks/play.js:39
+msgid "Variant"
+msgstr ""
+
+#: src/blocks/play.js:45
+msgid "Icon"
+msgstr ""
+
+#: src/blocks/play.js:49
+msgid "Label"
+msgstr ""
+
+#: src/blocks/play.js:53
+msgid "Text link"
+msgstr ""
+
+#: src/blocks/play.js:58
+#: src/blocks/player.js:77
+#: src/blocks/transcript.js:152
+msgid "Size"
+msgstr ""
+
+#: src/blocks/play.js:62
+msgid "Small"
+msgstr ""
+
+#: src/blocks/play.js:63
+msgid "Large"
+msgstr ""
+
+#: src/blocks/play.js:67
+msgid "Playback"
+msgstr ""
+
+#: src/blocks/play.js:71
+msgid "On by default. After the first press, visitors get seek, speed and time left."
+msgstr ""
+
+#: src/blocks/play.js:84
+msgid "Visitors can only play and pause."
+msgstr ""
+
+#: src/blocks/play.js:98
+msgid "show.fm Play button"
+msgstr ""
+
+#: src/blocks/play.js:100
+#: src/blocks/player.js:174
+#: src/blocks/transcript.js:276
+msgid "Add a public show from show.fm. You’ll choose the episode next."
+msgstr ""
+
+#: src/blocks/player.js:36
+#: src/components/episode-picker.js:121
+msgid "Latest episode"
+msgstr ""
+
+#: src/blocks/player.js:83
+msgid "Standard"
+msgstr ""
+
+#: src/blocks/player.js:87
+msgid "Compact"
+msgstr ""
+
+#: src/blocks/player.js:92
+msgid "Theme"
+msgstr ""
+
+#: src/blocks/player.js:95
+msgid "Auto follows the visitor’s light or dark setting."
+msgstr ""
+
+#: src/blocks/player.js:106
+msgid "Light"
+msgstr ""
+
+#: src/blocks/player.js:110
+msgid "Dark"
+msgstr ""
+
+#: src/blocks/player.js:120
+msgid "Waveform"
+msgstr ""
+
+#: src/blocks/player.js:127
+msgid "Features"
+msgstr ""
+
+#: src/blocks/player.js:130
+msgid "Transcript"
+msgstr ""
+
+#: src/blocks/player.js:131
+msgid "Adds a Transcript button. It opens under the player."
+msgstr ""
+
+#: src/blocks/player.js:146
+msgid "Show the title as a heading"
+msgstr ""
+
+#: src/blocks/player.js:147
+msgid "Choose the level in the toolbar."
+msgstr ""
+
+#: src/blocks/player.js:172
+msgid "show.fm Player"
+msgstr ""
+
+#: src/blocks/transcript.js:42
+msgid "Episode list"
+msgstr ""
+
+#: src/blocks/transcript.js:43
+#: src/blocks/transcript.js:129
+msgid "Player"
+msgstr ""
+
+#. translators: 1: block kind, such as Player. 2: its number on the page.
+#: src/blocks/transcript.js:48
+#, js-format
+msgid "%1$s %2$d"
+msgstr ""
+
+#: src/blocks/transcript.js:125
+msgid "Follows"
+msgstr ""
+
+#: src/blocks/transcript.js:132
+msgid "Highlights along with this player. You can pick any Player block on the page."
+msgstr ""
+
+#: src/blocks/transcript.js:139
+msgid "This episode only"
+msgstr ""
+
+#: src/blocks/transcript.js:140
+msgid "Whatever plays on the page"
+msgstr ""
+
+#: src/blocks/transcript.js:156
+msgid "Height"
+msgstr ""
+
+#: src/blocks/transcript.js:157
+msgid "In pixels."
+msgstr ""
+
+#: src/blocks/transcript.js:177
+#: src/blocks/transcript.js:233
+#: src/blocks/transcript.js:246
+#: src/blocks/transcript.js:274
+msgid "show.fm Transcript"
+msgstr ""
+
+#: src/blocks/transcript.js:178
+msgid "Choose the player this transcript follows."
+msgstr ""
+
+#: src/blocks/transcript.js:203
+msgid "Show one episode’s transcript instead"
+msgstr ""
+
+#: src/blocks/transcript.js:222
+#: src/blocks/transcript.js:259
+msgid "Change player"
+msgstr ""
+
+#: src/blocks/transcript.js:247
+msgid "The player this transcript followed is no longer on the page."
+msgstr ""
+
+#: src/components/block-edit.js:169
+#: src/components/block-edit.js:210
+msgid "Loading show…"
+msgstr ""
+
+#: src/components/block-edit.js:209
+msgid "Loading episode…"
+msgstr ""
+
+#: src/components/controls.js:87
+msgid "Accent colour"
+msgstr ""
+
+#: src/components/controls.js:88
+msgid "The show’s colour is used until you choose one. These are your theme’s colours."
+msgstr ""
+
+#: src/components/episode-picker.js:122
+msgid "Always plays the newest episode"
+msgstr ""
+
+#: src/components/episode-picker.js:133
+msgid "Scheduled"
+msgstr ""
+
+#: src/components/episode-picker.js:134
+#: src/format.js:72
+msgid "Bonus"
+msgstr ""
+
+#: src/components/episode-picker.js:135
+#: src/format.js:74
+msgid "Trailer"
+msgstr ""
+
+#: src/components/episode-picker.js:163
+msgid "Change"
+msgstr ""
+
+#: src/components/episode-picker.js:169
+#: src/components/episode-picker.js:170
+msgid "Search episodes"
+msgstr ""
+
+#: src/components/episode-picker.js:197
+msgid "Loading episodes…"
+msgstr ""
+
+#: src/components/episode-picker.js:247
+msgid "No episodes match."
+msgstr ""
+
+#: src/components/episode-picker.js:248
+msgid "This show has no episodes yet."
+msgstr ""
+
+#: src/components/episode-picker.js:263
+msgid "Use this episode"
+msgstr ""
+
+#: src/components/episode-picker.js:270
+msgid "Cancel"
+msgstr ""
+
+#: src/components/heading-level.js:35
+msgid "Change level"
+msgstr ""
+
+#. translators: %s: heading level, such as 2.
+#: src/components/heading-level.js:39
+#, js-format
+msgid "Heading %s"
+msgstr ""
+
+#. translators: %d: number of episodes.
+#: src/components/show-placeholder.js:60
+#, js-format
+msgid "%d episode"
+msgid_plural "%d episodes"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/components/show-placeholder.js:66
+msgid "Hosted outside show.fm"
+msgstr ""
+
+#: src/components/show-placeholder.js:103
+msgid "Enter a show address, such as the-long-table.show.fm, or its slug."
+msgstr ""
+
+#: src/components/show-placeholder.js:135
+msgid "Choose a show."
+msgstr ""
+
+#: src/components/show-placeholder.js:141
+msgid "Loading your shows…"
+msgstr ""
+
+#: src/components/show-placeholder.js:180
+msgid "Use the address of another public show"
+msgstr ""
+
+#: src/components/show-placeholder.js:197
+msgid "Show address or slug"
+msgstr ""
+
+#: src/components/show-placeholder.js:209
+msgid "Continue"
+msgstr ""
+
+#: src/components/show-placeholder.js:219
+msgid "Connect this site to show.fm to pick from your own shows and see scheduled episodes."
+msgstr ""
+
+#: src/components/show-placeholder.js:239
+msgid "Choose from your shows"
+msgstr ""
+
+#: src/components/state-message.js:21
+msgid "We couldn’t find that show or episode."
+msgstr ""
+
+#: src/components/state-message.js:30
+msgid "This episode isn’t public yet."
+msgstr ""
+
+#: src/components/state-message.js:37
+msgid "No longer available on show.fm."
+msgstr ""
+
+#: src/components/state-message.js:43
+msgid "Archived in show.fm."
+msgstr ""
+
+#: src/components/state-message.js:49
+#: src/sidebar/status.js:79
+msgid "Paused because of the show’s plan."
+msgstr ""
+
+#: src/components/state-message.js:55
+msgid "This show is hosted outside show.fm, so it can’t be embedded here."
+msgstr ""
+
+#: src/components/state-message.js:64
+msgid "There’s no transcript for this episode yet, so visitors won’t see this block."
+msgstr ""
+
+#: src/components/state-message.js:75
+msgid "This episode is scheduled."
+msgstr ""
+
+#: src/components/state-message.js:81
+msgid "Couldn’t reach show.fm. Showing the last saved copy."
+msgstr ""
+
+#: src/components/state-message.js:90
+msgid "show.fm is busy right now. Showing the last saved copy."
+msgstr ""
+
+#: src/components/state-message.js:153
+#: src/components/state-message.js:172
+#: src/components/state-message.js:190
+msgid "Choose another episode"
+msgstr ""
+
+#: src/components/state-message.js:157
+msgid "Check the address"
+msgstr ""
+
+#: src/components/state-message.js:163
+msgid "Connect to show.fm to preview scheduled episodes"
+msgstr ""
+
+#: src/components/state-message.js:177
+msgid "Open the show on show.fm"
+msgstr ""
+
+#: src/components/state-message.js:184
+msgid "Go to billing"
+msgstr ""
+
+#: src/components/state-message.js:195
+msgid "Use another show"
+msgstr ""
+
+#: src/components/state-message.js:257
+msgid "Visitors won’t see this block until then."
+msgstr ""
+
+#: src/components/state-message.js:266
+msgid "Try again"
+msgstr ""
+
+#. translators: 1: date, such as 14 October. 2: time, such as 09:00.
+#: src/format.js:27
+#, js-format
+msgid "Goes live on %1$s at %2$s."
+msgstr ""
+
+#. translators: %d: minutes.
+#: src/format.js:48
+#, js-format
+msgid "%d min"
+msgstr ""
+
+#. translators: %d: hours.
+#: src/format.js:52
+#, js-format
+msgid "%d hr"
+msgstr ""
+
+#. translators: 1: hours. 2: minutes.
+#: src/format.js:55
+#, js-format
+msgid "%1$d hr %2$d min"
+msgstr ""
+
+#. translators: %d: season number.
+#: src/format.js:69
+#, js-format
+msgid "S%d"
+msgstr ""
+
+#. translators: %d: episode number.
+#: src/format.js:77
+#, js-format
+msgid "E%d"
+msgstr ""
+
+#: src/sidebar/panel.js:119
+msgid "Episode for this post"
+msgstr ""
+
+#: src/sidebar/panel.js:120
+msgid "Choose an episode"
+msgstr ""
+
+#: src/sidebar/panel.js:121
+msgid "Heading and Paragraph blocks connected to the episode title or description show this episode."
+msgstr ""
+
+#: src/sidebar/panel.js:141
+msgid "Open in show.fm"
+msgstr ""
+
+#. translators: %s: time, such as 09:00.
+#: src/sidebar/status.js:20
+#, js-format
+msgid "today at %s"
+msgstr ""
+
+#. translators: 1: date. 2: time.
+#: src/sidebar/status.js:24
+#, js-format
+msgid "on %1$s at %2$s"
+msgstr ""
+
+#: src/sidebar/status.js:46
+msgid "The episode was deleted on show.fm."
+msgstr ""
+
+#: src/sidebar/status.js:47
+msgid "This post isn’t synced any more. Choose another episode to connect it again."
+msgstr ""
+
+#: src/sidebar/status.js:56
+msgid "The episode was unpublished on show.fm."
+msgstr ""
+
+#: src/sidebar/status.js:60
+msgid "This post went back to draft. It will publish again if the episode does."
+msgstr ""
+
+#: src/sidebar/status.js:69
+msgid "show.fm stopped posting this episode to this site."
+msgstr ""
+
+#: src/sidebar/status.js:73
+msgid "This post went back to draft."
+msgstr ""
+
+#: src/sidebar/status.js:80
+msgid "show.fm updates this post again when the plan allows it."
+msgstr ""
+
+#: src/sidebar/status.js:90
+msgid "No longer synced from show.fm."
+msgstr ""
+
+#: src/sidebar/status.js:93
+msgid "This site no longer has access to the show."
+msgstr ""
+
+#: src/sidebar/status.js:97
+msgid "This post was moved to the bin here, so show.fm stopped updating it."
+msgstr ""
+
+#: src/sidebar/status.js:107
+msgid "Edited here, so show.fm now only updates the date and status."
+msgstr ""
+
+#: src/sidebar/status.js:111
+msgid "Changes on show.fm to the title, description or artwork no longer reach this post."
+msgstr ""
+
+#: src/sidebar/status.js:120
+msgid "In sync with show.fm"
+msgstr ""
+
+#. translators: %s: when, such as "today at 09:00".
+#: src/sidebar/status.js:124
+#, js-format
+msgid "Updated from show.fm %s."
+msgstr ""
+
+#: blocks/episodes/block.json
+msgctxt "block title"
+msgid "show.fm Episode list"
+msgstr ""
+
+#: blocks/episodes/block.json
+msgctxt "block description"
+msgid "List a show’s episodes, newest first."
+msgstr ""
+
+#: blocks/episodes/block.json
+#: blocks/play/block.json
+#: blocks/player/block.json
+#: blocks/transcript/block.json
+msgctxt "block keyword"
+msgid "podcast"
+msgstr ""
+
+#: blocks/episodes/block.json
+msgctxt "block keyword"
+msgid "episodes"
+msgstr ""
+
+#: blocks/episodes/block.json
+msgctxt "block keyword"
+msgid "list"
+msgstr ""
+
+#: blocks/play/block.json
+msgctxt "block title"
+msgid "show.fm Play button"
+msgstr ""
+
+#: blocks/play/block.json
+msgctxt "block description"
+msgid "A play button for one episode, for use anywhere on the page."
+msgstr ""
+
+#: blocks/play/block.json
+msgctxt "block keyword"
+msgid "play"
+msgstr ""
+
+#: blocks/play/block.json
+msgctxt "block keyword"
+msgid "button"
+msgstr ""
+
+#: blocks/player/block.json
+msgctxt "block title"
+msgid "show.fm Player"
+msgstr ""
+
+#: blocks/player/block.json
+msgctxt "block description"
+msgid "Play one episode, with an optional transcript."
+msgstr ""
+
+#: blocks/player/block.json
+msgctxt "block keyword"
+msgid "audio"
+msgstr ""
+
+#: blocks/player/block.json
+msgctxt "block keyword"
+msgid "episode"
+msgstr ""
+
+#: blocks/transcript/block.json
+msgctxt "block title"
+msgid "show.fm Transcript"
+msgstr ""
+
+#: blocks/transcript/block.json
+msgctxt "block description"
+msgid "A follow-along transcript for a Player on this page."
+msgstr ""
+
+#: blocks/transcript/block.json
+msgctxt "block keyword"
+msgid "transcript"
+msgstr ""

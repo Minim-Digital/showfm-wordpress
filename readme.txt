@@ -17,11 +17,11 @@ show.fm hosts podcasts. This plugin brings a show.fm show into WordPress:
 * A podcast player, episode lists, a play button and transcripts, as blocks and a shortcode.
 * Publish to WordPress: connect the site to show.fm and each new episode becomes a post.
 
-This version is an early development release. Four server-rendered blocks and the [showfm] shortcode are available, and the site can connect to show.fm from the show.fm menu or with WP-CLI. The block picker controls and the designed connection screen follow in separate work. The pinned embed package (1.1.0) upgrades the player; lists, play buttons and transcripts currently display their readable HTML fallbacks until those elements ship in the package.
+This version is an early development release. Four blocks (Player, Episode list, Play button and Transcript) and the [showfm] shortcode are available, and the site can connect to show.fm from the show.fm menu or with WP-CLI. In the block editor you add a show by its address, or pick one of your shows once the site is connected, then choose an episode or "Latest episode", and the block previews the real player. Posts created by show.fm have a "show.fm" panel in the post sidebar. The designed connection screen follows in separate work.
 
 The plugin works for any public show.fm show without an account. Publish to WordPress needs a show.fm account and a connected site.
 
-The source code and build instructions are on GitHub: [show.fm for WordPress](https://github.com/Minim-Digital/showfm-wordpress) and the MIT-licensed [show.fm embed package](https://github.com/Minim-Digital/showfm-embed/tree/v1.1.0). The bundled scripts are copied without modification from @showfm/embed 1.1.0.
+The source code and build instructions are on GitHub: [show.fm for WordPress](https://github.com/Minim-Digital/showfm-wordpress) and the MIT-licensed [show.fm embed package](https://github.com/Minim-Digital/showfm-embed/tree/v1.4.0). The bundled scripts are copied without modification from @showfm/embed 1.4.0. The block editor script is built from `src/` in the plugin's repository with @wordpress/scripts.
 
 == External services ==
 
@@ -31,6 +31,7 @@ This plugin relies on show.fm, a podcast hosting service run by show.fm Ltd. It 
 
 * Used to fetch show and episode details (titles, descriptions, artwork, audio links and transcripts) for the shows and episodes you add to your pages.
 * When: when WP-Cron refreshes a missing or stale cache entry (fresh for 15 minutes, with retries after errors). Page rendering reads only cached public data and schedules a background refresh; it makes no inline HTTP request. The enhanced player also requests public episode data directly from the visitor's browser when it loads, or after a click with load="click".
+* In the block editor: when someone who can edit posts enters a show's address or opens a show.fm block, the site looks the show and its episodes up (cached for five minutes), and the block's preview loads the player in the editor's browser like it does for visitors. Sent: the show or episode identifier, and your site's address in the User-Agent header.
 * What is sent: the show or episode identifier, and your site's address in the request's User-Agent header. Your server's IP address is visible to show.fm, as with any web request. Background requests send no visitor data. Browser requests expose the visitor's IP address and browser details to the service. WordPress may also request /v1/oembed to resolve a pasted listen-page URL, then caches the returned iframe in post meta.
 
 **show.fm API for connected sites (api.show.fm)**
@@ -41,6 +42,7 @@ This plugin relies on show.fm, a podcast hosting service run by show.fm Ltd. It 
 * Reporting in (verify): right after connecting. If that fails, it is retried before the next sync or health report. Sent: the site key, the plugin, WordPress and PHP versions, and the site's name.
 * Health report: once a day while connected. Sent: the site key, the plugin, WordPress and PHP versions, the time of the last sync and the number of sync errors.
 * Sync: a check every 15 minutes (with a staggered start), signed wake-up requests and explicit WP-CLI sync commands pull episode changes in the background. Sent: the site key, the last applied sequence number and page size. Post reports send the episode identifier, post ID, HTTPS post address, publication state and source content hash. Transient report failures are queued and retried; terminal refusals, missing posts and invalid addresses are dropped with a local reason code; no WordPress post text or visitor data is uploaded. A dry run previews one page at the applied cursor (or zero with --from-start), recording contact with show.fm but never acknowledging unapplied changes. It leaves local posts and the saved cursor unchanged.
+* Block editor: while connected, when someone editing a post adds a show.fm block, the site lists the account's shows and their episodes, including scheduled ones, so they can be chosen before they go live. Sent: the site key in the authentication header, and show and episode IDs. Answers are cached for five minutes and only ever reach the browser as titles, dates and links, never the key.
 * Embed migration: when an administrator explicitly runs a migration scan, the plugin lists the connected key's accessible shows and published episodes, including import matching fingerprints. No per-episode detail requests are made. Sent: the site key in the authentication header, pagination cursors, show and episode IDs, and the site address in the User-Agent. Post content and third-party embed URLs stay on the WordPress site.
 * After show.fm refuses the site key, the plugin stops authenticated requests until an administrator reconnects. Public embeds continue to work. When show.fm asks it to slow down, it waits as long as show.fm says.
 
@@ -74,6 +76,10 @@ show.fm [Terms of Service](https://show.fm/terms) and [Privacy Policy](https://s
 
 Not for the player and episode lists of a public show. Publish to WordPress needs an account.
 
+= How do I add an episode to a post? =
+
+Add a show.fm Player, Episode list, Play button or Transcript block. Type the show's address (such as the-long-table.show.fm) or its slug, then choose an episode or "Latest episode". A connected site lists your shows instead, including scheduled episodes, which the editor marks with the date they go live. Visitors see nothing for an episode until it is public.
+
 = Can I connect from the command line? =
 
 Yes. Create a site key in show.fm under Connected sites, then Add a site with WP-CLI, and run `wp showfm connect`. It asks for the key with the input hidden, or reads it from the `SHOWFM_KEY` environment variable, or from standard input with `--key=-` (for example `pass show showfm/site-key | wp showfm connect --key=-`). `--key=<key>` also works, but the key then stays in your shell history and shows in the process list. `wp showfm status` shows the connection and `wp showfm disconnect` removes it. On a multisite network, add `--url=` to pick the site: each site connects separately.
@@ -91,6 +97,9 @@ The plugin keeps up to 50 local sync diagnostics containing its own reason codes
 == Changelog ==
 
 = 0.1.0 =
+* Added the block editor UI: show and episode pickers with search, seasons and Latest episode, inspector controls for every block, the heading level toolbar control, a Transcript that follows a Player, and in-block messages for scheduled, unavailable, paused and unreachable episodes. The blocks preview the real player in the editor.
+* Added the "show.fm" panel to the post sidebar on posts created by show.fm: sync status, the episode for this post and a link to it in show.fm.
+* Updated the bundled embed package to 1.4.0, which adds the episode list, play button with mini-player, and transcript elements.
 * Development release: the plugin's foundations (API client, cache and encrypted connection storage). No designed settings screen yet.
 * Added cache-only block and shortcode rendering, local embed assets, fallback parity checks, episode bindings, oEmbed and theme mapping. Credit defaults off and public-episode JSON-LD defaults on.
 * Connect a site to show.fm from the show.fm menu or with `wp showfm connect`, with a daily health report and signed wake-up pings.

@@ -12,6 +12,8 @@ and uninstall) and the plugin side of connecting a site to show.fm: the browser 
 code exchange, WP-CLI registration, the ownership challenge, the signed ping endpoint and
 the daily health report. The settings page is a placeholder until the designed admin
 screens land. Blocks and the shortcode are available, together with the background sync engine.
+The blocks have their editor UI (pickers, inspector controls, in-block states and the post
+panel); see [docs-editor.md](docs-editor.md).
 
 ## Embed migration
 
@@ -65,6 +67,9 @@ undo behaviour and the current server contract gaps. No Migrate tab is included 
   screen is a placeholder for the designed one.
 - `Cli` is `wp showfm connect`, `status` and `disconnect`.
 - `Privacy` adds the suggested privacy policy text.
+- `Editor_Api` is the block editor's read-only REST proxy (`showfm/v1/editor/*`), and
+  `Editor` prints the editor's settings and the post panel's `showfm_sync` field. See
+  [docs-editor.md](docs-editor.md).
 
 ### Connecting a site
 
@@ -231,7 +236,8 @@ npm run env:start           # WordPress on http://localhost:8888 (user admin, pa
 | `composer analyse`           | PHPStan level 6 with the WordPress extension.                              |
 | `npm run test:php`           | PHPUnit inside `wp-env` (`tests-cli`).                                     |
 | `npm run test:php:multisite` | The same suite as a multisite network.                                     |
-| `npm run test:e2e`           | Playwright smoke test against the `wp-env` development site.               |
+| `npm run test:e2e`           | Playwright tests against the `wp-env` development site.                    |
+| `npm run test:js`            | Vitest unit tests for the editor script (`src/test/`).                     |
 | `npm run lint:js`            | ESLint through `@wordpress/scripts`.                                       |
 | `npm run format`             | Prettier through `@wordpress/scripts`.                                     |
 | `npm run zip`                | Builds `dist/showfm/` and `dist/showfm-{version}.zip`.                     |
@@ -243,8 +249,10 @@ Run PHPUnit before Playwright, or on a fresh environment: the core test installe
 the tables of the `wp-env` tests site (port 8889), so the browser tests use the development
 site (port 8888).
 
-`npm run build` is ready for blocks: `@wordpress/scripts` builds `src/` into `build/`.
-`bin/build-zip.sh` runs it when `src/` exists.
+`npm run build` copies the pinned embed package and builds the editor script from `src/`
+into `build/`. `bin/build-zip.sh` runs it when `src/` exists. The Playwright tests also
+activate a test-only plugin, `tests/e2e/plugins/showfm-e2e-fixtures`, which `.wp-env.json`
+maps into both sites and which is never shipped.
 
 ## Rules
 
@@ -258,8 +266,8 @@ site (port 8888).
 ## CI
 
 `.github/workflows/ci.yml` runs PHPCS, PHPStan, PHPUnit (single site and multisite) on
-`wp-env`, ESLint, builds the zip, runs Plugin Check (Plugin Repo category) against the
-built zip, and runs the Playwright smoke test.
+`wp-env`, ESLint, the Vitest unit tests, builds the zip, runs Plugin Check (Plugin Repo category) against the
+built zip, and runs the Playwright tests.
 
 `.github/workflows/security-review.yml` runs the Claude security review when a pull request
 has the `security-review` label. See the comments in that file and

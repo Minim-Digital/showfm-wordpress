@@ -23,7 +23,8 @@
 		"format:check": "prettier --check .",
 		"test:assets": "node scripts/embed-assets.mjs --check",
 		"fixtures": "node scripts/generate-parity.mjs",
-		"test:js": "wp-scripts test-unit-js"
+		"test:js": "wp-scripts test-unit-js",
+		"i18n:pot": "wp-env run cli --env-cwd=wp-content/plugins/showfm -- wp i18n make-pot . languages/showfm.pot --slug=showfm --domain=showfm --exclude=node_modules,vendor,tests,build,dist,artifacts,assets,scripts,bin,test-results,playwright-report"
 	},
 	"devDependencies": {
 		"@playwright/test": "1.63.0",
