@@ -72,6 +72,8 @@ final class Plugin {
 		add_action( Cache::REFRESH_HOOK, array( self::cache(), 'refresh' ) );
 		add_action( Health::HOOK, array( self::health(), 'run' ) );
 
+		Migration_Legacy::register();
+
 		add_action( 'init', array( Blocks::class, 'register' ) );
 		add_action( 'init', array( Bindings::class, 'register' ) );
 		add_action( 'init', array( Oembed::class, 'register' ) );
@@ -93,6 +95,7 @@ final class Plugin {
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			Cli::register( new Cli( self::connect(), self::connection() ) );
+			\WP_CLI::add_command( 'showfm migrate-embeds', new Migration_Cli( new Migrator( self::connection(), self::api_client() ) ) );
 		}
 	}
 

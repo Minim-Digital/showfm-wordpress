@@ -41,6 +41,7 @@ This plugin relies on show.fm, a podcast hosting service run by show.fm Ltd. It 
 * Reporting in (verify): right after connecting. If that fails, it is retried with the next health report. Sent: the site key, the plugin, WordPress and PHP versions, and the site's name.
 * Health report: once a day while connected. Sent: the site key, the plugin, WordPress and PHP versions, the time of the last sync and the number of sync errors.
 * Sync: to sync episodes into posts (every 15 minutes, and when show.fm signals that an episode changed), and to tell show.fm the address of each post created for an episode. Sent: the site key, the plugin version, sync status, and the post addresses and post IDs of synced posts.
+* Embed migration: when an administrator explicitly runs a migration scan, the plugin lists the connected key's accessible shows and published episodes and reads episode details. Sent: the site key in the authentication header, pagination cursors, show and episode IDs, and the site address in the User-Agent. Post content and third-party embed URLs stay on the WordPress site.
 * After show.fm refuses the site key, the plugin sends nothing more until an administrator reconnects. When show.fm asks it to slow down, it waits as long as show.fm says.
 
 **Requests from show.fm to your site**
@@ -76,6 +77,10 @@ Not for the player and episode lists of a public show. Publish to WordPress need
 
 Yes. Create a site key in show.fm under Connected sites, then Add a site with WP-CLI, and run `wp showfm connect`. It asks for the key with the input hidden, or reads it from the `SHOWFM_KEY` environment variable, or from standard input with `--key=-` (for example `pass show showfm/site-key | wp showfm connect --key=-`). `--key=<key>` also works, but the key then stays in your shell history and shows in the process list. `wp showfm status` shows the connection and `wp showfm disconnect` removes it. On a multisite network, add `--url=` to pick the site: each site connects separately.
 
+= Can I migrate existing podcast embeds? =
+
+Yes, through WP-CLI on a connected site. Run `wp showfm migrate-embeds --dry-run --user=<administrator>` to review published posts and pages, then `wp showfm migrate-embeds --resume --yes --user=<administrator>` to replace matches with show.fm Player blocks. Use `--post=<id>`, `--format=json`, or `--choose=<post>:<embed>:<episode-uuid>` for an ambiguous candidate. Scans run in batches of 50 and can resume with `--resume`. The report links to WordPress revisions for undo. Existing show.fm posts are skipped, and unmatched or unchosen ambiguous embeds stay untouched. The connected API currently lacks original imported enclosure URLs and episode GUIDs, so some old embeds need manual review. There is no Migrate settings tab yet.
+
 = How is the connection stored? =
 
 The site key and ping secret are encrypted with a key derived from your WordPress salts. Set the salts in `wp-config.php`: without them WordPress keeps a generated salt in the database, so a copy of the database alone would be enough to read the key. Changing the salts means you connect again.
@@ -86,3 +91,4 @@ The site key and ping secret are encrypted with a key derived from your WordPres
 * Development release: the plugin's foundations (API client, cache and encrypted connection storage). No designed settings screen yet.
 * Added cache-only block and shortcode rendering, local embed assets, fallback parity checks, episode bindings, oEmbed and theme mapping. Credit defaults off and public-episode JSON-LD defaults on.
 * Connect a site to show.fm from the show.fm menu or with `wp showfm connect`, with a daily health report and signed wake-up pings.
+* Added the embed migration engine and WP-CLI dry runs, resumable reports, candidate choices and revision-backed swaps for Buzzsprout, Libsyn, Captivate, Transistor, Spotify, Podbean, PowerPress and Seriously Simple Podcasting.

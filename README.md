@@ -13,6 +13,12 @@ code exchange, WP-CLI registration, the ownership challenge, the signed ping end
 the daily health report. The settings page is a placeholder until the designed admin
 screens land. Blocks, the shortcode and the sync come in later pull requests.
 
+## Embed migration
+
+The WP-5a engine and `wp showfm migrate-embeds` command are documented in
+[docs-migrator.md](docs-migrator.md), including the report interface for WP-5b, fixtures,
+undo behaviour and the current server contract gaps. No Migrate tab is included yet.
+
 ## Requirements
 
 - WordPress 6.6 or later, PHP 7.4 or later.
