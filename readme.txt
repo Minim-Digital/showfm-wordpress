@@ -30,7 +30,7 @@ This plugin relies on show.fm, a podcast hosting service run by show.fm Ltd. It 
 **show.fm public API (api.show.fm)**
 
 * Used to fetch show and episode details (titles, descriptions, artwork, audio links and transcripts) for the shows and episodes you add to your pages.
-* When: when WP-Cron refreshes a missing or stale cache entry (fresh for 15 minutes, with retries after errors). Page rendering reads only cached data or the insertion snapshot and schedules a background refresh; it makes no inline HTTP request. The enhanced player also requests public episode data directly from the visitor's browser when it loads, or after a click with load="click".
+* When: when WP-Cron refreshes a missing or stale cache entry (fresh for 15 minutes, with retries after errors). Page rendering reads only cached public data and schedules a background refresh; it makes no inline HTTP request. The enhanced player also requests public episode data directly from the visitor's browser when it loads, or after a click with load="click".
 * What is sent: the show or episode identifier, and your site's address in the request's User-Agent header. Your server's IP address is visible to show.fm, as with any web request. Background requests send no visitor data. Browser requests expose the visitor's IP address and browser details to the service. WordPress may also request /v1/oembed to resolve a pasted listen-page URL, then caches the returned iframe in post meta.
 
 **show.fm API for connected sites (api.show.fm)**
@@ -41,7 +41,7 @@ This plugin relies on show.fm, a podcast hosting service run by show.fm Ltd. It 
 * Reporting in (verify): right after connecting. If that fails, it is retried before the next sync or health report. Sent: the site key, the plugin, WordPress and PHP versions, and the site's name.
 * Health report: once a day while connected. Sent: the site key, the plugin, WordPress and PHP versions, the time of the last sync and the number of sync errors.
 * Sync: a check every 15 minutes (with a staggered start), signed wake-up requests and explicit WP-CLI sync commands pull episode changes in the background. Sent: the site key, the last applied sequence number and page size. Post reports send the episode identifier, post ID, HTTPS post address, publication state and source content hash. Reports are queued and retried; no WordPress post text or visitor data is uploaded. A dry run reads the feed, which records contact and the requested sequence at show.fm, but leaves local posts and the saved cursor unchanged.
-* After show.fm refuses the site key, the plugin sends nothing more until an administrator reconnects. When show.fm asks it to slow down, it waits as long as show.fm says.
+* After show.fm refuses the site key, the plugin stops authenticated requests until an administrator reconnects. Public embeds continue to work. When show.fm asks it to slow down, it waits as long as show.fm says.
 
 **Requests from show.fm to your site**
 
