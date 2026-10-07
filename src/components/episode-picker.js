@@ -11,7 +11,7 @@ import {
 	Spinner,
 } from '@wordpress/components';
 import { useMemo, useState } from '@wordpress/element';
-import { __, sprintf } from '@wordpress/i18n';
+import { __, _n, sprintf } from '@wordpress/i18n';
 import { update } from '@wordpress/icons';
 import { episodeMeta } from '../format';
 import { useEditorData } from '../hooks';
@@ -100,15 +100,59 @@ export default function EpisodePicker( {
 	const matches = filterEpisodes( episodes, search, season );
 	const showLatest = allowLatest && ! search && season === '';
 
+	if ( data && [ 'error', 'rate_limited' ].includes( data.state ) ) {
+		return (
+			<Placeholder
+				icon={ icon }
+				label={ label }
+				className="showfm-placeholder showfm-state is-error"
+			>
+				<div className="showfm-state__message is-warning" role="alert">
+					<Icon icon="update" size={ 20 } />
+					<p>
+						{ data.state === 'rate_limited'
+							? sprintf(
+									/* translators: %d: seconds to wait. */
+									_n(
+										'show.fm is busy. Try again in %d second.',
+										'show.fm is busy. Try again in %d seconds.',
+										data.retryAfter || 60,
+										'showfm'
+									),
+									data.retryAfter || 60
+								)
+							: __(
+									'Couldn’t reach show.fm to list this show’s episodes.',
+									'showfm'
+								) }
+					</p>
+				</div>
+				<div className="showfm-state__actions">
+					<Button
+						variant="secondary"
+						size="compact"
+						onClick={ retry }
+					>
+						{ __( 'Try again', 'showfm' ) }
+					</Button>
+					{ onChangeShow && (
+						<Button variant="link" onClick={ onChangeShow }>
+							{ __( 'Use another show', 'showfm' ) }
+						</Button>
+					) }
+				</div>
+			</Placeholder>
+		);
+	}
+
 	if ( data && data.state !== 'ok' ) {
 		return (
 			<StateMessage
 				icon={ icon }
 				label={ label }
-				state={ data.state === 'rate_limited' ? 'error' : data.state }
+				state={ data.state }
 				data={ data }
 				onChangeShow={ onChangeShow }
-				onChooseEpisode={ data.state === 'error' ? retry : undefined }
 			/>
 		);
 	}

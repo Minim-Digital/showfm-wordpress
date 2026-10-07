@@ -132,6 +132,9 @@ class Test_Editor_Blocks extends WP_UnitTestCase {
 			$this->assertArrayNotHasKey( 'audioUrl', Attributes::snapshot( array( 'audioUrl' => $url ) ), $url );
 		}
 		$this->assertSame( 300, mb_strlen( Attributes::snapshot( array( 'title' => str_repeat( 'é', 400 ) ) )['title'] ) );
+		$this->assertSame( str_repeat( 'é', 300 ), Attributes::cap_title( str_repeat( 'é', 400 ), false ) );
+		$this->assertSame( str_repeat( 'a', 299 ) . '😀', Attributes::cap_title( str_repeat( 'a', 299 ) . '😀😀', false ) );
+		$this->assertSame( 'Short title', Attributes::cap_title( 'Short title', false ) );
 		$this->assertSame( array(), Attributes::snapshot( array( 'title' => array( 'not text' ) ) ) );
 		$this->assertSame( array( 'legacyHost' => 'libsyn' ), Attributes::snapshot( array( 'legacyHost' => 'libsyn' ) ), 'The migrator\'s keys stay.' );
 		$this->assertSame( 'https://the-long-table.show.fm', Attributes::show_listen_url( 'the-long-table' ) );

@@ -115,11 +115,30 @@ final class Attributes {
 		if ( array_key_exists( 'title', $snapshot ) ) {
 			if ( ! is_string( $snapshot['title'] ) ) {
 				unset( $snapshot['title'] );
-			} elseif ( mb_strlen( $snapshot['title'] ) > self::MAX_TITLE ) {
-				$snapshot['title'] = mb_substr( $snapshot['title'], 0, self::MAX_TITLE );
+			} else {
+				$snapshot['title'] = self::cap_title( $snapshot['title'] );
 			}
 		}
 		return $snapshot;
+	}
+
+	/**
+	 * Cap a title at MAX_TITLE characters. mbstring is optional in WordPress, so this
+	 * falls back to a UTF-8 aware preg_match when it is missing.
+	 *
+	 * @param string    $title    Title.
+	 * @param bool|null $mbstring Whether to use mbstring; null detects it. Tests pass false.
+	 * @return string At most MAX_TITLE characters.
+	 */
+	public static function cap_title( string $title, ?bool $mbstring = null ): string {
+		if ( $mbstring ?? function_exists( 'mb_substr' ) ) {
+			return mb_substr( $title, 0, self::MAX_TITLE, 'UTF-8' );
+		}
+		if ( preg_match( '/\\A.{0,' . self::MAX_TITLE . '}/su', $title, $match ) ) {
+			return $match[0];
+		}
+		// Invalid UTF-8: keep the bytes up to the cap rather than fail the render.
+		return substr( $title, 0, self::MAX_TITLE );
 	}
 
 	/**

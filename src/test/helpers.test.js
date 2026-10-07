@@ -149,6 +149,11 @@ describe( 'snapshots', () => {
 				audio: 'https://evil.example/k.mp3',
 			} )
 		).toEqual( { title: 'x'.repeat( 300 ) } );
+		const emoji = episodeSnapshot( {
+			title: 'x'.repeat( 299 ) + '😀😀',
+		} ).title;
+		expect( emoji ).toBe( 'x'.repeat( 299 ) + '😀' );
+		expect( JSON.stringify( emoji ) ).not.toMatch( /\\ud[89ab]/i );
 		expect(
 			episodeSnapshot( {
 				title: 'Lookalike',

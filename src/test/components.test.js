@@ -358,6 +358,34 @@ describe( 'EpisodePicker', () => {
 		).toBeInTheDocument();
 	} );
 
+	it( 'offers Try again when show.fm cannot be reached', async () => {
+		request
+			.mockResolvedValueOnce( { state: 'error' } )
+			.mockResolvedValueOnce( { state: 'ok', episodes: EPISODES } );
+		const { onChangeShow } = renderPicker();
+		expect( await screen.findByRole( 'alert' ) ).toHaveTextContent(
+			'Couldn’t reach show.fm to list this show’s episodes.'
+		);
+		fireEvent.click(
+			screen.getByRole( 'button', { name: 'Use another show' } )
+		);
+		expect( onChangeShow ).toHaveBeenCalled();
+		fireEvent.click( screen.getByRole( 'button', { name: 'Try again' } ) );
+		expect( await screen.findAllByRole( 'radio' ) ).not.toHaveLength( 0 );
+		expect( request ).toHaveBeenCalledTimes( 2 );
+	} );
+
+	it( 'says how long to wait when the episode list is rate limited', async () => {
+		request.mockResolvedValue( { state: 'rate_limited', retryAfter: 1 } );
+		renderPicker();
+		expect( await screen.findByRole( 'alert' ) ).toHaveTextContent(
+			'show.fm is busy. Try again in 1 second.'
+		);
+		expect(
+			screen.getByRole( 'button', { name: 'Try again' } )
+		).toBeInTheDocument();
+	} );
+
 	it( 'shows the state when the list cannot load', async () => {
 		settings( { connected: true, appUrl: 'https://my.show.fm' } );
 		request.mockResolvedValue( { state: 'paused' } );

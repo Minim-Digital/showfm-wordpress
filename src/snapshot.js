@@ -70,7 +70,10 @@ export function isAudioUrl( value ) {
  * @return {string} At most 300 characters.
  */
 function cap( title ) {
-	return typeof title === 'string' ? title.slice( 0, MAX_TITLE ) : '';
+	// By code point, like PHP's mb_substr: slice() could split a surrogate pair.
+	return typeof title === 'string'
+		? Array.from( title ).slice( 0, MAX_TITLE ).join( '' )
+		: '';
 }
 
 /**
