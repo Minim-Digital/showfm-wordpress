@@ -76,8 +76,9 @@ Plan sections 5.2.2, 5.2.6 and 5.3.5 (show.fm issue #731). Every admin action ne
    for anything else and never cacheable. While no connection has been started in the last
    10 minutes (`showfm_challenge_open_until`), every request gets a 404 with no lookup or
    write. While one has, the right state is always answered, and wrong states share one
-   global budget of 60 a minute (one option, or one object cache key per minute), so the
-   caller's address plays no part and rotating addresses add no rows.
+   global budget of 60 a minute: one options row per minute, counted with one atomic
+   conditional UPDATE, or one object cache key per minute (the database counts if the cache
+   cannot increment). The caller's address plays no part and rotating addresses add no rows.
 3. **Return.** On the settings page load the plugin checks `state` against the user's flow
    (single use), keeps the code server-side and redirects to the clean URL at once.
 4. **Exchange.** On the clean load it POSTs `{code, code_verifier}` to

@@ -38,8 +38,11 @@ final class Challenge_Endpoint {
 	/** Rate-limit window, in seconds. */
 	const WINDOW = 60;
 
-	/** Option holding the one counter: the window number and its misses (autoload off). */
-	const COUNTER_OPTION = 'showfm_challenge_misses';
+	/**
+	 * Prefix of the counter: one options row per window (autoload off, value is the misses),
+	 * or one object cache key per window.
+	 */
+	const COUNTER_PREFIX = 'showfm_challenge_misses_';
 
 	/** Object cache group for the counter when a persistent cache is in use. */
 	const CACHE_GROUP = 'showfm';
@@ -126,33 +129,66 @@ final class Challenge_Endpoint {
 
 	/**
 	 * Counts a wrong state against the one global window. Returns false once the window's
-	 * budget is spent. A persistent object cache counts atomically with one key per window,
-	 * which expires on its own; otherwise one option holds the current window. Either way
-	 * the number of keys never grows with the number of callers.
+	 * budget is spent. A persistent object cache counts with one key per window, which
+	 * expires on its own. When there is none, or it cannot increment, the database counts.
+	 * Either way the number of keys never grows with the number of callers.
 	 */
 	private static function count_miss(): bool {
 		$window = (int) floor( time() / self::WINDOW );
 
 		if ( wp_using_ext_object_cache() ) {
-			$key = 'challenge_misses_' . $window;
+			$key = self::COUNTER_PREFIX . $window;
 			wp_cache_add( $key, 0, self::CACHE_GROUP, 2 * self::WINDOW );
 			$count = wp_cache_incr( $key, 1, self::CACHE_GROUP );
-			return false === $count || $count <= self::LIMIT;
+			if ( false !== $count ) {
+				return $count <= self::LIMIT;
+			}
+			// No increment (unsupported, or the backend is down): never admit uncounted.
 		}
 
-		$stored = get_option( self::COUNTER_OPTION );
-		$count  = is_array( $stored ) && ( $stored['window'] ?? null ) === $window ? (int) ( $stored['count'] ?? 0 ) : 0;
-		if ( $count >= self::LIMIT ) {
-			return false;
-		}
-		update_option(
-			self::COUNTER_OPTION,
-			array(
-				'window' => $window,
-				'count'  => $count + 1,
-			),
-			false
+		return self::count_miss_in_database( $window );
+	}
+
+	/**
+	 * Counts a miss in one options row per window. The conditional UPDATE is one atomic
+	 * statement, so concurrent misses can never take the count past LIMIT: a miss is
+	 * admitted only when its UPDATE changed the row. The first miss of a window creates
+	 * the row with INSERT IGNORE and removes the rows of earlier windows.
+	 *
+	 * @param int $window Window number.
+	 */
+	private static function count_miss_in_database( int $window ): bool {
+		global $wpdb;
+
+		$name = self::COUNTER_PREFIX . $window;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- add_option() is not atomic (it upserts), INSERT IGNORE is.
+		$created = $wpdb->query(
+			$wpdb->prepare(
+				"INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, '0', 'off')",
+				$name
+			)
 		);
-		return true;
+		if ( 1 === $created ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Counter rows are never read through the options API.
+			$wpdb->query(
+				$wpdb->prepare(
+					"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s AND option_name <> %s",
+					$wpdb->esc_like( self::COUNTER_PREFIX ) . '%',
+					$name
+				)
+			);
+		}
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- One atomic check-and-increment.
+		$admitted = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$wpdb->options} SET option_value = CAST(option_value AS UNSIGNED) + 1 WHERE option_name = %s AND CAST(option_value AS UNSIGNED) < %d",
+				$name,
+				self::LIMIT
+			)
+		);
+
+		return 1 === $admitted;
 	}
 }

@@ -137,7 +137,7 @@ class Test_Challenge_Endpoint extends WP_UnitTestCase {
 		}
 		$this->assertSame( 404, $this->fetch( $this->state )->get_status() );
 
-		$this->assertFalse( get_option( Challenge_Endpoint::COUNTER_OPTION ), 'Nothing is written.' );
+		$this->assertSame( array(), $this->counter_rows(), 'Nothing is written.' );
 	}
 
 	public function test_starting_a_flow_opens_the_route_for_10_minutes(): void {
@@ -183,18 +183,50 @@ class Test_Challenge_Endpoint extends WP_UnitTestCase {
 		$this->assertSame( $before, (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->options}" ) );
 	}
 
-	public function test_a_new_window_starts_a_new_budget(): void {
-		update_option(
-			Challenge_Endpoint::COUNTER_OPTION,
-			array(
-				'window' => (int) floor( time() / Challenge_Endpoint::WINDOW ) - 1,
-				'count'  => Challenge_Endpoint::LIMIT,
-			),
-			false
-		);
+	public function test_a_new_window_starts_a_new_budget_and_drops_the_old_row(): void {
+		$window = $this->window();
+		$this->set_counter( $window - 1, Challenge_Endpoint::LIMIT );
+		$this->set_counter( $window - 5, 3 );
 
 		$this->assertSame( 404, $this->fetch( null )->get_status() );
-		$this->assertSame( 1, get_option( Challenge_Endpoint::COUNTER_OPTION )['count'] );
+
+		$this->assertSame( array( Challenge_Endpoint::COUNTER_PREFIX . $window => 1 ), $this->counter_rows() );
+	}
+
+	public function test_only_one_of_two_misses_takes_the_last_slot(): void {
+		// Two requests racing for the last slot: the second sees the first one's UPDATE.
+		$window = $this->window();
+		$this->set_counter( $window, Challenge_Endpoint::LIMIT - 1 );
+		// A stale cached copy must not matter: the count is never read through the options API.
+		wp_cache_set( Challenge_Endpoint::COUNTER_PREFIX . $window, '0', 'options' );
+
+		$statuses = array( $this->fetch( null )->get_status(), $this->fetch( null )->get_status() );
+
+		$this->assertSame( array( 404, 429 ), $statuses );
+		$this->assertSame( Challenge_Endpoint::LIMIT, $this->counter_rows()[ Challenge_Endpoint::COUNTER_PREFIX . $window ] );
+	}
+
+	public function test_the_count_never_passes_the_limit(): void {
+		$window = $this->window();
+		$this->set_counter( $window, Challenge_Endpoint::LIMIT );
+
+		for ( $i = 0; $i < 5; $i++ ) {
+			$this->assertSame( 429, $this->fetch( null )->get_status() );
+		}
+
+		$this->assertSame( Challenge_Endpoint::LIMIT, $this->counter_rows()[ Challenge_Endpoint::COUNTER_PREFIX . $window ] );
+	}
+
+	public function test_a_failed_database_count_is_not_admitted(): void {
+		$block = static function ( $query ) {
+			return 0 === strpos( $query, 'UPDATE' ) && false !== strpos( $query, Challenge_Endpoint::COUNTER_PREFIX ) ? '' : $query;
+		};
+		add_filter( 'query', $block );
+
+		$status = $this->fetch( null )->get_status();
+
+		remove_filter( 'query', $block );
+		$this->assertSame( 429, $status );
 	}
 
 	public function test_a_persistent_object_cache_counts_without_the_database(): void {
@@ -208,7 +240,83 @@ class Test_Challenge_Endpoint extends WP_UnitTestCase {
 			wp_using_ext_object_cache( (bool) $previous );
 		}
 
-		$this->assertFalse( get_option( Challenge_Endpoint::COUNTER_OPTION ) );
+		$this->assertSame( array(), $this->counter_rows() );
+	}
+
+	public function test_a_cache_that_cannot_increment_falls_back_to_the_database(): void {
+		global $wp_object_cache;
+		$original        = $wp_object_cache;
+		$wp_object_cache = new class() extends WP_Object_Cache {
+			/**
+			 * An increment that always fails, like a drop-in whose backend is down.
+			 *
+			 * @param int|string $key    Key.
+			 * @param int        $offset Offset.
+			 * @param string     $group  Group.
+			 * @return false
+			 */
+			public function incr( $key, $offset = 1, $group = 'default' ) {
+				return false;
+			}
+		};
+		$previous        = wp_using_ext_object_cache( true );
+		try {
+			$window = $this->window();
+			$this->set_counter( $window, Challenge_Endpoint::LIMIT - 1 );
+
+			$this->assertSame( 404, $this->fetch( null )->get_status() );
+			$this->assertSame( 429, $this->fetch( null )->get_status(), 'A failed increment is never treated as allowed.' );
+		} finally {
+			wp_using_ext_object_cache( (bool) $previous );
+			$wp_object_cache = $original;
+		}
+
+		$this->assertSame( Challenge_Endpoint::LIMIT, $this->counter_rows()[ Challenge_Endpoint::COUNTER_PREFIX . $window ] );
+	}
+
+	/**
+	 * The current window number.
+	 */
+	private function window(): int {
+		return (int) floor( time() / Challenge_Endpoint::WINDOW );
+	}
+
+	/**
+	 * Writes a counter row straight to the database.
+	 *
+	 * @param int $window Window number.
+	 * @param int $count  Misses.
+	 */
+	private function set_counter( int $window, int $count ): void {
+		global $wpdb;
+		$wpdb->replace(
+			$wpdb->options,
+			array(
+				'option_name'  => Challenge_Endpoint::COUNTER_PREFIX . $window,
+				'option_value' => (string) $count,
+				'autoload'     => 'off',
+			)
+		);
+	}
+
+	/**
+	 * Counter rows in the database, name => misses.
+	 *
+	 * @return array<string,int>
+	 */
+	private function counter_rows(): array {
+		global $wpdb;
+		$rows   = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE %s",
+				$wpdb->esc_like( Challenge_Endpoint::COUNTER_PREFIX ) . '%'
+			)
+		);
+		$counts = array();
+		foreach ( $rows as $row ) {
+			$counts[ $row->option_name ] = (int) $row->option_value;
+		}
+		return $counts;
 	}
 
 	/**
