@@ -92,6 +92,7 @@ test.describe( 'show.fm Publishing tab', () => {
 			'Connection',
 			'Publishing',
 			'Display',
+			'Migrate',
 		] );
 		await expect(
 			page.getByRole( 'tab', { name: 'Publishing' } )

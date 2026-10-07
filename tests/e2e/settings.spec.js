@@ -439,7 +439,12 @@ test.describe( 'show.fm settings', () => {
 		} ) );
 		expect( widths.scroll ).toBeLessThanOrEqual( widths.view );
 
-		for ( const name of [ 'Connection', 'Publishing', 'Display' ] ) {
+		for ( const name of [
+			'Connection',
+			'Publishing',
+			'Display',
+			'Migrate',
+		] ) {
 			await expect( page.getByRole( 'tab', { name } ) ).toBeInViewport();
 		}
 		const reconnect = page

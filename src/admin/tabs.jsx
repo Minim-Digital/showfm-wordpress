@@ -1,11 +1,12 @@
 /**
- * The settings tabs. Publishing and Migrate (WP-5b) have `requiresConnection: true`, so they
- * appear only while a connection is stored.
+ * The settings tabs. Publishing and Migrate have `requiresConnection: true`, so they appear
+ * only while a connection is stored.
  */
 import { __ } from '@wordpress/i18n';
 
 import ConnectionTab from './connection-tab';
 import DisplayTab from './display-tab';
+import MigrateTab from './migrate-tab';
 import PublishingTab from './publishing-tab';
 
 /**
@@ -44,6 +45,14 @@ export function allTabs() {
 			requiresConnection: false,
 			showsAdminNotice: true,
 			render: () => <DisplayTab />,
+		},
+		{
+			name: 'migrate',
+			title: __( 'Migrate', 'showfm' ),
+			requiresConnection: true,
+			showsAdminNotice: true,
+			wide: true,
+			render: ( { view } ) => <MigrateTab connection={ view } />,
 		},
 	];
 }

@@ -34,6 +34,7 @@ final class Admin {
 	const PRELOAD = array(
 		'/showfm/v1/admin/connection',
 		'/showfm/v1/admin/publishing',
+		'/showfm/v1/admin/migrate',
 		'/wp/v2/settings?_fields=showfm_show_credit,showfm_load_on_click,showfm_json_ld,showfm_theme_styles',
 	);
 

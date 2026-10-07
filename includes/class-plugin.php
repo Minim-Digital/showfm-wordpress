@@ -122,6 +122,7 @@ final class Plugin {
 		$status = new Admin_Status( self::connection() );
 		( new Admin_Endpoint( self::connect(), $status ) )->register();
 		( new Publishing_Endpoint( self::connection() ) )->register();
+		( new Migrate_Endpoint( new Migration_Admin( new Migrator( self::connection(), self::api_client() ) ) ) )->register();
 	}
 
 	/**

@@ -219,3 +219,129 @@ function showfm_e2e_set_publishing( WP_REST_Request $request ) {
 		'post'     => $post,
 	);
 }
+
+/** Episodes the Migrate tab's catalogue lists, while `showfm_e2e_catalogue` is set. */
+const SHOWFM_E2E_MIGRATE_PODCAST = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+
+add_action(
+	'rest_api_init',
+	static function () {
+		register_rest_route(
+			'showfm-e2e/v1',
+			'/migrate',
+			array(
+				'methods'             => 'POST',
+				'permission_callback' => static function () {
+					return current_user_can( 'manage_options' );
+				},
+				'callback'            => 'showfm_e2e_set_migrate',
+			)
+		);
+	}
+);
+
+/**
+ * Answers the keyed podcast and episode lists the migrator reads, while a Migrate test has
+ * set `showfm_e2e_catalogue`: `up` lists episodes with provenance, `down` answers 503.
+ * Everything else falls through.
+ */
+add_filter(
+	'pre_http_request',
+	static function ( $pre, $args, $url ) {
+		$catalogue = get_option( 'showfm_e2e_catalogue', '' );
+		if ( '' === $catalogue || ! preg_match( '~^https://api\.show(?:fm\.dev|\.fm)(/v1/me/podcasts[^#]*)$~', (string) $url, $match ) ) {
+			return $pre;
+		}
+		if ( 'down' === $catalogue ) {
+			return array(
+				'headers'  => array(),
+				'body'     => '',
+				'response' => array(
+					'code'    => 503,
+					'message' => 'Service Unavailable',
+				),
+				'cookies'  => array(),
+				'filename' => null,
+			);
+		}
+		$episode = static function ( string $id, string $title, string $date, ?string $audio ): array {
+			return array(
+				'id'           => $id,
+				'podcast_id'   => SHOWFM_E2E_MIGRATE_PODCAST,
+				'title'        => $title,
+				'status'       => 'published',
+				'published_at' => $date,
+				'source'       => array(
+					'enclosure_sha256' => null === $audio ? null : \ShowFM\Migration_Url::fingerprint( \ShowFM\Migration_Url::normalise( $audio ) ),
+					'guid_sha256'      => null,
+				),
+				'rss_guid'     => null,
+			);
+		};
+		$body    = 0 === strpos( $match[1], '/v1/me/podcasts?' ) ? array(
+			'data'       => array( array( 'id' => SHOWFM_E2E_MIGRATE_PODCAST ) ),
+			'pagination' => array( 'next_cursor' => null ),
+		) : array(
+			'data'       => array(
+				$episode( 'a1b2c3d4-0001-4000-8000-000000000001', 'Welcome to The Long Table', '2026-04-16T09:00:00Z', 'https://media.example/welcome.mp3' ),
+				$episode( 'a1b2c3d4-0002-4000-8000-000000000002', 'Leftovers, part one', '2026-04-30T09:00:00Z', null ),
+				$episode( 'a1b2c3d4-0003-4000-8000-000000000003', 'Leftovers, part one', '2026-04-30T18:00:00Z', null ),
+			),
+			'pagination' => array( 'next_cursor' => null ),
+		);
+		return array(
+			'headers'  => array( 'content-type' => 'application/json' ),
+			'body'     => wp_json_encode( $body ),
+			'response' => array(
+				'code'    => 200,
+				'message' => 'OK',
+			),
+			'cookies'  => array(),
+			'filename' => null,
+		);
+	},
+	5,
+	3
+);
+
+/**
+ * Sets up a Migrate test. `reset` clears any migration; `catalogue` (`up`, `down` or '')
+ * sets how the episode lists are answered; `posts` adds two posts with old players: a
+ * PowerPress shortcode that matches by its audio file, and a Buzzsprout embed whose title
+ * and date match two episodes, so it needs a pick.
+ *
+ * @param WP_REST_Request $request Request.
+ */
+function showfm_e2e_set_migrate( WP_REST_Request $request ) {
+	if ( $request->get_param( 'reset' ) ) {
+		\ShowFM\Migration_Store::clear();
+		delete_option( \ShowFM\Migration_Catalogue::PENDING );
+		delete_option( \ShowFM\Migration_Admin::LEASE );
+		delete_option( \ShowFM\Migration_Admin::PROGRESS );
+		delete_option( \ShowFM\Api_Client::RATE_LIMIT_OPTION );
+	}
+	update_option( 'showfm_e2e_catalogue', (string) $request->get_param( 'catalogue' ), false );
+	if ( ! $request->get_param( 'posts' ) ) {
+		return array( 'posts' => array() );
+	}
+	$posts = array(
+		array( 'We’re launching a podcast', '2026-04-16 09:00:00', '<!-- wp:shortcode -->' . "\n" . '[powerpress url="https://media.example/welcome.mp3"]' . "\n" . '<!-- /wp:shortcode -->' ),
+		array( 'Leftovers, part one', '2026-04-30 10:00:00', '<!-- wp:html --><iframe src="https://www.buzzsprout.com/1834/episodes/1572-leftovers" width="100%" height="200"></iframe><!-- /wp:html -->' ),
+	);
+	$ids   = array();
+	foreach ( $posts as list( $title, $date, $content ) ) {
+		$id = wp_insert_post(
+			array(
+				'post_title'    => $title,
+				'post_status'   => 'publish',
+				'post_date'     => $date,
+				'post_date_gmt' => $date,
+			)
+		);
+		global $wpdb;
+		$wpdb->update( $wpdb->posts, array( 'post_content' => $content ), array( 'ID' => $id ) );
+		clean_post_cache( $id );
+		$ids[] = $id;
+	}
+	return array( 'posts' => $ids );
+}

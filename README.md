@@ -17,9 +17,9 @@ panel); see [docs-editor.md](docs-editor.md).
 
 ## Embed migration
 
-The WP-5a engine and `wp showfm migrate-embeds` command are documented in
-[docs-migrator.md](docs-migrator.md), including the report interface for WP-5b, fixtures,
-undo behaviour and the current server contract gaps. No Migrate tab is included yet.
+The engine, the Settings > show.fm > Migrate tab, its REST routes and the
+`wp showfm migrate-embeds` command are documented in [docs-migrator.md](docs-migrator.md),
+including fixtures, undo behaviour and the current server contract gaps.
 
 ## Requirements
 

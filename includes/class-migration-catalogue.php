@@ -25,12 +25,14 @@ final class Migration_Catalogue {
 	/**
 	 * Fetch one resumable catalogue, persisting each successful list page.
 	 *
-	 * @param Api_Client $api Client.
-	 * @param string     $run Run UUID.
+	 * @param Api_Client $api   Client.
+	 * @param string     $run   Run UUID.
+	 * @param int        $limit Most list requests in this call, or zero for no limit. When it is
+	 *                          reached the saved cursors stay and `showfm_catalogue_more` says so.
 	 * @return int|\WP_Error
 	 * @throws \RuntimeException Internally caught for malformed API responses.
 	 */
-	public static function fetch( Api_Client $api, string $run ) {
+	public static function fetch( Api_Client $api, string $run, int $limit = 0 ) {
 		$state = get_option( self::PENDING, array() );
 		if ( ( $state['run'] ?? '' ) !== $run ) {
 			$state = array();
@@ -49,13 +51,25 @@ final class Migration_Catalogue {
 			);
 		}
 		if ( $state['retry_at'] > time() ) {
-			return new \WP_Error( 'showfm_backoff', __( 'The catalogue is waiting for API backoff. Resume the dry run after the retry time.', 'showfm' ), array( 'retry_at' => $state['retry_at'] ) );
+			return new \WP_Error(
+				'showfm_backoff',
+				__( 'The catalogue is waiting for API backoff. Resume the dry run after the retry time.', 'showfm' ),
+				array(
+					'retry_at' => $state['retry_at'],
+					'reason'   => $state['reason'] ?? '',
+				)
+			);
 		}
+		$requests = 0;
 		while ( true ) {
 			$podcast = $state['podcasts'][ $state['index'] ] ?? null;
 			if ( null === $podcast && $state['podcasts_done'] ) {
 				return $state['pages'];
 			}
+			if ( $limit > 0 && $requests >= $limit ) {
+				return new \WP_Error( 'showfm_catalogue_more', __( 'More catalogue pages remain. Continue the scan.', 'showfm' ), array( 'pages' => $state['pages'] ) );
+			}
+			++$requests;
 			$field  = null === $podcast ? 'podcast_cursor' : 'episode_cursor';
 			$path   = null === $podcast ? '/v1/me/podcasts' : '/v1/me/podcasts/' . $podcast . '/episodes?status=published';
 			$url    = $path . ( null === $podcast ? '?' : '&' ) . 'limit=50' . ( '' !== $state[ $field ] ? '&cursor=' . rawurlencode( $state[ $field ] ) : '' );
@@ -100,8 +114,17 @@ final class Migration_Catalogue {
 				}
 			} catch ( \RuntimeException $error ) {
 				$state['retry_at'] = time() + max( 5, $result->retry_after() );
+				// What went wrong, for the Migrate tab: rate_limited, unauthorised, transient_failure...
+				$state['reason'] = $result->type();
 				update_option( self::PENDING, $state, false );
-				return new \WP_Error( 'showfm_catalogue', __( 'The catalogue is incomplete. The episode list must expose provenance fingerprints. Saved pages and the previous report are retained; resume the dry run after backoff.', 'showfm' ), array( 'retry_at' => $state['retry_at'] ) );
+				return new \WP_Error(
+					'showfm_catalogue',
+					__( 'The catalogue is incomplete. The episode list must expose provenance fingerprints. Saved pages and the previous report are retained; resume the dry run after backoff.', 'showfm' ),
+					array(
+						'retry_at' => $state['retry_at'],
+						'reason'   => $state['reason'],
+					)
+				);
 			}
 			if ( null === $podcast ) {
 				$state['podcasts']      = $page;
@@ -119,6 +142,7 @@ final class Migration_Catalogue {
 				$state['seen'][ $cursor_key ] = true;
 			}
 			$state['retry_at'] = 0;
+			$state['reason']   = '';
 			update_option( self::PENDING, $state, false );
 		}
 	}

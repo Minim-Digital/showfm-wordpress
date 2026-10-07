@@ -61,7 +61,7 @@ describe( 'Settings app', () => {
 		);
 	} );
 
-	it( 'shows the header and the Connection, Publishing and Display tabs while connected', async () => {
+	it( 'shows the header and the Connection, Publishing, Display and Migrate tabs while connected', async () => {
 		serve( view() );
 		render( <App /> );
 
@@ -73,7 +73,7 @@ describe( 'Settings app', () => {
 		).toHaveAttribute( 'aria-selected', 'true' );
 		expect(
 			screen.getAllByRole( 'tab' ).map( ( tab ) => tab.textContent )
-		).toEqual( [ 'Connection', 'Publishing', 'Display' ] );
+		).toEqual( [ 'Connection', 'Publishing', 'Display', 'Migrate' ] );
 	} );
 
 	it( 'opens the Publishing tab, wider, without repeating its own problem as an admin notice', async () => {

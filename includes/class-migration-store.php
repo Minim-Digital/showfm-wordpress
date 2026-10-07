@@ -95,6 +95,30 @@ final class Migration_Store {
 	}
 
 	/**
+	 * The next few reports in post ID order, so a resumable swap can keep a numeric cursor.
+	 *
+	 * @param string $run   Run UUID.
+	 * @param int    $after Last post ID already handled.
+	 * @param int    $limit Most reports to return.
+	 * @return array<int,array<string,mixed>>
+	 */
+	public static function after( string $run, int $after, int $limit ): array {
+		global $wpdb;
+		$prefix = 'showfm_migration_' . $run . '_post_';
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Keyset page of non-autoloaded report options, by numeric post ID.
+		$keys    = $wpdb->get_col( $wpdb->prepare( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s AND CAST(SUBSTRING(option_name, %d) AS UNSIGNED) > %d ORDER BY CAST(SUBSTRING(option_name, %d) AS UNSIGNED) LIMIT %d", $wpdb->esc_like( $prefix ) . '%', strlen( $prefix ) + 1, $after, strlen( $prefix ) + 1, $limit ) );
+		$reports = array();
+		foreach ( $keys as $key ) {
+			$report = get_option( $key, array() );
+			wp_cache_delete( $key, 'options' );
+			if ( is_array( $report ) ) {
+				$reports[] = $report;
+			}
+		}
+		return $reports;
+	}
+
+	/**
 	 * Forget old runs only after the replacement catalogue has succeeded.
 	 *
 	 * @param string $keep Run to retain, or empty to remove everything.
@@ -135,14 +159,15 @@ final class Migration_Store {
 	 * Serialise report state transitions on this site, including CLI requests.
 	 *
 	 * @param callable $operation Operation.
+	 * @param int      $wait      Seconds to wait for another request's lock, zero by default.
 	 * @return mixed
 	 */
-	public static function locked( callable $operation ) {
+	public static function locked( callable $operation, int $wait = 0 ) {
 		global $wpdb;
 		$name = 'showfm_migrate_' . hash( 'sha256', $wpdb->dbname . $wpdb->options );
 		$name = substr( $name, 0, 64 );
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Connection-owned advisory lock, released in finally.
-		if ( isset( self::$held[ $name ] ) || '1' !== (string) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 0)', $name ) ) ) {
+		if ( isset( self::$held[ $name ] ) || '1' !== (string) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', $name, max( 0, $wait ) ) ) ) {
 			return new \WP_Error( 'showfm_busy', __( 'Another migration request is active. Resume when it finishes.', 'showfm' ) );
 		}
 		self::$held[ $name ] = true;
