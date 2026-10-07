@@ -20,6 +20,7 @@ final class Oembed {
 		wp_oembed_add_provider( 'https://show.fm/*', $endpoint );
 		if ( 'https://api.showfm.dev' === Api_Client::base_url() ) {
 			wp_oembed_add_provider( 'https://*.showfm.dev/*', $endpoint );
+			wp_oembed_add_provider( 'https://showfm.dev/*', $endpoint );
 			wp_oembed_add_provider( '~^https://[a-z0-9]+(?:-[a-z0-9]+)*\.showfm\.dev/?(?:[?#].*)?$~i', $endpoint, true );
 		}
 		// A show homepage need not have a trailing slash.

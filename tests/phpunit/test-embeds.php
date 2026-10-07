@@ -124,10 +124,101 @@ class Test_Embeds extends WP_UnitTestCase {
 
 	public function test_episode_marker_also_hides_stale_list_and_latest_audio(): void {
 		$this->cache( '/v1/episodes/' . self::ID, null, Cache::STATE_UNAVAILABLE );
-		$this->cache( '/v1/podcasts/' . self::SHOW . '/episodes?limit=10', array( 'data' => array( $this->episode() ) ) );
-		$this->cache( '/v1/podcasts/' . self::SHOW . '/episodes/latest', array( 'data' => $this->episode() ) );
+		$this->cache( '/v1/podcasts/' . self::SHOW . '/episodes?limit=10', array( 'data' => array( $this->episode() ) ), Cache::STATE_OK, Cache::FRESH_FOR + 1 );
+		$this->cache( '/v1/podcasts/' . self::SHOW . '/episodes/latest', array( 'data' => $this->episode() ), Cache::STATE_OK, Cache::FRESH_FOR + 1 );
 		$this->assertStringNotContainsString( 'Cached', $this->block( 'episodes', array( 'podcast' => self::SHOW ) ) );
 		$this->assertSame( '', $this->block( 'player', array( 'podcast' => self::SHOW ) ) );
+	}
+
+	/**
+	 * @dataProvider marker_render_cases
+	 * @param string $type Block type (list or latest player).
+	 * @param int    $marker_age Age of the episode marker.
+	 * @param int    $source_age Age of the public response.
+	 * @param bool   $visible Whether newer fresh evidence permits rendering.
+	 */
+	public function test_list_and_latest_marker_refresh_and_precedence( string $type, int $marker_age, int $source_age, bool $visible ): void {
+		$path         = Embed::path( $type, array( 'podcast' => self::SHOW ) );
+		$episode_path = '/v1/episodes/' . self::ID;
+		$this->cache( $episode_path, null, Cache::STATE_UNAVAILABLE, $marker_age );
+		$this->cache( $path, array( 'data' => 'episodes' === $type ? array( $this->episode() ) : $this->episode() ), Cache::STATE_OK, $source_age );
+		$marker = get_transient( Cache::key( $episode_path ) );
+		// Fix timestamps against the same reference time, including the tie case.
+		$source               = get_transient( Cache::key( $path ) );
+		$source['fetched_at'] = $marker['fetched_at'] + $marker_age - $source_age;
+		set_transient( Cache::key( $path ), $source, Cache::STALE_FOR );
+		for ( $i = 0; $i < 3; ++$i ) {
+			$html = $this->block(
+				$type,
+				array(
+					'podcast'  => self::SHOW,
+					'snapshot' => $this->snapshot(),
+				)
+			);
+			if ( $visible ) {
+				$this->assertStringContainsString( 'Cached &lt;title&gt;', $html );
+			} else {
+				$this->assertStringNotContainsString( 'Cached', $html );
+				$this->assertStringNotContainsString( 'a.mp3', $html );
+				if ( 'player' === $type ) {
+					$this->assertSame( '', $html );
+				}
+			}
+		}
+		$event = wp_get_scheduled_event( Cache::REFRESH_HOOK, array( $episode_path ) );
+		if ( $marker_age >= Cache::FRESH_FOR ) {
+			$this->assertNotFalse( $event );
+			$this->assertFalse( $event->schedule );
+			$this->assertGreaterThanOrEqual( time() - 2, $event->timestamp );
+			$this->assertLessThanOrEqual( time() + Cache::MAX_JITTER, $event->timestamp );
+			$count = 0;
+			foreach ( _get_cron_array() as $events ) {
+				foreach ( $events[ Cache::REFRESH_HOOK ] ?? array() as $scheduled ) {
+					if ( array( $episode_path ) === $scheduled['args'] ) {
+						++$count;
+					}
+				}
+			}
+			$this->assertSame( 1, $count );
+		} else {
+			$this->assertFalse( $event );
+		}
+		$this->assertSame( $marker, get_transient( Cache::key( $episode_path ) ), 'Rendering must not overwrite a marker with a partial list payload.' );
+	}
+
+	public static function marker_render_cases(): array {
+		$cases = array();
+		foreach ( array( 'episodes', 'player' ) as $type ) {
+			$cases[ $type . ' stale marker, old stale source' ]   = array( $type, 1000, 1100, false );
+			$cases[ $type . ' stale marker, newer stale source' ] = array( $type, 1100, 1000, false );
+			$cases[ $type . ' republished, stale marker' ]        = array( $type, 1000, 10, true );
+			$cases[ $type . ' republished, fresh marker' ]        = array( $type, 100, 10, true );
+			$cases[ $type . ' newer unavailable marker' ]         = array( $type, 10, 100, false );
+			$cases[ $type . ' tied timestamps' ]                  = array( $type, 100, 100, false );
+		}
+		return $cases;
+	}
+
+	public function test_marker_refresh_honours_backoff_without_scheduling_for_missing_markers(): void {
+		$episode_path = '/v1/episodes/' . self::ID;
+		$this->cache( $episode_path, null, Cache::STATE_UNAVAILABLE, 1000 );
+		$marker                 = get_transient( Cache::key( $episode_path ) );
+		$marker['next_attempt'] = time() + 600;
+		set_transient( Cache::key( $episode_path ), $marker, Cache::STALE_FOR );
+		foreach ( array( 'episodes', 'player' ) as $type ) {
+			$path = Embed::path( $type, array( 'podcast' => self::SHOW ) );
+			$this->cache( $path, array( 'data' => 'episodes' === $type ? array( $this->episode() ) : $this->episode() ) );
+			$this->assertStringContainsString( 'Cached', $this->block( $type, array( 'podcast' => self::SHOW ) ) );
+			$event = wp_get_scheduled_event( Cache::REFRESH_HOOK, array( $episode_path ) );
+			$this->assertGreaterThanOrEqual( $marker['next_attempt'], $event->timestamp );
+			$this->assertLessThanOrEqual( $marker['next_attempt'] + Cache::MAX_JITTER, $event->timestamp );
+		}
+		delete_transient( Cache::key( $episode_path ) );
+		wp_clear_scheduled_hook( Cache::REFRESH_HOOK, array( $episode_path ) );
+		foreach ( array( 'episodes', 'player' ) as $type ) {
+			$this->block( $type, array( 'podcast' => self::SHOW ) );
+		}
+		$this->assertFalse( wp_next_scheduled( Cache::REFRESH_HOOK, array( $episode_path ) ) );
 	}
 
 	public function test_empty_and_invalid_blocks_enqueue_nothing(): void {

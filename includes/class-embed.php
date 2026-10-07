@@ -72,18 +72,18 @@ final class Embed {
 		$json     = '';
 		if ( 'episodes' === $type ) {
 			$episodes = $public ? $data['data'] : array();
-			// An episode marker wins over an older cached list as well.
+			// Refresh stale markers; only newer, fresh public data can supersede them.
 			$episodes = array_values(
 				array_filter(
 					$episodes,
-					static function ( $item ) use ( $cache ) {
-						return is_array( $item ) && ! $cache->is_unavailable( '/v1/episodes/' . ( $item['id'] ?? '' ) );
+					static function ( $item ) use ( $cache, $path ) {
+						return is_array( $item ) && ! $cache->is_episode_unavailable( $item['id'] ?? '', $path );
 					}
 				)
 			);
 			$html     = Fallback::episode_list( $data['podcast'] ?? $fallback, $episodes, array( 'limit' => (int) ( $attrs['count'] ?? 10 ) ) );
 		} else {
-			if ( isset( $episode['id'] ) && $cache->is_unavailable( '/v1/episodes/' . $episode['id'] ) ) {
+			if ( isset( $episode['id'] ) && $cache->is_episode_unavailable( $episode['id'], $path ) ) {
 				return '';
 			}
 			// A standalone transcript links to the listen page; it never fetches VTT in PHP.
