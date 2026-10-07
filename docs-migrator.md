@@ -1,6 +1,7 @@
 # Embed migration engine
 
-I added the migration service and WP-CLI command for WP-5a. The Migrate tab is a separate task.
+I added the migration service and WP-CLI command for WP-5a, and the Migrate tab under
+Settings > show.fm for WP-5b. Both drive the same engine and report store.
 
 ## Usage
 
@@ -111,12 +112,109 @@ uninstall removes them with the plugin's existing namespace cleanup.
 - State changes are serialised by a per-site database session lock. Unsupported lock
   backends refuse migration rather than run concurrently. CLI apply is bound to the run it
   reviewed, so a concurrent new scan cannot silently replace its report.
-- No migration job is registered on activation, cron, REST or frontend rendering.
+- No migration job is registered on activation, cron or frontend rendering. The Migrate
+  tab's REST routes run one bounded step per request, only when an administrator asks.
   The legacy compatibility filters only inspect local content and metadata.
 
-WP-5b can call the service and read `Migration_Store::state()`, `get(run, post_id)` or the
-bounded `reports(run)` iterator. The future controller must check its nonce and capability,
-and use stored reports, never accept candidate arrays or byte offsets from browser input.
+## Migrate tab
+
+Settings > show.fm > Migrate is a React tab (`src/admin/migrate-tab.jsx`, its screens in
+`migrate-screens.jsx` and its words in `migrate-view.js`). It appears only while a
+connection is stored, like Publishing. When the key no longer works it shows the intro
+with a Connect or Reconnect button that posts the connect form.
+
+The tab follows the design's six screens (intro, scanning, dry-run report, confirm, results,
+nothing to migrate) and adds the states the design leaves out (see Design gaps below). Each
+new screen moves focus to its heading. A problem moves focus to its notice. "Show more"
+moves focus to the first new row. A pick keeps focus on its select, and Cancel in the
+confirm dialog returns focus to the Swap button.
+
+### REST routes
+
+All routes are under `showfm/v1/admin/migrate` and need `manage_options`. In the browser
+the cookie check needs the `wp_rest` nonce, which `@wordpress/api-fetch` sends. Input is
+validated by the route schema: run and episode UUIDs, a known group, offsets from 0 and
+limits from 1 to 100.
+
+| Route                        | What it does                                                                                                                                   |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /admin/migrate`         | The view: connected, hosts, the post count, the lease, the phase and its progress, the report summary, the swap summary and any saved problem. |
+| `POST /admin/migrate/scan`   | One scan step: up to 10 catalogue requests (`Migrator::start()` with a limit), or one batch of 50 posts. `restart` starts afresh.              |
+| `POST /admin/migrate/stop`   | Pauses the scan and gives the run back, so a reload doesn't carry on by itself.                                                                |
+| `GET /admin/migrate/rows`    | A page of rows for one group (`ready`, `choose`, `unmatched`, `already`, `review`) or the results (`changed`, `failed`).                       |
+| `POST /admin/migrate/choice` | Stores or clears the pick for one ambiguous embed.                                                                                             |
+| `POST /admin/migrate/swap`   | One swap step: up to five posts through `Migrator::swap()`.                                                                                    |
+
+A step answers with the view. A refused step is an error with `data.reason` and
+`data.view`, the fresh view: `not_connected`, `connection_lost` (the key stopped working
+during a scan or swap), `busy` (another admin's run, or another request on the site),
+`stale` (the run changed in another tab), `rate_limited` and `unreachable` (with
+`retryAt`), `reconnected` (the site reconnected with another key after the scan),
+`invalid_choice`, `swapped` (choices are fixed once the swap starts) and `forbidden`.
+
+Rows carry the post's title, link and date, the host, a short reference, how it matched,
+the status, and for a pick the candidates' IDs, titles and dates. They never carry the key,
+byte offsets, provenance fingerprints or legacy audio URLs: the reference is the player
+address and episode ID, or the audio file's name, never a whole URL with its query.
+
+### One admin at a time
+
+Each step takes or renews a lease (`showfm_migrate_lease`, two minutes) for the admin who
+runs it, under the engine's per-site lock. While it is live, another admin's steps are a
+409 `busy` naming the admin, and their tab follows the progress every five seconds. The
+lease is given back when the scan or swap finishes or the admin stops it; a closed tab lets
+it lapse. `wp showfm migrate-embeds` also waits while another admin holds the lease. A watching tab carries on a scan whose lease lapsed, but a lapsed swap waits for Resume swapping.
+
+### Resume
+
+The scan's cursor is the engine's (`Migration_Store::state()` and the pending catalogue).
+The found count and the pause live in `showfm_migrate_progress`. Picks live in
+`showfm_migration_{run}_choices` and the swap cursor in `showfm_migration_{run}_swap`, so
+a new scan or a discarded run removes them with the reports. A reload reads the view and
+carries on a scan or swap the admin didn't pause. A catalogue failure is saved with its
+reason, so the problem shows again after a reload.
+
+### Picks
+
+A pick must name one of the stored candidates of that ambiguous embed, in a post whose
+report is `scanned`. Anything else is a 400 `invalid_choice`. The swap passes the stored
+picks to `Migrator::swap()`, which checks them again.
+
+### WP-CLI table
+
+The design has no frame for the WP-CLI table, so I aligned it with the tab: the HOST,
+STATUS and METHOD columns use the report's words ("PowerPress", "Ready", "Choose one",
+"Left as is", "Nothing to do", "Check by hand", "Swapped"; "Audio file", "Episode ID",
+"Title and date", "None"), and an empty revision shows as `-`. The columns, the candidate
+IDs for `--choose` and the JSON output are unchanged.
+
+### Design gaps
+
+The design (Claude Design project d624d975, area 4) covers the six screens at 1280px. I
+built these from the same patterns and recorded them for the design pass:
+
+- **390px.** There is no phone frame for Migrate. The tiles go two by two, each report row
+  stacks its cells with the column name above the value, and buttons fill the width at
+  44px, as in the other 390px frames.
+- **Not connected.** The design shows Migrate only while connected. When the stored key no
+  longer works, the intro shows a warning and a Connect or Reconnect button.
+- **Scanning copy.** The design says "You can leave this page. The scan keeps going." The
+  scan runs only while the page is open, one short request at a time, so the tab says it
+  carries on from where it stopped when you come back. "Checks 1,280 posts, pages and
+  drafts" became "published posts and pages", which is what the scanner reads.
+- **Paused and swapping.** Stop scanning shows "Scan paused" with Resume scanning. The swap
+  shows its own progress card ("Swapping embeds").
+- **Errors.** show.fm unreachable, rate limited, connection lost, another admin running,
+  and a run that changed elsewhere show as notices above the screen, with the fix as the
+  action.
+- **Failures.** Posts the swap couldn't change are listed under "Not changed" with the
+  reason, and the results notice counts them.
+- **Check by hand.** Posts that couldn't be scanned safely, and players that share one
+  block, form a fifth group, shown only when it has rows.
+- **Already show.fm rows** say "Already a show.fm block" instead of the episode title,
+  which the report doesn't hold.
+- **Show more** adds up to 50 rows at a time ("Show 26 more"); the results say "Show all
+  29 posts" when the rest fit in one page.
 
 ## Server contract and remaining gap
 

@@ -57,9 +57,10 @@ final class Migrator {
 	 *
 	 * @param int  $post_id Single-post restriction, or zero.
 	 * @param bool $reset Discard pending acquisition and start afresh.
+	 * @param int  $limit Most catalogue requests in this call, or zero for no limit.
 	 * @return array<string,mixed>|\WP_Error
 	 */
-	private function start_locked( int $post_id = 0, bool $reset = false ) {
+	private function start_locked( int $post_id = 0, bool $reset = false, int $limit = 0 ) {
 		$access = $this->access();
 		if ( is_wp_error( $access ) ) {
 			return $access;
@@ -90,7 +91,7 @@ final class Migrator {
 				false
 			);
 		}
-		$pages = Migration_Catalogue::fetch( $this->api, $run );
+		$pages = Migration_Catalogue::fetch( $this->api, $run, $limit );
 		if ( is_wp_error( $pages ) ) {
 			return $pages;
 		}
@@ -180,12 +181,15 @@ final class Migrator {
 	 *
 	 * @param int  $post_id Optional post restriction.
 	 * @param bool $reset Discard pending acquisition and start afresh.
+	 * @param int  $limit Most catalogue requests in this call, or zero for no limit. The
+	 *                    Migrate tab passes a limit, so no request runs long; it then gets
+	 *                    `showfm_catalogue_more` until the catalogue is complete.
 	 * @return array<string,mixed>|\WP_Error
 	 */
-	public function start( int $post_id = 0, bool $reset = false ) {
+	public function start( int $post_id = 0, bool $reset = false, int $limit = 0 ) {
 		return Migration_Store::locked(
-			function () use ( $post_id, $reset ) {
-				return $this->start_locked( $post_id, $reset );
+			function () use ( $post_id, $reset, $limit ) {
+				return $this->start_locked( $post_id, $reset, $limit );
 			}
 		);
 	}
@@ -244,6 +248,21 @@ final class Migrator {
 				return $run && ( Migration_Store::state()['run'] ?? '' ) !== $run ? new \WP_Error( 'showfm_stale_run', __( 'The active scan changed.', 'showfm' ) ) : $this->swap_locked( $post_id, $choices );
 			}
 		);
+	}
+
+	/** Whether keyed calls may be made, so matching can run. */
+	public function connected(): bool {
+		return $this->connection->is_connected();
+	}
+
+	/**
+	 * Whether a saved scan belongs to the stored connection, so its report can be applied.
+	 * After a reconnect with another key the report needs a new scan.
+	 *
+	 * @param array<string,mixed> $state Saved scan state.
+	 */
+	public function owns( array $state ): bool {
+		return $this->connection->is_connected() && is_string( $state['connection'] ?? null ) && hash_equals( $state['connection'], $this->fingerprint() );
 	}
 
 	/** Hash only; credentials never enter the report. */

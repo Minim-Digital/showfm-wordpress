@@ -95,6 +95,30 @@ final class Migration_Store {
 	}
 
 	/**
+	 * The next few reports in post ID order, so a resumable swap can keep a numeric cursor.
+	 *
+	 * @param string $run   Run UUID.
+	 * @param int    $after Last post ID already handled.
+	 * @param int    $limit Most reports to return.
+	 * @return array<int,array<string,mixed>>
+	 */
+	public static function after( string $run, int $after, int $limit ): array {
+		global $wpdb;
+		$prefix = 'showfm_migration_' . $run . '_post_';
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Keyset page of non-autoloaded report options, by numeric post ID.
+		$keys    = $wpdb->get_col( $wpdb->prepare( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s AND CAST(SUBSTRING(option_name, %d) AS UNSIGNED) > %d ORDER BY CAST(SUBSTRING(option_name, %d) AS UNSIGNED) LIMIT %d", $wpdb->esc_like( $prefix ) . '%', strlen( $prefix ) + 1, $after, strlen( $prefix ) + 1, $limit ) );
+		$reports = array();
+		foreach ( $keys as $key ) {
+			$report = get_option( $key, array() );
+			wp_cache_delete( $key, 'options' );
+			if ( is_array( $report ) ) {
+				$reports[] = $report;
+			}
+		}
+		return $reports;
+	}
+
+	/**
 	 * Forget old runs only after the replacement catalogue has succeeded.
 	 *
 	 * @param string $keep Run to retain, or empty to remove everything.

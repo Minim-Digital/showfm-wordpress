@@ -98,6 +98,12 @@ final class Migration_Cli {
 			\WP_CLI::error( self::terminal( $access->get_error_message() ) );
 			return;
 		}
+		// The Migrate tab's run belongs to the admin running it until it finishes or lapses.
+		$held = Migration_Admin::held_by_another();
+		if ( '' !== $held ) {
+			\WP_CLI::error( self::terminal( $held ) );
+			return;
+		}
 		if ( empty( $assoc_args['dry-run'] ) && empty( $assoc_args['yes'] ) ) {
 			\WP_CLI::error( __( 'Use --dry-run to review or --yes to replace matched embeds.', 'showfm' ) );
 			return;
@@ -226,10 +232,12 @@ final class Migration_Cli {
 	 */
 	private static function table( array $report ): void {
 		if ( empty( $report['items'] ) ) {
-			\WP_CLI::line( $report['post_id'] . "\t-\t-\t" . ( 'already_showfm' === $report['status'] ? __( 'Already show.fm', 'showfm' ) : $report['status'] ) );
+			\WP_CLI::line( $report['post_id'] . "\t-\t-\t" . __( 'Check by hand', 'showfm' ) );
 		}
 		foreach ( $report['items'] as $item ) {
-			\WP_CLI::line( implode( "\t", array_map( array( self::class, 'terminal' ), array( $report['post_id'], $item['embed'], $item['host'], $item['status'], $item['method'], implode( ',', array_column( $item['candidates'], 'id' ) ), $report['revision_id'] ) ) ) );
+			// The same words as the Migrate tab's report; JSON keeps the engine's values.
+			$labels = Migration_Admin::labels( $report, $item );
+			\WP_CLI::line( implode( "\t", array_map( array( self::class, 'terminal' ), array( $report['post_id'], $item['embed'], $labels['host'], $labels['status'], $labels['method'], implode( ',', array_column( $item['candidates'], 'id' ) ), $report['revision_id'] ? $report['revision_id'] : '-' ) ) ) );
 		}
 		if ( isset( $report['error'] ) ) {
 			\WP_CLI::warning( self::terminal( $report['error'] ) );

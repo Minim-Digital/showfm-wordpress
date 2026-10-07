@@ -576,6 +576,334 @@ $showfm-small: 600px;
 	}
 }
 
+// Migrate: intro, progress, the dry-run report and the results.
+
+.showfm-migrate {
+	h2:focus {
+		outline: none;
+	}
+
+	.components-card__header h2:focus-visible,
+	h2:focus-visible {
+		outline: 2px solid var( --wp-admin-theme-color, #2271b1 );
+		outline-offset: 2px;
+	}
+}
+
+.showfm-migrate__narrow {
+	max-width: 780px;
+}
+
+.showfm-migrate__problem:focus {
+	outline: none;
+}
+
+.showfm-migrate__intro.components-card__body {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	padding: 20px 24px;
+
+	> p {
+		max-width: 620px;
+		margin: 0;
+		line-height: 1.6;
+	}
+
+	.components-notice.showfm-notice {
+		margin: 0;
+	}
+}
+
+.showfm-settings p.showfm-migrate__promise {
+	font-weight: 600;
+}
+
+.showfm-migrate__hosts {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+
+	h3 {
+		margin: 0;
+		font-size: 11px;
+		font-weight: 500;
+		line-height: 1.4;
+		text-transform: uppercase;
+	}
+
+	ul {
+		display: grid;
+		grid-template-columns: repeat( 4, 1fr );
+		gap: 8px 16px;
+		margin: 0;
+	}
+
+	li {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin: 0;
+	}
+}
+
+.showfm-muted-icon {
+	flex: none;
+	fill: $showfm-muted;
+}
+
+.showfm-migrate .showfm-card__footer {
+	align-items: center;
+	gap: 16px;
+
+	.showfm-help {
+		max-width: 520px;
+	}
+}
+
+.showfm-migrate__progress.components-card__body {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 24px;
+
+	p {
+		margin: 0;
+	}
+
+	p.showfm-muted {
+		font-size: 13px;
+	}
+}
+
+.showfm-migrate__progress-line {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+
+	.showfm-muted {
+		font-size: 13px;
+	}
+}
+
+.showfm-migrate__progress-text {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+
+	.components-spinner {
+		width: 16px;
+		height: 16px;
+		margin: 0;
+	}
+}
+
+.showfm-migrate__bar {
+	height: 4px;
+	overflow: hidden;
+	background: #dcdcde;
+	border-radius: 2px;
+
+	> div {
+		height: 4px;
+		background: var( --wp-admin-theme-color, #2271b1 );
+		transition: width 0.2s ease-out;
+	}
+}
+
+.showfm-migrate__tiles {
+	display: grid;
+	grid-template-columns: repeat( 4, 1fr );
+	gap: 16px;
+	margin: 0;
+
+	li {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		margin: 0;
+		padding: 14px 18px;
+		background: #fff;
+		border-radius: 2px;
+		box-shadow: 0 0 0 1px $showfm-border;
+	}
+}
+
+.showfm-migrate__count {
+	font-size: 22px;
+	line-height: 1.2;
+	color: $showfm-text;
+}
+
+.showfm-migrate__count-label {
+	color: #50575e;
+}
+
+.showfm-migrate__head {
+	gap: 12px;
+}
+
+.showfm-migrate__table-wrap {
+	overflow-x: auto;
+}
+
+.showfm-migrate__table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+	color: $showfm-text;
+
+	thead th {
+		padding: 10px 12px;
+		font-weight: 600;
+		text-align: left;
+		border-bottom: 1px solid #c3c4c7;
+	}
+
+	td {
+		padding: 10px 12px;
+		vertical-align: middle;
+	}
+
+	tbody tr {
+		border-bottom: 1px solid #f0f0f1;
+	}
+
+	th:first-child,
+	td:first-child {
+		padding-left: 24px;
+	}
+
+	th:last-child,
+	td:last-child {
+		padding-right: 24px;
+	}
+
+	th.is-episode {
+		width: 300px;
+	}
+
+	.is-revision {
+		width: 170px;
+	}
+
+	&.is-results tbody tr {
+		border-bottom: 0;
+
+		&:nth-child( odd ) {
+			background: #f6f7f7;
+		}
+	}
+
+	&.is-results td {
+		padding-top: 9px;
+		padding-bottom: 9px;
+	}
+}
+
+.showfm-migrate__group th {
+	padding: 12px 24px 10px;
+	font-weight: 400;
+	text-align: left;
+	background: #f6f7f7;
+	border-top: 1px solid #dcdcde;
+	border-bottom: 1px solid #dcdcde;
+
+	strong {
+		font-weight: 600;
+	}
+}
+
+.showfm-migrate__group-help {
+	margin-top: 2px;
+	font-size: 12px;
+	color: #50575e;
+}
+
+.showfm-migrate__post {
+	font-weight: 600;
+}
+
+span.showfm-migrate__post:focus {
+	outline: 2px solid var( --wp-admin-theme-color, #2271b1 );
+}
+
+.showfm-migrate__ref {
+	font-family: Menlo, Consolas, monospace;
+	font-size: 12px;
+	color: $showfm-muted;
+	overflow-wrap: anywhere;
+}
+
+.showfm-migrate__how {
+	color: #50575e;
+}
+
+.showfm-migrate__pick {
+	&:not( .is-chosen ) .components-select-control__input {
+		color: $showfm-muted;
+	}
+
+	.components-base-control__help {
+		margin-top: 4px;
+		margin-bottom: 0;
+		font-size: 12px;
+		color: $showfm-muted;
+	}
+}
+
+.showfm-migrate__status {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	white-space: nowrap;
+
+	svg {
+		flex: none;
+		fill: currentColor;
+	}
+
+	&.is-success {
+		color: #008a20;
+	}
+
+	&.is-warning {
+		color: #996800;
+	}
+
+	&.is-muted,
+	&.is-done {
+		color: $showfm-muted;
+	}
+}
+
+.showfm-migrate__more td {
+	padding: 10px 24px;
+}
+
+.showfm-migrate__left.components-card__footer {
+	padding: 12px 24px;
+	font-size: 12px;
+	color: #50575e;
+
+	.components-button.is-link {
+		font-size: 12px;
+	}
+}
+
+.showfm-migrate__empty.components-card__body {
+	padding: 56px 24px;
+
+	.showfm-empty__title:focus {
+		outline: none;
+	}
+
+	.components-button {
+		margin-top: 12px;
+	}
+}
+
 // Phones: tabs share the width, rows stack label over value, buttons fill the width.
 
 @media ( max-width: $showfm-small ) {
@@ -725,5 +1053,95 @@ $showfm-small: 600px;
 				font-size: 14px;
 			}
 		}
+	}
+	.showfm-migrate .showfm-card__footer {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 8px;
+
+		> .components-button {
+			flex: none;
+		}
+
+		.showfm-help {
+			max-width: none;
+		}
+	}
+
+	.showfm-migrate__empty.components-card__body .components-button {
+		align-self: stretch;
+		justify-content: center;
+		height: 44px;
+		font-size: 14px;
+	}
+
+	.showfm-migrate__hosts ul {
+		grid-template-columns: 1fr 1fr;
+	}
+
+	.showfm-migrate__tiles {
+		grid-template-columns: 1fr 1fr;
+		gap: 12px;
+	}
+
+	.showfm-migrate__intro.components-card__body,
+	.showfm-migrate__progress.components-card__body {
+		padding: 16px;
+	}
+
+	// The report stacks each row: every cell shows its column name above its value.
+	.showfm-migrate__table {
+		thead {
+			display: none;
+		}
+
+		tbody,
+		tr,
+		td,
+		th {
+			display: block;
+		}
+
+		tbody tr {
+			padding: 10px 16px;
+		}
+
+		td,
+		th:first-child,
+		td:first-child,
+		th:last-child,
+		td:last-child {
+			padding: 4px 0;
+		}
+
+		td[data-label]::before {
+			content: attr( data-label );
+			display: block;
+			font-size: 12px;
+			font-weight: 600;
+			color: $showfm-muted;
+		}
+
+		th.is-episode,
+		.is-revision {
+			width: auto;
+		}
+	}
+
+	.showfm-migrate__group th {
+		padding: 12px 16px 10px;
+	}
+
+	.showfm-migrate__more td,
+	.showfm-migrate__left.components-card__footer {
+		padding: 10px 16px;
+	}
+
+	.showfm-settings
+		.showfm-migrate__pick
+		select.components-select-control__input {
+		height: 44px;
+		min-height: 44px;
+		font-size: 14px;
 	}
 }
