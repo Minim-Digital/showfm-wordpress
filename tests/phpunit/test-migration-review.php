@@ -519,6 +519,50 @@ class Test_Migration_Review extends WP_UnitTestCase {
 		}
 	}
 
+	public function test_oversized_unknown_tags_never_expose_embed_attributes(): void {
+		$padding = str_repeat( 'x', ShowFM\Migration_Tokens::MAX_TAG + 1 );
+		foreach ( array(
+			'<iframe src="https://www.buzzsprout.com/1/episodes/10"></iframe>',
+			'[powerpress url="https://media.example/a.mp3"]',
+		) as $attribute ) {
+			foreach ( array( 'custom-player', 'img', 'div' ) as $tag ) {
+				foreach ( array( '', '<!-- wp:html -->' ) as $wrapper ) {
+					$content  = $wrapper . '<' . $tag . " data='" . $padding . $attribute . "'>";
+					$content .= $wrapper ? '<!-- /wp:html -->' : '';
+					$post     = $this->post( $content );
+					$report   = $this->scan( $post );
+					$this->assertSame( 'error', $report['status'], $tag . ' ' . $attribute );
+					$this->assertSame( array(), $report['items'] );
+					$this->assertWPError( Migration_Swap::apply( $this->connection, $report ) );
+					$this->assertSame( $content, get_post( $post->ID )->post_content );
+				}
+			}
+		}
+	}
+
+	public function test_tag_budget_distinguishes_a_late_terminator_from_prose(): void {
+		$limit = ShowFM\Migration_Tokens::MAX_TAG;
+		foreach ( array( $limit - 1, $limit, $limit + 1 ) as $end ) {
+			$content = '<custom ' . str_repeat( 'x', $end - strlen( '<custom ' ) ) . '>';
+			$report  = $this->scan( $this->post( $content ) );
+			$this->assertSame( $end < $limit ? 'scanned' : 'error', $report['status'] );
+			$this->assertSame( array(), $report['items'] );
+		}
+	}
+
+	public function test_normal_unknown_tag_keeps_attributes_opaque_and_finds_the_next_embed(): void {
+		$prefix = '<custom-player data="<iframe src=https://www.buzzsprout.com/1/episodes/10></iframe>">';
+		$post   = $this->post( $prefix . '[powerpress url="https://media.example/a.mp3"]' );
+		$report = $this->scan( $post );
+		$this->assertSame( 'scanned', $report['status'] );
+		$this->assertCount( 1, $report['items'] );
+		$this->assertSame( 'powerpress', $report['items'][0]['host'] );
+		$this->assertSame( strlen( $prefix ), $report['items'][0]['offset'] );
+		$result = Migration_Swap::apply( $this->connection, $report );
+		$this->assertNotWPError( $result );
+		$this->assertStringStartsWith( $prefix . '<!-- wp:showfm/player', get_post( $post->ID )->post_content );
+	}
+
 	public function test_depended_on_tags_still_fail_closed_at_eof_and_the_tag_budget(): void {
 		foreach ( array( 'iframe', 'script', 'pre', 'code', 'a', 'div', 'figure', 'figcaption', 'p', 'span', 'IFRAME' ) as $tag ) {
 			foreach ( array( '', str_repeat( 'x', ShowFM\Migration_Tokens::MAX_TAG + 1 ) ) as $tail ) {

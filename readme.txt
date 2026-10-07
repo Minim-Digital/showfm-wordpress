@@ -94,6 +94,7 @@ The plugin keeps up to 50 local sync diagnostics containing its own reason codes
 * Development release: the plugin's foundations (API client, cache and encrypted connection storage). No designed settings screen yet.
 * Added cache-only block and shortcode rendering, local embed assets, fallback parity checks, episode bindings, oEmbed and theme mapping. Credit defaults off and public-episode JSON-LD defaults on.
 * Connect a site to show.fm from the show.fm menu or with `wp showfm connect`, with a daily health report and signed wake-up pings.
+* Rejected oversized complete HTML tags without scanning their attribute contents as embeds; long candidates are prose only when no closing tag delimiter exists before the next opener or end.
 * Treated unknown incomplete tag names as prose even beyond the 16 KiB tag budget, kept detector and wrapper tags strict, and refused report items with missing scan evidence.
 * Kept unclosed less-than comparisons as prose, preserved caption fragments as Custom HTML around editable Player blocks, and stored wrapper fragments only once in migration reports.
 * Protected migration undo revisions from a retention limit of one, handled text less-than signs and captioned wrappers, added stale catalogue reset, and removed unused show-identity matching.

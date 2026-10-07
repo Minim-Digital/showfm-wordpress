@@ -245,7 +245,7 @@ final class Migration_Tokens {
 	}
 
 	/**
-	 * Find a quote-aware tag end with a fixed per-token byte budget.
+	 * Find a quote-aware tag end; oversized complete tags always fail closed.
 	 *
 	 * @param string $content Content.
 	 * @param int    $start Start byte.
@@ -253,23 +253,33 @@ final class Migration_Tokens {
 	 * @throws \RuntimeException On an unterminated/oversized tag.
 	 */
 	private static function tag_end( string $content, int $start, bool $allow_text = false ): ?int {
-		$quote = '';
-		$limit = min( strlen( $content ), $start + self::MAX_TAG );
-		for ( $i = $start + 1; $i < $limit; ++$i ) {
-			$char = $content[ $i ];
+		$quote  = '';
+		$size   = strlen( $content );
+		$limit  = $allow_text ? $size : min( $size, $start + self::MAX_TAG );
+		$cursor = $start + 1;
+		while ( $cursor < $limit ) {
+			// Skip plain runs natively. Lookahead remains bounded by the post's byte cap.
+			// Quotes keep embedded <, > and shortcode text inside an attribute opaque.
+			$cursor += strcspn( $content, '' === $quote ? "\"'<>" : $quote, $cursor, $limit - $cursor );
+			if ( $cursor >= $limit ) {
+				break;
+			}
+			$char = $content[ $cursor ];
 			if ( '' !== $quote ) {
-				if ( $char === $quote ) {
-					$quote = '';
-				}
+				$quote = '';
 			} elseif ( '"' === $char || "'" === $char ) {
 				$quote = $char;
 			} elseif ( '>' === $char ) {
-				return $i + 1;
+				if ( $cursor - $start >= self::MAX_TAG ) {
+					throw new \RuntimeException( 'Oversized HTML tag.' );
+				}
+				return $cursor + 1;
 			} elseif ( '<' === $char ) {
 				break;
 			}
+			++$cursor;
 		}
-		// Exhausting the tag budget cannot turn an otherwise unknown prose name into markup.
+		// Only a missing terminator before the next opener or EOF proves prose.
 		if ( $allow_text ) {
 			return null;
 		}
