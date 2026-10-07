@@ -82,7 +82,14 @@ undo behaviour and the current server contract gaps. No Migrate tab is included 
   Disconnect clears the admin's outcome. Each flow reads the connection once
   (`Connection::pinned()`): the browser flow keeps that snapshot (`{credentials, id}`, never the
   ciphertext) in its transient from the start to the exchange, every outcome it records is bound
-  to it, and the settings view, its notice and the Dashboard notice answer from one read. The
+  to it, and the settings view, its notice and the Dashboard notice answer from one read. Every write made
+  on the basis of a pinned read is compare-and-set against its state id: disconnect is one
+  conditional UPDATE from the value read (the REST route also checks the `stateId` the screen
+  showed, and answers 409 with the fresh view if it changed); the "needs reconnecting" flag
+  (`showfm_connection_state`) and the plan pause (`showfm_plan_paused_at`) are written only
+  while their state is live and store that state's id, so they never apply to a connection
+  saved since; and reading the state never writes. Keyed API results carry the state id of the
+  key they sent. The
   counter of earlier development builds
   (`showfm_connection_generation`) is deleted on `admin_init` and on uninstall.
 - Disconnect removes the local connection only. The show.fm API has no route for a site key to

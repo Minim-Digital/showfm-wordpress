@@ -161,9 +161,10 @@ final class Notices {
 			return $notices;
 		}
 
-		if ( Connection::paused_at() > 0 ) {
+		$paused = $this->connection->paused_since();
+		if ( $paused > 0 ) {
 			$notices[] = array(
-				'key'    => 'paused:' . Connection::paused_at(),
+				'key'    => 'paused:' . $paused,
 				'type'   => 'warning',
 				'text'   => __( 'Auto-posting is paused. The show’s plan doesn’t include connected sites, so new episodes aren’t posted here.', 'showfm' ),
 				'action' => array(

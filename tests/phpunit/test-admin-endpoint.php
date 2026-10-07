@@ -251,13 +251,18 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 	public function test_paused_follows_plan_upgrade_required_and_lifts_on_success(): void {
 		$this->connect();
 
-		Connection::note_report( new Api_Result( Api_Result::UNAVAILABLE, 403, null, null, 0, '', 'plan_upgrade_required' ) );
+		$state = Connection::state_id();
+
+		$this->assertFalse( Connection::note_report( new Api_Result( Api_Result::UNAVAILABLE, 403, null, null, 0, '', 'plan_upgrade_required' ) ), 'A result that names no state changes nothing.' );
+		$this->assertSame( 'connected', $this->view()['state'] );
+
+		Connection::note_report( ( new Api_Result( Api_Result::UNAVAILABLE, 403, null, null, 0, '', 'plan_upgrade_required' ) )->for_state( $state ) );
 		$this->assertSame( 'paused', $this->view()['state'] );
 
-		Connection::note_report( new Api_Result( Api_Result::UNAVAILABLE, 403, null, null, 0, '', 'insufficient_scope' ) );
+		Connection::note_report( ( new Api_Result( Api_Result::UNAVAILABLE, 403, null, null, 0, '', 'insufficient_scope' ) )->for_state( $state ) );
 		$this->assertSame( 'paused', $this->view()['state'], 'Another 403 changes nothing.' );
 
-		Connection::note_report( new Api_Result( Api_Result::SUCCESS, 200 ) );
+		Connection::note_report( ( new Api_Result( Api_Result::SUCCESS, 200 ) )->for_state( $state ) );
 		$this->assertSame( 'connected', $this->view()['state'] );
 	}
 
@@ -344,6 +349,52 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 			'unreachable'      => array( Connect::ERROR_UNREACHABLE, 'show.fm couldn’t be reached. Try again in a few minutes.', 'retry' ),
 			'storage'          => array( Connect::ERROR_STORAGE, Connect::message( Connect::ERROR_STORAGE ), 'none' ),
 		);
+	}
+
+	public function test_disconnect_refuses_when_the_screen_showed_another_state(): void {
+		$this->connect();
+		$seen = $this->view()['stateId'];
+		// Another admin reconnects after this screen loaded.
+		$this->assertTrue( ( new Connection() )->save( self::KEY, self::SECRET, self::SITE_ID, time() + 300 * DAY_IN_SECONDS ) );
+
+		$response = $this->dispatch( 'POST', '/showfm/v1/admin/disconnect', array( 'state' => $seen ) );
+
+		$this->assertSame( 409, $response->get_status() );
+		$this->assertSame( 'showfm_state_moved', $response->get_data()['code'] );
+		$this->assertSame( 'connected', $response->get_data()['data']['view']['state'], 'The fresh view comes back.' );
+		$this->assertSame( Connection::STATE_CONNECTED, Plugin::connection()->state(), 'Nothing was disconnected.' );
+	}
+
+	public function test_disconnect_with_the_state_the_screen_showed_succeeds(): void {
+		$this->connect();
+		$seen = $this->view()['stateId'];
+		$this->assertTrue( wp_is_uuid( $seen, 4 ) );
+
+		$response = $this->dispatch( 'POST', '/showfm/v1/admin/disconnect', array( 'state' => $seen ) );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( 'not_connected', $response->get_data()['state'] );
+	}
+
+	public function test_disconnect_refuses_when_a_reconnect_lands_before_the_write(): void {
+		$this->connect();
+		$nested = false;
+		$race   = function ( string $query ) use ( &$nested ): string {
+			if ( ! $nested && 0 === strpos( $query, 'UPDATE' ) && false !== strpos( $query, "'" . Connection::OPTION . "'" ) && false !== strpos( $query, 'AND option_value' ) ) {
+				$nested = true;
+				$this->assertTrue( ( new Connection() )->save( self::KEY, self::SECRET, self::SITE_ID, time() + 300 * DAY_IN_SECONDS ) );
+			}
+			return $query;
+		};
+		add_filter( 'query', $race );
+		try {
+			$response = $this->dispatch( 'POST', '/showfm/v1/admin/disconnect' );
+		} finally {
+			remove_filter( 'query', $race );
+		}
+
+		$this->assertSame( 409, $response->get_status() );
+		$this->assertSame( Connection::STATE_CONNECTED, Plugin::connection()->state() );
 	}
 
 	public function test_disconnect_clears_the_stored_connect_result(): void {

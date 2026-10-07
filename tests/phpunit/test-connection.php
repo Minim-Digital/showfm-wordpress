@@ -91,7 +91,7 @@ class Test_Connection extends WP_UnitTestCase {
 		$this->assertNull( $this->connection->ping_secret() );
 		$this->assertNull( $this->connection->site_id() );
 		$this->assertSame( '', $this->connection->masked_key() );
-		$this->assertSame( Connection::STATE_RECONNECT_NEEDED, get_option( Connection::STATE_OPTION ) );
+		$this->assertFalse( get_option( Connection::STATE_OPTION ), 'Reading the state never writes.' );
 	}
 
 	public function test_tampered_ciphertext_gives_reconnect_needed(): void {

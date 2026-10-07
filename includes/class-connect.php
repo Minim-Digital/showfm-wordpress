@@ -515,9 +515,18 @@ final class Connect {
 	/**
 	 * Removes the local connection: credentials, scheduled events and connection state.
 	 * The key stays live at show.fm until it is revoked there.
+	 *
+	 * Only the state the caller read is disconnected (compare-and-set). If another request
+	 * has reconnected or disconnected since, nothing changes and the answer is false.
+	 *
+	 * @param Connection|null $pinned The caller's pinned connection; read once now when not given.
+	 * @return bool Whether that state was disconnected.
 	 */
-	public function disconnect(): void {
-		$this->connection->disconnect();
+	public function disconnect( ?Connection $pinned = null ): bool {
+		$pinned = $pinned ?? $this->connection->pinned();
+		if ( ! $pinned->disconnect() ) {
+			return false;
+		}
 		Plugin::unschedule_events();
 		delete_option( self::VERIFY_PENDING_OPTION );
 		delete_option( Api_Client::RATE_LIMIT_OPTION );
@@ -525,6 +534,7 @@ final class Connect {
 		delete_option( Ping_Endpoint::MISSED_OPTION );
 		delete_option( Account::OPTION );
 		Ping_Endpoint::forget_nonces();
+		return true;
 	}
 
 	/**

@@ -21,7 +21,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  * - `POST admin/connection/dismiss-result`: clears the current user's connect outcome.
  * - `POST admin/disconnect`: removes the local connection, then answers like the GET, with
  *   `disconnected` saying where to disconnect the site at show.fm. The show.fm API has no
- *   route for a site key to revoke itself, so the key stays valid there until then.
+ *   route for a site key to revoke itself, so the key stays valid there until then. It
+ *   disconnects only the state the screen showed (`state`, the view's `stateId`): if the
+ *   connection changed since, nothing changes and the answer is a 409 with the fresh view.
  * - `POST admin/notices/dismiss`: hides a notice instance for the current user.
  */
 final class Admin_Endpoint {
@@ -83,6 +85,12 @@ final class Admin_Endpoint {
 				'methods'             => \WP_REST_Server::CREATABLE,
 				'callback'            => array( $this, 'disconnect' ),
 				'permission_callback' => array( self::class, 'can_manage' ),
+				'args'                => array(
+					'state' => array(
+						'type'     => 'string',
+						'required' => false,
+					),
+				),
 			)
 		);
 		register_rest_route(
@@ -128,10 +136,24 @@ final class Admin_Endpoint {
 	/**
 	 * Removes the local connection. The key stays valid at show.fm until the site is
 	 * disconnected there, so the answer says where.
+	 *
+	 * Reads once, and disconnects only that state, and only if it is the one the screen
+	 * showed: a reconnect or disconnect by another tab, admin or WP-CLI in between is never
+	 * undone.
+	 *
+	 * @param \WP_REST_Request $request Request.
+	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function disconnect(): \WP_REST_Response {
-		$sites = $this->status->current_sites_url();
-		$this->connect->disconnect();
+	public function disconnect( \WP_REST_Request $request ) {
+		$pinned = $this->status->pin();
+		$seen   = $request->get_param( 'state' );
+		if ( ( is_string( $seen ) && '' !== $seen && $seen !== $pinned->snapshot()['id'] ) ) {
+			return $this->moved_on();
+		}
+		$sites = Admin_Status::sites_url_for( $pinned );
+		if ( ! $this->connect->disconnect( $pinned ) ) {
+			return $this->moved_on();
+		}
 		// An earlier "Connected" must not come back on a reload after disconnecting.
 		Connect::clear_result( get_current_user_id() );
 		$view                 = $this->status->view( get_current_user_id() );
@@ -140,6 +162,21 @@ final class Admin_Endpoint {
 			'sitesUrl'   => $sites,
 		);
 		return self::private_response( $view );
+	}
+
+	/**
+	 * The refusal when the connection changed since it was read: nothing was disconnected.
+	 * It carries the fresh view, so the screen can show what is stored now.
+	 */
+	private function moved_on(): \WP_Error {
+		return new \WP_Error(
+			'showfm_state_moved',
+			__( 'The connection changed in another tab or by another admin, so nothing was disconnected. Check it, then try again.', 'showfm' ),
+			array(
+				'status' => 409,
+				'view'   => $this->status->view( get_current_user_id() ),
+			)
+		);
 	}
 
 	/**

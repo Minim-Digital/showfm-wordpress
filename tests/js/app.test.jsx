@@ -235,6 +235,7 @@ describe( 'Settings app', () => {
 		expect( apiFetch ).toHaveBeenCalledWith( {
 			path: '/showfm/v1/admin/disconnect',
 			method: 'POST',
+			data: { state: '3f2b8c1e-9a4d-4e6f-8b7c-1d2e3f4a5b6c' },
 		} );
 		expect(
 			screen.getByText( 'Disconnected from show.fm.' )
@@ -252,6 +253,39 @@ describe( 'Settings app', () => {
 				screen.getByRole( 'heading', { name: 'Connect to show.fm' } )
 			).toHaveFocus()
 		);
+	} );
+
+	it( 'disconnects nothing when the connection changed elsewhere, and shows the fresh state', async () => {
+		serve( view() );
+		render( <App /> );
+
+		await userEvent.click(
+			await screen.findByRole( 'button', { name: 'Disconnect' } )
+		);
+		apiFetch.mockRejectedValueOnce( {
+			code: 'showfm_state_moved',
+			message:
+				'The connection changed in another tab or by another admin, so nothing was disconnected. Check it, then try again.',
+			data: {
+				status: 409,
+				view: view( {
+					state: 'expiring',
+					daysLeft: 30,
+					stateId: 'other',
+				} ),
+			},
+		} );
+		await userEvent.click(
+			screen.getAllByRole( 'button', { name: 'Disconnect' } ).pop()
+		);
+
+		expect(
+			await screen.findByText( /so nothing was disconnected/, {
+				selector: '.components-notice__content',
+			} )
+		).toBeInTheDocument();
+		expect( screen.getByRole( 'dialog' ) ).toBeInTheDocument();
+		expect( screen.getByText( 'Expires in 30 days' ) ).toBeInTheDocument();
 	} );
 
 	it( 'says when the settings cannot load', async () => {

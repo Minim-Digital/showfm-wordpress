@@ -343,6 +343,32 @@ class Test_Cli extends WP_UnitTestCase {
 		$this->assertContains( 'Last sync: never', $lines );
 	}
 
+	public function test_disconnect_leaves_a_reconnect_that_lands_meanwhile_alone(): void {
+		$this->connection->save( self::KEY, self::SECRET, self::SITE_ID, 0 );
+		$nested = false;
+		$race   = static function ( string $query ) use ( &$nested ): string {
+			if ( ! $nested && 0 === strpos( $query, 'UPDATE' ) && false !== strpos( $query, "'" . Connection::OPTION . "'" ) && false !== strpos( $query, 'AND option_value' ) ) {
+				$nested = true;
+				( new Connection() )->save( 'showfm_live_FRESHKEYabcdefghijklmnopq', self::SECRET, self::SITE_ID, 0 );
+			}
+			return $query;
+		};
+		add_filter( 'query', $race );
+		try {
+			$this->assert_halts(
+				function () {
+					$this->cli->disconnect( array(), array( 'yes' => true ) );
+				}
+			);
+		} finally {
+			remove_filter( 'query', $race );
+		}
+
+		$this->assertTrue( $nested );
+		$this->assertSame( 'showfm_live_FRESHKEYabcdefghijklmnopq', ( new Connection() )->key(), 'The reconnect stands.' );
+		$this->assertStringContainsString( 'nothing was disconnected', end( WP_CLI::$output )[1] );
+	}
+
 	public function test_disconnect_asks_first(): void {
 		$this->connection->save( self::KEY, self::SECRET, self::SITE_ID, 0 );
 		Health::schedule();

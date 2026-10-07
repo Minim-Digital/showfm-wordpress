@@ -95,6 +95,13 @@ final class Api_Result {
 	private $error_reason;
 
 	/**
+	 * For a keyed call, the state id of the connection whose key was sent, else null.
+	 *
+	 * @var string|null
+	 */
+	private $state_id = null;
+
+	/**
 	 * Builds a result.
 	 *
 	 * @param string      $type         One of the type constants.
@@ -115,6 +122,24 @@ final class Api_Result {
 		$this->message      = $message;
 		$this->error_code   = $error_code;
 		$this->error_reason = $error_reason;
+	}
+
+	/**
+	 * The same result, marked with the state id of the connection whose key was sent.
+	 *
+	 * @param string $state_id State id.
+	 */
+	public function for_state( string $state_id ): self {
+		$copy           = clone $this;
+		$copy->state_id = $state_id;
+		return $copy;
+	}
+
+	/**
+	 * For a keyed call, the state id of the connection whose key was sent, else null.
+	 */
+	public function state_id(): ?string {
+		return $this->state_id;
 	}
 
 	/**

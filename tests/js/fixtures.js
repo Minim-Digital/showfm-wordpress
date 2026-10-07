@@ -7,6 +7,7 @@
 export function view( overrides = {} ) {
 	return {
 		state: 'connected',
+		stateId: '3f2b8c1e-9a4d-4e6f-8b7c-1d2e3f4a5b6c',
 		daysLeft: 300,
 		site: 'https://thelongtable.co',
 		account: 'Maya Lindgren',

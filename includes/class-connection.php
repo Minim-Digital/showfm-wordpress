@@ -24,7 +24,10 @@ final class Connection {
 	/** Option holding the encrypted credentials (autoload off). */
 	const OPTION = 'showfm_connection';
 
-	/** Option set when the connection needs reconnecting (autoload off). */
+	/**
+	 * Option naming the state that needs reconnecting (autoload off): its state id, so the
+	 * flag can only ever apply to that state. Earlier builds stored `reconnect_needed`.
+	 */
 	const STATE_OPTION = 'showfm_connection_state';
 
 	/** Durable sync retry and exhausted-row details for connection status. */
@@ -36,7 +39,10 @@ final class Connection {
 	/** When the credentials were last stored (autoload off). */
 	const CONNECTED_AT_OPTION = 'showfm_connected_at';
 
-	/** Since when show.fm has refused the site's reports because of the plan (autoload off). */
+	/**
+	 * Which state the plan has paused, and since when (autoload off): `{id, at}`. Earlier
+	 * builds stored the time alone.
+	 */
 	const PAUSED_OPTION = 'showfm_plan_paused_at';
 
 	/** The error code show.fm sends when no podcast on the key may sync to a site. */
@@ -162,13 +168,14 @@ final class Connection {
 		if ( ! self::stores_credentials( $this->stored() ) ) {
 			return self::STATE_DISCONNECTED;
 		}
-		if ( self::STATE_RECONNECT_NEEDED === get_option( self::STATE_OPTION ) ) {
+		if ( $this->flagged( get_option( self::STATE_OPTION ) ) ) {
 			return self::STATE_RECONNECT_NEEDED;
 		}
 
+		// Reading the state never writes: unreadable credentials need reconnecting, and that
+		// follows from the credentials themselves.
 		$credentials = $this->credentials();
 		if ( null === $credentials ) {
-			$this->mark_reconnect_needed();
 			return self::STATE_RECONNECT_NEEDED;
 		}
 		if ( $credentials['expires_at'] > 0 && $credentials['expires_at'] <= time() ) {
@@ -249,10 +256,22 @@ final class Connection {
 	}
 
 	/**
-	 * Since when auto-posting has been paused by the plan, or 0 when it is not.
+	 * Since when auto-posting has been paused by the plan for the state stored now, or 0.
 	 */
 	public static function paused_at(): int {
-		return (int) get_option( self::PAUSED_OPTION, 0 );
+		return ( new self() )->paused_since();
+	}
+
+	/**
+	 * Since when the plan has paused this connection's state (pinned or stored), or 0. A pause
+	 * recorded for another state does not count.
+	 */
+	public function paused_since(): int {
+		$paused = get_option( self::PAUSED_OPTION, 0 );
+		if ( is_array( $paused ) ) {
+			return $this->flagged( $paused['id'] ?? null ) ? (int) ( $paused['at'] ?? 0 ) : 0;
+		}
+		return (int) $paused;
 	}
 
 	/**
@@ -260,14 +279,59 @@ final class Connection {
 	 * `plan_upgrade_required` means no podcast on the key may sync to a site, so auto-posting
 	 * is paused; a success lifts the pause. Other outcomes change nothing.
 	 *
+	 * The result names the state whose key it used. The pause is written only while that is
+	 * still the stored state, and it names that state, so a report from a connection that has
+	 * since been replaced or disconnected never pauses or unpauses the new one.
+	 *
 	 * @param Api_Result $result Result of a verify or health report.
+	 * @return bool Whether the result still applied to the stored state.
 	 */
-	public static function note_report( Api_Result $result ): void {
-		if ( $result->is( Api_Result::SUCCESS ) ) {
-			delete_option( self::PAUSED_OPTION );
-		} elseif ( 403 === $result->status() && self::PLAN_ERROR === $result->error_code() && 0 === self::paused_at() ) {
-			update_option( self::PAUSED_OPTION, time(), false );
+	public static function note_report( Api_Result $result ): bool {
+		$id = $result->state_id();
+		if ( null === $id || ! self::is_live( $id ) ) {
+			return false;
 		}
+		$paused = get_option( self::PAUSED_OPTION, 0 );
+		$mine   = is_array( $paused ) ? ( $paused['id'] ?? null ) === $id : (int) $paused > 0;
+		if ( $result->is( Api_Result::SUCCESS ) ) {
+			if ( $mine ) {
+				delete_option( self::PAUSED_OPTION );
+			}
+		} elseif ( 403 === $result->status() && self::PLAN_ERROR === $result->error_code() && ! $mine ) {
+			update_option(
+				self::PAUSED_OPTION,
+				array(
+					'id' => $id,
+					'at' => time(),
+				),
+				false
+			);
+		}
+		return true;
+	}
+
+	/**
+	 * Whether a stored flag names this connection's state (pinned or stored). Earlier builds
+	 * stored `reconnect_needed`, which applies to whatever credentials are stored.
+	 *
+	 * @param mixed $flag Flag value.
+	 */
+	private function flagged( $flag ): bool {
+		if ( self::STATE_RECONNECT_NEEDED === $flag ) {
+			return true;
+		}
+		$id = self::id_of( $this->stored() );
+		return is_string( $flag ) && '' !== $id && $flag === $id;
+	}
+
+	/**
+	 * Whether a state id is still the stored one, read fresh.
+	 *
+	 * @param string $id State id.
+	 */
+	private static function is_live( string $id ): bool {
+		wp_cache_delete( self::OPTION, 'options' );
+		return '' !== $id && self::id_of( get_option( self::OPTION, false ) ) === $id;
 	}
 
 	/**
@@ -357,32 +421,65 @@ final class Connection {
 	}
 
 	/**
-	 * Stops all keyed calls until the admin reconnects.
+	 * Stops all keyed calls for this connection's state (pinned, or the stored one) until the
+	 * admin reconnects.
+	 *
+	 * Compare-and-set against the state id: the flag is written only if that state is still
+	 * the stored one, read fresh, and the flag names the state, so even a reconnect that lands
+	 * between the check and the write leaves the new connection untouched.
+	 *
+	 * @return bool Whether the flag applies to the stored state; false when the state moved on.
 	 */
-	public function mark_reconnect_needed(): void {
-		if ( self::STATE_RECONNECT_NEEDED === get_option( self::STATE_OPTION ) ) {
-			return;
+	public function mark_reconnect_needed(): bool {
+		$stored = $this->stored();
+		$id     = self::id_of( $stored );
+		if ( ! self::stores_credentials( $stored ) || ! self::is_live( $id ) ) {
+			return false;
 		}
-		delete_option( self::STATE_OPTION );
-		add_option( self::STATE_OPTION, self::STATE_RECONNECT_NEEDED, '', false );
-		if ( 0 === self::refused_at() ) {
-			update_option( self::REFUSED_AT_OPTION, time(), false );
+		if ( get_option( self::STATE_OPTION ) === $id ) {
+			return true;
 		}
+		update_option( self::STATE_OPTION, $id, false );
+		update_option( self::REFUSED_AT_OPTION, time(), false );
+		return true;
 	}
 
 	/**
-	 * Removes the credentials. The option keeps only a fresh random state id, written in the
-	 * same write that removes the credentials, so every disconnected spell is its own state:
-	 * an outcome recorded before it never matches it.
+	 * Removes the credentials of this connection's state (pinned, or the stored one). The
+	 * option keeps only a fresh random state id, written in the same write that removes the
+	 * credentials, so every disconnected spell is its own state.
+	 *
+	 * Compare-and-set: one conditional UPDATE from the exact value read, so a reconnect by
+	 * another request in between is never undone. Nothing else changes then.
+	 *
+	 * @return bool Whether this state was disconnected; false when the state moved on.
 	 */
-	public function disconnect(): void {
+	public function disconnect(): bool {
+		global $wpdb;
+
+		if ( ! $this->is_pinned ) {
+			wp_cache_delete( self::OPTION, 'options' );
+		}
+		$expected        = $this->stored();
 		$this->is_pinned = false;
-		update_option( self::OPTION, array( 'i' => wp_generate_uuid4() ), false );
+		$this->saved_id  = null;
+		$value           = array( 'i' => wp_generate_uuid4() );
+
+		if ( false === $expected ) {
+			$done = add_option( self::OPTION, $value, '', false );
+		} else {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- A compare-and-swap; the options API cannot make a write conditional.
+			$done = 1 === $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND option_value = %s", maybe_serialize( $value ), self::OPTION, maybe_serialize( $expected ) ) );
+			wp_cache_delete( self::OPTION, 'options' );
+		}
+		if ( ! $done ) {
+			return false;
+		}
 		delete_option( self::STATE_OPTION );
 		delete_option( self::REFUSED_AT_OPTION );
 		delete_option( self::CONNECTED_AT_OPTION );
 		delete_option( self::PAUSED_OPTION );
-		$this->saved_id = null;
+		return true;
 	}
 
 	/**

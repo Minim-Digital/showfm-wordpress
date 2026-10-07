@@ -31,8 +31,12 @@ export default function DisconnectModal( {
 		try {
 			await onConfirm();
 			onDone();
-		} catch {
-			setFailed( true );
+		} catch ( error ) {
+			setFailed(
+				error?.code === 'showfm_state_moved' && error?.message
+					? error.message
+					: true
+			);
 			setBusy( false );
 		}
 	};
@@ -47,7 +51,9 @@ export default function DisconnectModal( {
 			<div className="showfm-modal__body">
 				{ failed && (
 					<Notice status="error" isDismissible={ false }>
-						{ __( 'Couldn’t disconnect. Try again.', 'showfm' ) }
+						{ true === failed
+							? __( 'Couldn’t disconnect. Try again.', 'showfm' )
+							: failed }
 					</Notice>
 				) }
 				<p>

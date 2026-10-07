@@ -7,6 +7,7 @@
 
 use ShowFM\Admin;
 use ShowFM\Api_Client;
+use ShowFM\Api_Result;
 use ShowFM\Connect;
 use ShowFM\Connection;
 use ShowFM\Health;
@@ -675,6 +676,109 @@ class Test_Connect extends WP_UnitTestCase {
 			'exchange failure' => array( 'exchange failure' ),
 			'settings view'    => array( 'settings view' ),
 		);
+	}
+
+	public function test_a_pinned_read_of_unreadable_credentials_never_flags_a_reconnect_saved_since(): void {
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		$stored      = get_option( Connection::OPTION );
+		$stored['c'] = base64_encode( str_repeat( 'x', 80 ) );
+		update_option( Connection::OPTION, $stored, false );
+		$pinned = $this->connection->pinned();
+
+		// Another request reconnects successfully.
+		$this->assertTrue( ( new Connection() )->save( 'showfm_live_FRESHKEYabcdefghijklmnopq', self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+
+		$this->assertSame( Connection::STATE_RECONNECT_NEEDED, $pinned->state(), 'The pinned copy still describes the old state.' );
+		$this->assertFalse( $pinned->mark_reconnect_needed(), 'The state moved on, so nothing is written.' );
+		$this->assertFalse( get_option( Connection::STATE_OPTION ) );
+		$this->assertSame( Connection::STATE_CONNECTED, ( new Connection() )->state(), 'The new connection keeps working.' );
+		$this->assertSame( 'showfm_live_FRESHKEYabcdefghijklmnopq', ( new Connection() )->key() );
+	}
+
+	public function test_a_401_for_an_old_key_never_flags_a_reconnect_that_landed_meanwhile(): void {
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		$this->http->respond_with(
+			function () {
+				// Another tab reconnects while the old key's request is in flight.
+				( new Connection() )->save( 'showfm_live_FRESHKEYabcdefghijklmnopq', self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS );
+				return array( 401, '{"error":{"code":"invalid_api_key","message":"Revoked."}}' );
+			}
+		);
+
+		$result = ( new Api_Client( $this->connection ) )->get_keyed( '/v1/me' );
+
+		$this->assertTrue( $result->is( Api_Result::UNAUTHORISED ) );
+		$this->assertNotSame( Connection::state_id(), $result->state_id(), 'The result names the old state.' );
+		$this->assertSame( Connection::STATE_CONNECTED, ( new Connection() )->state(), 'The new connection is not flagged.' );
+	}
+
+	public function test_a_flag_written_after_a_reconnect_slips_in_still_names_the_old_state(): void {
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		$pinned = $this->connection->pinned();
+		$nested = false;
+		$race   = function ( $value ) use ( &$nested ) {
+			if ( ! $nested ) {
+				// A reconnect lands between the live check and the flag write.
+				$nested = true;
+				$this->assertTrue( ( new Connection() )->save( 'showfm_live_FRESHKEYabcdefghijklmnopq', self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+			}
+			return $value;
+		};
+		add_filter( 'pre_update_option_' . Connection::STATE_OPTION, $race );
+		try {
+			$pinned->mark_reconnect_needed();
+		} finally {
+			remove_filter( 'pre_update_option_' . Connection::STATE_OPTION, $race );
+		}
+
+		$this->assertTrue( $nested );
+		$this->assertSame( $pinned->snapshot()['id'], get_option( Connection::STATE_OPTION ), 'The flag names the state it was meant for.' );
+		$this->assertSame( Connection::STATE_CONNECTED, ( new Connection() )->state(), 'The new connection is not flagged.' );
+	}
+
+	public function test_a_plan_pause_reported_for_an_old_state_is_ignored(): void {
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		$old = Connection::state_id();
+		$this->assertTrue( ( new Connection() )->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+
+		$this->assertFalse( Connection::note_report( ( new Api_Result( Api_Result::UNAVAILABLE, 403, null, null, 0, '', 'plan_upgrade_required' ) )->for_state( $old ) ) );
+
+		$this->assertSame( 0, Connection::paused_at() );
+		$this->assertFalse( get_option( Connection::PAUSED_OPTION ) );
+	}
+
+	public function test_a_pinned_disconnect_never_undoes_a_reconnect_saved_since(): void {
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		$pinned = $this->connection->pinned();
+		$this->assertTrue( ( new Connection() )->save( 'showfm_live_FRESHKEYabcdefghijklmnopq', self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		wp_schedule_single_event( time() + HOUR_IN_SECONDS, Health::HOOK );
+
+		$this->assertFalse( $this->connect->disconnect( $pinned ), 'The state moved on.' );
+
+		$this->assertSame( 'showfm_live_FRESHKEYabcdefghijklmnopq', ( new Connection() )->key(), 'The reconnect stands.' );
+		$this->assertNotFalse( wp_next_scheduled( Health::HOOK ), 'Nothing else was torn down.' );
+	}
+
+	public function test_a_disconnect_racing_a_reconnect_at_the_write_changes_nothing(): void {
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+		$nested = false;
+		$race   = function ( string $query ) use ( &$nested ): string {
+			if ( ! $nested && 0 === strpos( $query, 'UPDATE' ) && false !== strpos( $query, "'" . Connection::OPTION . "'" ) && false !== strpos( $query, 'AND option_value' ) ) {
+				$nested = true;
+				$this->assertTrue( ( new Connection() )->save( 'showfm_live_FRESHKEYabcdefghijklmnopq', self::SECRET, self::SITE_ID, time() + DAY_IN_SECONDS ) );
+			}
+			return $query;
+		};
+		add_filter( 'query', $race );
+		try {
+			$done = $this->connection->disconnect();
+		} finally {
+			remove_filter( 'query', $race );
+		}
+
+		$this->assertTrue( $nested );
+		$this->assertFalse( $done );
+		$this->assertSame( 'showfm_live_FRESHKEYabcdefghijklmnopq', ( new Connection() )->key() );
 	}
 
 	public function test_every_state_writes_its_own_random_id(): void {

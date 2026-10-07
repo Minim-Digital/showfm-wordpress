@@ -67,7 +67,7 @@ final class Admin_Status {
 		if ( ! $connection->is_connected() ) {
 			return 'refused';
 		}
-		if ( Connection::paused_at() > 0 ) {
+		if ( $connection->paused_since() > 0 ) {
 			return 'paused';
 		}
 		$days = Notices::days_left( $expires );
@@ -104,6 +104,9 @@ final class Admin_Status {
 
 		return array(
 			'state'       => $state,
+			// Opaque and random, not a secret: Disconnect sends it back so it only ever
+			// disconnects the state this screen showed.
+			'stateId'     => $pinned->snapshot()['id'],
 			'daysLeft'    => Notices::days_left( $expires ),
 			'site'        => home_url(),
 			'account'     => $details['name'],
@@ -171,10 +174,19 @@ final class Admin_Status {
 	}
 
 	/**
-	 * The Connected sites link for the stored connection, read before it is removed.
+	 * The Connected sites link for a pinned connection, read before it is removed.
+	 *
+	 * @param Connection $pinned Pinned connection.
 	 */
-	public function current_sites_url(): string {
-		return self::sites_url( Account::details_for( $this->connection->pinned()->site_id() )['shows'] );
+	public static function sites_url_for( Connection $pinned ): string {
+		return self::sites_url( Account::details_for( $pinned->site_id() )['shows'] );
+	}
+
+	/**
+	 * A pinned copy of the connection, for a request that reads once and acts on that read.
+	 */
+	public function pin(): Connection {
+		return $this->connection->pinned();
 	}
 
 	/**

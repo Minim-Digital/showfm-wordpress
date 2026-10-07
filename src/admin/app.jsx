@@ -107,13 +107,25 @@ export default function App() {
 			.catch( () => setFailed( true ) );
 	}, [] );
 
+	// Disconnects only the state this screen shows. If it changed in another tab or by
+	// another admin, nothing is disconnected: the screen shows the fresh state and the
+	// dialog says why.
+	const stateId = view?.stateId;
 	const disconnect = useCallback( async () => {
-		const next = await apiFetch( {
-			path: '/showfm/v1/admin/disconnect',
-			method: 'POST',
-		} );
-		setView( next );
-	}, [] );
+		try {
+			const next = await apiFetch( {
+				path: '/showfm/v1/admin/disconnect',
+				method: 'POST',
+				data: { state: stateId },
+			} );
+			setView( next );
+		} catch ( error ) {
+			if ( error?.code === 'showfm_state_moved' && error?.data?.view ) {
+				setView( error.data.view );
+			}
+			throw error;
+		}
+	}, [ stateId ] );
 
 	const tabs = visibleTabs( hasConnection( view ) );
 	const requested = getQueryArg( window.location.href, 'tab' );

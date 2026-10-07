@@ -202,7 +202,11 @@ final class Api_Client {
 	 * @param string|null          $body    Request body.
 	 */
 	private function keyed( string $method, string $path, array $headers, ?string $body ): Api_Result {
-		$key = $this->connection->key();
+		// One read: the key sent and the state it belongs to come from the same value, so a
+		// 401 can only ever mark that state, never a connection saved meanwhile.
+		$pinned = $this->connection->pinned();
+		$state  = $pinned->snapshot()['id'];
+		$key    = $pinned->key();
 		if ( null === $key ) {
 			return new Api_Result( Api_Result::UNAUTHORISED, 0, null, null, 0, 'This site is not connected to show.fm, or needs reconnecting.' );
 		}
@@ -213,9 +217,9 @@ final class Api_Client {
 
 		$headers['Authorization'] = 'Bearer ' . $key;
 
-		$result = $this->request( $method, $path, $headers, $body, array( $key ) );
+		$result = $this->request( $method, $path, $headers, $body, array( $key ) )->for_state( $state );
 		if ( $result->is( Api_Result::UNAUTHORISED ) ) {
-			$this->connection->mark_reconnect_needed();
+			$pinned->mark_reconnect_needed();
 		}
 		self::record_rate_limit( $result );
 		return $result;
