@@ -263,7 +263,7 @@ test.describe( 'show.fm settings', () => {
 
 		const notice = page.locator( '.showfm-notice' );
 		await expect( notice ).toContainText(
-			'show.fm couldn’t be reached to revoke this site’s key, so it may still work. Revoke it in show.fm under Connected sites.'
+			'show.fm didn’t confirm the key was revoked, so it may still work. Revoke it in show.fm under Connected sites.'
 		);
 		await expect(
 			notice.getByRole( 'link', {

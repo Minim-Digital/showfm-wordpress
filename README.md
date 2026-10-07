@@ -113,7 +113,10 @@ undo behaviour and the current server contract gaps. No Migrate tab is included 
   or a key that can't be read after the salts changed). The answer's `disconnected` carries the
   outcome, its message and the first show's Connected sites page
   (`{app}/p/{slug}/settings/sites`), which the notice links to when the key must be revoked
-  there. A 401 here never flags the stored state, since it is removed next. Afterwards focus
+  there. A 401 here never flags the stored state, since it is removed next. If the revoke
+  succeeded but the local clear finds the lock busy or lost (503, `data.revoke`), the message
+  says the key was revoked and that Disconnect again finishes: the retry's revoke gets a 401,
+  which counts as nothing left to revoke, and the clear goes through. Afterwards focus
   moves to the Connect card's heading and one polite message is spoken.
 - `Publishing` holds the Publishing tab's settings (`showfm_publishing`, autoload off): auto-post
   (on), post type (`post`), category, author (0 means the first user who can publish the type),
@@ -130,11 +133,14 @@ undo behaviour and the current server contract gaps. No Migrate tab is included 
   connected shows, a fixable sync problem (`row_post_type` or `row_author`) and the recent
   activity. The POST type-checks and sanitises the fields, then `Publishing::validate()` refuses
   a bad one with a 400 naming it (`data.field`). When the sync was held on the post type or
-  author, saving drops the back-off and queues a pull (`Sync::retry_now()`).
+  author, saving records a retry request (`Sync::RETRY_OPTION`, a counter) and queues a pull
+  (`Sync::retry_now()`). The request is durable: a pull already running on the old settings
+  persists no back-off once it sees it, and the next pull drops any back-off.
 - `Sync_Activity` keeps the last 20 things the sync did (`showfm_sync_activity`, autoload off):
   posted, scheduled, updated (title, description or date), updated after an edit here (date and
   status only), moved to draft, moved to the bin, no longer synced, paused by the plan, and not
-  posted because auto-posting is off. It stores plugin event codes, the episode title, the show
+  posted because auto-posting is off (recorded once per episode until another event for it).
+  It stores plugin event codes, the episode title, the show
   and post ids, never remote error text. Re-applying a row that changes nothing records nothing.
 - `Notices` shows at most one admin notice on the Dashboard and Plugins screens (the settings
   screen shows it on every tab except Connection): refused key, plan pause, sync configuration

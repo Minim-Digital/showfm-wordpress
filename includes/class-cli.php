@@ -187,7 +187,7 @@ final class Cli {
 	/**
 	 * Revokes this site's key at show.fm, removes its credentials and stops its scheduled syncs.
 	 *
-	 * The revoke is best effort: if show.fm can't be reached, the credentials are still removed
+	 * The revoke is best effort: if show.fm doesn't confirm it, the credentials are still removed
 	 * here and the command says where to revoke the key in show.fm.
 	 *
 	 * ## OPTIONS
@@ -216,10 +216,10 @@ final class Cli {
 		try {
 			$done = $this->connect->disconnect( $pinned );
 		} catch ( Connection_Lost $lost ) {
-			\WP_CLI::error( Connect::message( Connect::ERROR_LOST ) );
+			\WP_CLI::error( Connect::unfinished_message( $revoke, Connect::ERROR_LOST, true ) );
 			return;
 		} catch ( Connection_Busy $busy ) {
-			\WP_CLI::error( Connect::message( Connect::ERROR_BUSY ) );
+			\WP_CLI::error( Connect::unfinished_message( $revoke, Connect::ERROR_BUSY, true ) );
 			return;
 		}
 		if ( ! $done ) {

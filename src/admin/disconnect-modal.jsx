@@ -27,7 +27,11 @@ export default function DisconnectModal( { onCancel, onConfirm, onDone } ) {
 			onDone();
 		} catch ( error ) {
 			setFailed(
-				error?.code === 'showfm_state_moved' && error?.message
+				[
+					'showfm_state_moved',
+					'showfm_busy',
+					'showfm_lock_lost',
+				].includes( error?.code ) && error?.message
 					? error.message
 					: true
 			);

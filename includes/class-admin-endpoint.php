@@ -167,9 +167,9 @@ final class Admin_Endpoint {
 				return $this->moved_on();
 			}
 		} catch ( Connection_Lost $lost ) {
-			return new \WP_Error( 'showfm_lock_lost', Connect::message( Connect::ERROR_LOST ), array( 'status' => 503 ) );
+			return self::unfinished( 'showfm_lock_lost', $revoke, Connect::ERROR_LOST );
 		} catch ( Connection_Busy $busy ) {
-			return new \WP_Error( 'showfm_busy', Connect::message( Connect::ERROR_BUSY ), array( 'status' => 503 ) );
+			return self::unfinished( 'showfm_busy', $revoke, Connect::ERROR_BUSY );
 		}
 		$view                 = $this->status->view( get_current_user_id() );
 		$view['disconnected'] = array(
@@ -179,6 +179,25 @@ final class Admin_Endpoint {
 			'sitesUrl'   => $sites,
 		);
 		return self::private_response( $view );
+	}
+
+	/**
+	 * A 503 when the local clear could not finish. It says whether the key was revoked, and
+	 * carries `revoke` so the screen can tell; Disconnect again finishes the job.
+	 *
+	 * @param string $code    Error code.
+	 * @param string $revoke  One of the `Connect::REVOKE_` constants.
+	 * @param string $error   `Connect::ERROR_BUSY` or `Connect::ERROR_LOST`.
+	 */
+	private static function unfinished( string $code, string $revoke, string $error ): \WP_Error {
+		return new \WP_Error(
+			$code,
+			Connect::unfinished_message( $revoke, $error ),
+			array(
+				'status' => 503,
+				'revoke' => $revoke,
+			)
+		);
 	}
 
 	/**

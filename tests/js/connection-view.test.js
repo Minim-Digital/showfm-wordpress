@@ -300,13 +300,13 @@ describe( 'connection view', () => {
 				revoke: 'not_revoked',
 				keyRevoked: false,
 				message:
-					'show.fm couldn’t be reached to revoke this site’s key, so it may still work. Revoke it in show.fm under Connected sites.',
+					'show.fm didn’t confirm the key was revoked, so it may still work. Revoke it in show.fm under Connected sites.',
 				sitesUrl: 'https://my.show.fm/p/the-long-table/settings/sites',
 			} )
 		).toEqual( {
 			status: 'warning',
 			title: 'Disconnected from show.fm.',
-			text: 'show.fm couldn’t be reached to revoke this site’s key, so it may still work. Revoke it in show.fm under Connected sites.',
+			text: 'show.fm didn’t confirm the key was revoked, so it may still work. Revoke it in show.fm under Connected sites.',
 			action: {
 				type: 'link',
 				label: 'Open Connected sites in show.fm',

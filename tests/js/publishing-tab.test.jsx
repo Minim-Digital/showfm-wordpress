@@ -1,5 +1,5 @@
 import apiFetch from '@wordpress/api-fetch';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -224,6 +224,90 @@ describe( 'Publishing tab', () => {
 				selector: '.components-snackbar__content',
 			} )
 		).toBeNull();
+	} );
+
+	it( 'marks the refused field invalid and moves focus to it', async () => {
+		await open();
+		apiFetch.mockRejectedValueOnce( {
+			code: 'showfm_invalid_setting',
+			message: 'Choose someone who can publish this post type.',
+			data: { status: 400, field: 'author' },
+		} );
+
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Save changes' } )
+		);
+
+		const author = screen.getByRole( 'combobox', { name: 'Author' } );
+		await waitFor( () => expect( author ).toHaveFocus() );
+		expect( author ).toHaveAttribute( 'aria-invalid', 'true' );
+		expect(
+			screen.getByRole( 'combobox', { name: 'Post type' } )
+		).not.toHaveAttribute( 'aria-invalid' );
+
+		await userEvent.selectOptions( author, '4' );
+		expect( author ).not.toHaveAttribute( 'aria-invalid' );
+	} );
+
+	it( 'moves focus to the error when no field is named', async () => {
+		await open();
+		apiFetch.mockRejectedValueOnce( { code: 'fetch_error' } );
+
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Save changes' } )
+		);
+
+		const notice = (
+			await screen.findByText(
+				'The settings couldn’t be saved. Try again.',
+				{ selector: 'p' }
+			)
+		).closest( '[tabindex="-1"]' );
+		await waitFor( () => expect( notice ).toHaveFocus() );
+	} );
+
+	it( 'keeps focus on Save while saving', async () => {
+		await open();
+		let finish;
+		apiFetch.mockReturnValueOnce(
+			new Promise( ( resolve ) => {
+				finish = resolve;
+			} )
+		);
+		const save = screen.getByRole( 'button', { name: 'Save changes' } );
+
+		await userEvent.click( save );
+
+		expect( save ).toHaveFocus();
+		expect( save ).toHaveAttribute( 'aria-disabled', 'true' );
+		expect( save ).not.toBeDisabled();
+		finish( publishing( { saved: true } ) );
+		await waitFor( () =>
+			expect( save ).not.toHaveAttribute( 'aria-disabled', 'true' )
+		);
+		expect( save ).toHaveFocus();
+	} );
+
+	it( 'shows a stored author the post type no longer offers as the first choice', async () => {
+		const data = publishing();
+		await open( {
+			...data,
+			settings: { ...data.settings, author: 99, template: 'gone.php' },
+		} );
+
+		expect(
+			screen.getByRole( 'combobox', { name: 'Author' } )
+		).toHaveValue( '1' );
+		apiFetch.mockResolvedValueOnce( publishing( { saved: true } ) );
+		await userEvent.click(
+			screen.getByRole( 'button', { name: 'Save changes' } )
+		);
+		expect( apiFetch ).toHaveBeenLastCalledWith(
+			expect.objectContaining( {
+				method: 'POST',
+				data: expect.objectContaining( { author: 1, template: '' } ),
+			} )
+		);
 	} );
 
 	it( 'says when saving fails for another reason', async () => {

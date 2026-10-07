@@ -22,7 +22,7 @@ const NOT_REVOKED = {
 	revoke: 'not_revoked',
 	keyRevoked: false,
 	message:
-		'show.fm couldn’t be reached to revoke this site’s key, so it may still work. Revoke it in show.fm under Connected sites.',
+		'show.fm didn’t confirm the key was revoked, so it may still work. Revoke it in show.fm under Connected sites.',
 	sitesUrl: SITES,
 };
 

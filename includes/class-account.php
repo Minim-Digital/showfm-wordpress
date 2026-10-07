@@ -197,6 +197,6 @@ final class Account {
 			return '';
 		}
 		$text = trim( wp_strip_all_tags( $value ) );
-		return function_exists( 'mb_substr' ) ? mb_substr( $text, 0, self::MAX_TEXT ) : substr( $text, 0, self::MAX_TEXT );
+		return Text::cut( $text, self::MAX_TEXT );
 	}
 }

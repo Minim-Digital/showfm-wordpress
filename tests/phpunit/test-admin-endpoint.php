@@ -451,6 +451,45 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 		$this->assertSame( Connection::STATE_CONNECTED, Plugin::connection()->state(), 'Nothing changed.' );
 	}
 
+	public function test_a_busy_lock_after_a_revoke_says_the_key_was_revoked_and_disconnect_again_finishes(): void {
+		$this->connect();
+		$seen = $this->view()['stateId'];
+		$held = new ShowFM\Sync_Lock( Connection::LOCK_OPTION, Connection::LOCK_TTL );
+		$this->assertTrue( $held->acquire() );
+		$short = static function (): int {
+			return 100;
+		};
+		$this->http->respond( 200, '{"data":{"disconnected":true}}' );
+		add_filter( 'showfm_connection_lock_wait_ms', $short );
+		try {
+			$response = $this->dispatch( 'POST', '/showfm/v1/admin/disconnect', array( 'state' => $seen ) );
+		} finally {
+			remove_filter( 'showfm_connection_lock_wait_ms', $short );
+			$held->release();
+		}
+
+		$this->assertSame( 503, $response->get_status() );
+		$this->assertSame( 'showfm_busy', $response->get_data()['code'] );
+		$this->assertSame( Connect::REVOKE_DONE, $response->get_data()['data']['revoke'] );
+		$this->assertStringStartsWith( 'This site’s key was revoked at show.fm, but another change', $response->get_data()['message'] );
+		$this->assertStringContainsString( 'Select Disconnect again to finish.', $response->get_data()['message'] );
+		$this->assertSame( Connection::STATE_CONNECTED, Plugin::connection()->state(), 'The local clear did not run.' );
+
+		// The retry: show.fm now refuses the revoked key, and the clear goes through.
+		$this->http->respond( 401, '{"error":{"code":"invalid_api_key"}}' );
+		$retry = $this->dispatch( 'POST', '/showfm/v1/admin/disconnect', array( 'state' => $seen ) );
+
+		$this->assertSame( 200, $retry->get_status() );
+		$this->assertSame( Connect::REVOKE_REFUSED, $retry->get_data()['disconnected']['revoke'] );
+		$this->assertSame( Connection::STATE_DISCONNECTED, Plugin::connection()->state() );
+	}
+
+	public function test_a_lost_lock_after_a_revoke_says_the_key_was_revoked(): void {
+		$this->assertStringStartsWith( 'This site’s key was revoked at show.fm', Connect::unfinished_message( Connect::REVOKE_DONE, Connect::ERROR_LOST ) );
+		$this->assertSame( Connect::message( Connect::ERROR_LOST ), Connect::unfinished_message( Connect::REVOKE_FAILED, Connect::ERROR_LOST ) );
+		$this->assertSame( Connect::message( Connect::ERROR_BUSY ), Connect::unfinished_message( Connect::REVOKE_REFUSED, Connect::ERROR_BUSY ) );
+	}
+
 	public function test_disconnect_clears_the_stored_connect_result(): void {
 		$this->connect();
 		$this->result( Connect::STATUS_CONNECTED, '' );
@@ -622,7 +661,7 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 		$this->assertSame( Connection::STATE_DISCONNECTED, Plugin::connection()->state() );
 		$this->assertSame( Connect::REVOKE_FAILED, $data['disconnected']['revoke'] );
 		$this->assertFalse( $data['disconnected']['keyRevoked'] );
-		$this->assertSame( 'show.fm couldn’t be reached to revoke this site’s key, so it may still work. Revoke it in show.fm under Connected sites.', $data['disconnected']['message'] );
+		$this->assertSame( 'show.fm didn’t confirm the key was revoked, so it may still work. Revoke it in show.fm under Connected sites.', $data['disconnected']['message'] );
 		$this->assertSame( 'https://my.show.fm/p/the-long-table/settings/sites', $data['disconnected']['sitesUrl'] );
 		$this->assertStringNotContainsString( 'cURL', wp_json_encode( $data ) );
 	}

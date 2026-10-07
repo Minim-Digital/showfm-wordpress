@@ -131,14 +131,7 @@ final class Attributes {
 	 * @return string At most MAX_TITLE characters.
 	 */
 	public static function cap_title( string $title, ?bool $mbstring = null ): string {
-		if ( $mbstring ?? function_exists( 'mb_substr' ) ) {
-			return mb_substr( $title, 0, self::MAX_TITLE, 'UTF-8' );
-		}
-		if ( preg_match( '/\\A.{0,' . self::MAX_TITLE . '}/su', $title, $match ) ) {
-			return $match[0];
-		}
-		// Invalid UTF-8: keep the bytes up to the cap rather than fail the render.
-		return substr( $title, 0, self::MAX_TITLE );
+		return Text::cut( $title, self::MAX_TITLE, $mbstring );
 	}
 
 	/**

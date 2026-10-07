@@ -355,12 +355,12 @@ class Test_Publishing extends WP_UnitTestCase {
 		$this->stuck( 'row_post_type' );
 		$this->assertSame( 'postType', $this->dispatch( 'GET' )->get_data()['problem']['field'] );
 
-		$data = $this->dispatch( 'POST', array( 'postType' => 'post' ) )->get_data();
+		$before = (int) get_option( Sync::RETRY_OPTION, 0 );
+		$data   = $this->dispatch( 'POST', array( 'postType' => 'post' ) )->get_data();
 
 		$this->assertNull( $data['problem'] );
-		$this->assertSame( 0, Sync::state()['retry_at'], 'The back-off is dropped.' );
-		$this->assertSame( 0, Sync::state()['failures'] );
-		$this->assertNotFalse( wp_next_scheduled( Ping_Endpoint::PULL_HOOK ), 'A pull is queued.' );
+		$this->assertSame( $before + 1, (int) get_option( Sync::RETRY_OPTION ), 'A durable retry request is recorded.' );
+		$this->assertLessThanOrEqual( time(), wp_next_scheduled( Ping_Endpoint::PULL_HOOK ), 'A pull is queued now.' );
 		$this->assertSame( 0, $this->http->count(), 'Saving never calls show.fm.' );
 	}
 
@@ -616,7 +616,87 @@ class Test_Publishing extends WP_UnitTestCase {
 
 		$title = Sync_Activity::entries()[0]['title'];
 		$this->assertStringStartsWith( 'Bold', $title );
-		$this->assertSame( Sync_Activity::MAX_TITLE, mb_strlen( $title ) );
+		$this->assertSame( Sync_Activity::MAX_TITLE, preg_match_all( '/./su', $title ) );
+	}
+
+	public function test_activity_titles_are_cut_by_character_without_mbstring(): void {
+		ShowFM\Text::$mbstring = false;
+		try {
+			Sync_Activity::record(
+				Sync_Activity::POSTED,
+				array(
+					'episode_id' => self::EPISODE,
+					'episode'    => array( 'title' => str_repeat( 'é', Sync_Activity::MAX_TITLE + 20 ) ),
+				),
+				0
+			);
+		} finally {
+			ShowFM\Text::$mbstring = null;
+		}
+
+		$this->assertSame( str_repeat( 'é', Sync_Activity::MAX_TITLE ), Sync_Activity::entries()[0]['title'] );
+	}
+
+	public function test_not_posted_is_recorded_once_per_episode_until_something_else_happens(): void {
+		$this->save(
+			array(
+				'auto_post'      => false,
+				'featured_image' => false,
+			)
+		);
+		for ( $seq = 1; $seq <= 30; ++$seq ) {
+			$this->assertSame( 0, ( new Sync_Posts() )->apply( self::SITE, $this->row( $seq ) ) );
+		}
+		$this->assertSame( array( Sync_Activity::SKIPPED ), wp_list_pluck( Sync_Activity::entries(), 'event' ), 'Thirty edits, one entry.' );
+
+		$other                  = $this->row( 31 );
+		$other['episode_id']    = '44444444-4444-4444-8444-444444444444';
+		$other['episode']['id'] = $other['episode_id'];
+		( new Sync_Posts() )->apply( self::SITE, $other );
+		$this->assertCount( 2, Sync_Activity::entries(), 'Another episode gets its own entry.' );
+
+		// Something else happens to the first episode, then it is skipped again.
+		$this->apply_tombstone( 'plan_or_policy' );
+		( new Sync_Posts() )->apply( self::SITE, $this->row( 40 ) );
+		$this->assertSame(
+			array( Sync_Activity::SKIPPED, Sync_Activity::SKIPPED, Sync_Activity::PAUSED, Sync_Activity::SKIPPED ),
+			wp_list_pluck( Sync_Activity::entries(), 'event' )
+		);
+	}
+
+	public function test_a_stored_author_who_can_no_longer_publish_shows_as_the_default(): void {
+		$author = self::factory()->user->create( array( 'role' => 'author' ) );
+		$this->save( array( 'author' => $author ) );
+		( new WP_User( $author ) )->set_role( 'subscriber' );
+
+		$data = $this->dispatch( 'GET' )->get_data();
+
+		$this->assertSame( Publishing::default_author( 'post' ), $data['settings']['author'] );
+		$this->assertContains( $data['settings']['author'], wp_list_pluck( $data['authors']['post'], 'value' ), 'The select can show it.' );
+		$this->assertSame( 200, $this->dispatch( 'POST', $data['settings'] )->get_status(), 'Saving what is shown works.' );
+	}
+
+	public function test_a_valid_stored_author_beyond_the_listed_names_is_offered(): void {
+		for ( $i = 0; $i < Publishing::MAX_AUTHORS; ++$i ) {
+			self::factory()->user->create(
+				array(
+					'role'         => 'editor',
+					'display_name' => sprintf( 'Aaron %03d', $i ),
+				)
+			);
+		}
+		$zed = self::factory()->user->create(
+			array(
+				'role'         => 'editor',
+				'display_name' => 'Zed Last',
+			)
+		);
+		$this->save( array( 'author' => $zed ) );
+
+		$data = $this->dispatch( 'GET' )->get_data();
+
+		$this->assertSame( $zed, $data['settings']['author'] );
+		$this->assertContains( $zed, wp_list_pluck( $data['authors']['post'], 'value' ) );
 	}
 
 	public function test_activity_times_read_today_yesterday_and_a_date(): void {

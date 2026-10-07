@@ -14,7 +14,7 @@ import {
 	Spinner,
 	ToggleControl,
 } from '@wordpress/components';
-import { useEffect, useState } from '@wordpress/element';
+import { useEffect, useRef, useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 import { Path, SVG } from '@wordpress/primitives';
 
@@ -98,6 +98,14 @@ export function forPostType( data, settings ) {
 	return next;
 }
 
+/** The id of each select, by the field name the REST route uses in `data.field`. */
+export const FIELD_IDS = {
+	postType: 'showfm-publishing-post-type',
+	category: 'showfm-publishing-category',
+	author: 'showfm-publishing-author',
+	template: 'showfm-publishing-template',
+};
+
 /**
  * The four selects: post type, category, author and post template.
  *
@@ -105,8 +113,9 @@ export function forPostType( data, settings ) {
  * @param {Object}                     props.data     The tab's data.
  * @param {Object}                     props.settings Current settings.
  * @param {(settings: Object) => void} props.onChange Called with the new settings.
+ * @param {string}                     props.invalid  The field the server refused, or ''.
  */
-function Selects( { data, settings, onChange } ) {
+function Selects( { data, settings, onChange, invalid } ) {
 	const type = data.postTypes.find(
 		( item ) => item.value === settings.postType
 	);
@@ -121,6 +130,8 @@ function Selects( { data, settings, onChange } ) {
 	return (
 		<div className="showfm-publishing__selects">
 			<SelectControl
+				id={ FIELD_IDS.postType }
+				aria-invalid={ invalid === 'postType' || undefined }
 				label={ __( 'Post type', 'showfm' ) }
 				help={ __(
 					'Any public post type that supports the block editor.',
@@ -137,6 +148,8 @@ function Selects( { data, settings, onChange } ) {
 				__nextHasNoMarginBottom
 			/>
 			<SelectControl
+				id={ FIELD_IDS.category }
+				aria-invalid={ invalid === 'category' || undefined }
 				label={ __( 'Category', 'showfm' ) }
 				help={
 					hasCategories
@@ -163,6 +176,8 @@ function Selects( { data, settings, onChange } ) {
 				__nextHasNoMarginBottom
 			/>
 			<SelectControl
+				id={ FIELD_IDS.author }
+				aria-invalid={ invalid === 'author' || undefined }
 				label={ __( 'Author', 'showfm' ) }
 				help={
 					authors.length
@@ -182,6 +197,8 @@ function Selects( { data, settings, onChange } ) {
 				__nextHasNoMarginBottom
 			/>
 			<SelectControl
+				id={ FIELD_IDS.template }
+				aria-invalid={ invalid === 'template' || undefined }
 				label={ __( 'Post template', 'showfm' ) }
 				help={ __(
 					'From your theme. Default uses the normal post template.',
@@ -347,10 +364,24 @@ export default function PublishingTab() {
 	const [ saving, setSaving ] = useState( false );
 	const [ error, setError ] = useState( null );
 	const [ saved, setSaved ] = useState( false );
+	const [ invalid, setInvalid ] = useState( '' );
+	const errorRef = useRef();
 
+	// After a refused save, focus the field the server named, or the error notice.
+	useEffect( () => {
+		if ( ! error ) {
+			return;
+		}
+		const field =
+			invalid && document.getElementById( FIELD_IDS[ invalid ] );
+		( field || errorRef.current )?.focus();
+	}, [ error, invalid ] );
+
+	// The settings as the selects show them: an author, template or category the post type
+	// no longer offers becomes the first valid choice, so what is saved is what is shown.
 	const take = ( next ) => {
 		setData( next );
-		setSettings( next.settings );
+		setSettings( forPostType( next, next.settings ) );
 	};
 
 	useEffect( () => {
@@ -362,6 +393,7 @@ export default function PublishingTab() {
 	const save = async () => {
 		setSaving( true );
 		setError( null );
+		setInvalid( '' );
 		setSaved( false );
 		try {
 			take(
@@ -373,6 +405,12 @@ export default function PublishingTab() {
 			);
 			setSaved( true );
 		} catch ( failure ) {
+			setInvalid(
+				failure?.code === 'showfm_invalid_setting' &&
+					FIELD_IDS[ failure?.data?.field ]
+					? failure.data.field
+					: ''
+			);
 			setError(
 				failure?.code === 'showfm_invalid_setting' && failure?.message
 					? failure.message
@@ -414,13 +452,15 @@ export default function PublishingTab() {
 					</Notice>
 				) }
 				{ error && (
-					<Notice
-						className="showfm-notice"
-						status="error"
-						onRemove={ () => setError( null ) }
-					>
-						<p>{ error }</p>
-					</Notice>
+					<div ref={ errorRef } tabIndex={ -1 }>
+						<Notice
+							className="showfm-notice"
+							status="error"
+							onRemove={ () => setError( null ) }
+						>
+							<p>{ error }</p>
+						</Notice>
+					</div>
 				) }
 				<Card className="showfm-card">
 					<CardHeader className="showfm-card__header is-stacked">
@@ -459,7 +499,11 @@ export default function PublishingTab() {
 							<Selects
 								data={ data }
 								settings={ settings }
-								onChange={ setSettings }
+								onChange={ ( next ) => {
+									setInvalid( '' );
+									setSettings( next );
+								} }
+								invalid={ invalid }
 							/>
 							<div className="showfm-publishing__toggles">
 								<ToggleControl
@@ -510,6 +554,7 @@ export default function PublishingTab() {
 							onClick={ save }
 							isBusy={ saving }
 							disabled={ saving }
+							accessibleWhenDisabled
 							__next40pxDefaultSize
 						>
 							{ __( 'Save changes', 'showfm' ) }

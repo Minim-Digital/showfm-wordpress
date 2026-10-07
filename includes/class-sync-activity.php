@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * One option (autoload off) holding the newest events: when, which episode and show, what
  * happened, and the post. It keeps the episode title as the sync wrote it, and plugin-owned
  * event codes, never remote error text. Re-applying a row that changes nothing records
- * nothing.
+ * nothing, and "not posted" is recorded once per episode until something else happens to it.
  */
 final class Sync_Activity {
 
@@ -85,7 +85,7 @@ final class Sync_Activity {
 			'event'   => $event,
 			'episode' => (string) $row['episode_id'],
 			'podcast' => (string) ( $row['podcast_id'] ?? '' ),
-			'title'   => mb_substr( wp_strip_all_tags( $title ), 0, self::MAX_TITLE ),
+			'title'   => Text::cut( wp_strip_all_tags( $title ), self::MAX_TITLE ),
 			'post'    => $post_id,
 		);
 		if ( isset( $extra['date'] ) ) {
@@ -94,10 +94,30 @@ final class Sync_Activity {
 		if ( isset( $extra['changes'] ) && is_array( $extra['changes'] ) ) {
 			$entry['changes'] = array_values( array_intersect( self::CHANGES, $extra['changes'] ) );
 		}
-		$events   = self::entries();
+		$events = self::entries();
+		if ( self::SKIPPED === $event && self::SKIPPED === self::last_for( $events, $entry['episode'] ) ) {
+			// Once per episode until something else happens to it, so repeated edits to
+			// episodes that are not posted cannot push real events out.
+			return;
+		}
 		$events[] = $entry;
 		Sync::guard();
 		update_option( self::OPTION, array_slice( $events, -self::MAX ), false );
+	}
+
+	/**
+	 * The newest stored event code for an episode, or ''.
+	 *
+	 * @param array<int,array<string,mixed>> $events  Events, oldest first.
+	 * @param string                         $episode Episode id.
+	 */
+	private static function last_for( array $events, string $episode ): string {
+		foreach ( array_reverse( $events ) as $event ) {
+			if ( ( $event['episode'] ?? '' ) === $episode ) {
+				return (string) $event['event'];
+			}
+		}
+		return '';
 	}
 
 	/**

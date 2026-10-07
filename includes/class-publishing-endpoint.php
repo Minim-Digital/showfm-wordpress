@@ -168,7 +168,19 @@ final class Publishing_Endpoint {
 		foreach ( Account::details_of( $pinned )['shows'] as $show ) {
 			$shows[ $show['id'] ] = $show['title'];
 		}
-		$author = $settings['author'] > 0 ? $settings['author'] : Publishing::default_author( $settings['post_type'] );
+		// A stored author who can no longer publish shows as the default, as the select would.
+		$author = Publishing::can_author( $settings['author'], $settings['post_type'] ) ? $settings['author'] : Publishing::default_author( $settings['post_type'] );
+		$listed = $authors[ $settings['post_type'] ] ?? null;
+		if ( null !== $listed && $author > 0 && ! in_array( $author, wp_list_pluck( $listed, 'value' ), true ) ) {
+			// Valid but beyond the first MAX_AUTHORS names: offer them too.
+			$user = get_userdata( $author );
+			if ( false !== $user ) {
+				$authors[ $settings['post_type'] ][] = array(
+					'value' => $author,
+					'label' => $user->display_name,
+				);
+			}
+		}
 
 		return array(
 			'settings'   => array(

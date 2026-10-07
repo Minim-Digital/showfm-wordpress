@@ -1324,6 +1324,57 @@ class Test_Sync extends WP_UnitTestCase {
 		remove_filter( 'wp_handle_sideload_prefilter', $spy );
 		$this->assertSame( 0, $processed );
 	}
+	public function test_a_fix_saved_while_a_pull_runs_on_the_old_settings_still_retries_at_once(): void {
+		update_option( Sync_Posts::SETTINGS, array( 'post_type' => 'unavailable_type' ) );
+		$rows = array( $this->row() );
+		// The admin saves a fix while this pull holds the lock, after it read the old setting.
+		$this->http->respond_with(
+			static function () use ( $rows ) {
+				Sync::retry_now();
+				return array(
+					200,
+					wp_json_encode(
+						array(
+							'data'   => $rows,
+							'cursor' => array(
+								'after'    => 0,
+								'next'     => 1,
+								'latest'   => 1,
+								'has_more' => false,
+							),
+						)
+					),
+				);
+			}
+		);
+
+		$this->assertSame( 'row_post_type', $this->sync->pull()['status'] );
+		$this->assertSame( 0, Sync::state()['retry_at'], 'No back-off is written after the request.' );
+		$this->assertLessThanOrEqual( time(), wp_next_scheduled( ShowFM\Ping_Endpoint::PULL_HOOK ), 'The queued pull runs now.' );
+
+		// The fixed settings land; the queued pull is not blocked by any back-off.
+		update_option( Sync_Posts::SETTINGS, array( 'featured_image' => false ) );
+		$this->page( array( $this->row() ) );
+		$this->http->respond( 200, '{}' );
+		$this->page( array(), 1 );
+		$this->assertSame( 'caught_up', $this->sync->pull()['status'] );
+		$this->assertGreaterThan( 0, Sync_Posts::find( self::SITE, self::EPISODE ) );
+	}
+
+	public function test_a_retry_request_drops_an_existing_back_off_once(): void {
+		update_option( Sync_Posts::SETTINGS, array( 'post_type' => 'unavailable_type' ) );
+		$this->page( array( $this->row() ) );
+		$this->assertSame( 'row_post_type', $this->sync->pull()['status'] );
+		$this->assertGreaterThan( time(), Sync::state()['retry_at'] );
+		$this->assertSame( 'backoff', $this->sync->pull()['status'] );
+
+		Sync::retry_now();
+		$this->page( array( $this->row() ) );
+		$this->assertSame( 'row_post_type', $this->sync->pull()['status'], 'Tried again despite the back-off.' );
+		$this->assertGreaterThan( time(), Sync::state()['retry_at'], 'Still wrong, so it backs off again: no hot loop.' );
+		$this->assertSame( 'backoff', $this->sync->pull()['status'] );
+	}
+
 	public function test_final_configuration_never_exhausts_and_resumes_at_saved_cursor(): void {
 		update_option( Sync_Posts::SETTINGS, array( 'post_type' => 'unavailable_type' ) );
 		for ( $attempt = 1; $attempt <= 12; ++$attempt ) {

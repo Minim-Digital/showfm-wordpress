@@ -444,6 +444,39 @@ class Test_Cli extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'nothing left to revoke', end( WP_CLI::$output )[1] );
 	}
 
+	public function test_a_busy_lock_after_a_revoke_says_the_key_was_revoked_and_running_again_finishes(): void {
+		$this->connection->save( self::KEY, self::SECRET, self::SITE_ID, 0 );
+		$held = new ShowFM\Sync_Lock( Connection::LOCK_OPTION, Connection::LOCK_TTL );
+		$this->assertTrue( $held->acquire() );
+		$short = static function (): int {
+			return 100;
+		};
+		$this->http->respond( 200, '{"data":{"disconnected":true}}' );
+		add_filter( 'showfm_connection_lock_wait_ms', $short );
+		try {
+			$this->assert_halts(
+				function () {
+					$this->cli->disconnect( array(), array( 'yes' => true ) );
+				}
+			);
+		} finally {
+			remove_filter( 'showfm_connection_lock_wait_ms', $short );
+			$held->release();
+		}
+
+		$error = end( WP_CLI::$output );
+		$this->assertSame( 'error', $error[0] );
+		$this->assertStringStartsWith( 'This site’s key was revoked at show.fm', $error[1] );
+		$this->assertStringContainsString( 'Run wp showfm disconnect again to finish.', $error[1] );
+		$this->assertTrue( $this->connection->is_connected() );
+
+		$this->http->respond( 401 );
+		$this->cli->disconnect( array(), array( 'yes' => true ) );
+
+		$this->assertSame( Connection::STATE_DISCONNECTED, $this->connection->state() );
+		$this->assertSame( 'success', end( WP_CLI::$output )[0] );
+	}
+
 	public function test_disconnect_when_showfm_cannot_be_reached_warns_with_the_connected_sites_link(): void {
 		$this->connection->save( self::KEY, self::SECRET, self::SITE_ID, 0 );
 		$this->http->fail( 'Could not resolve host' );

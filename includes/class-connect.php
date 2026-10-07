@@ -498,7 +498,7 @@ final class Connect {
 		$body = Health::versions();
 		$name = trim( wp_specialchars_decode( (string) get_bloginfo( 'name' ), ENT_QUOTES ) );
 		if ( '' !== $name ) {
-			$body['site_name'] = function_exists( 'mb_substr' ) ? mb_substr( $name, 0, 200 ) : substr( $name, 0, 200 );
+			$body['site_name'] = Text::cut( $name, 200 );
 		}
 
 		$result = $this->api_client->post_keyed( '/v1/me/sites/' . rawurlencode( $site_id ) . '/verify', $body );
@@ -597,7 +597,25 @@ final class Connect {
 			case self::REVOKE_REFUSED:
 				return __( 'show.fm had already stopped accepting this site’s key, so there was nothing left to revoke.', 'showfm' );
 		}
-		return __( 'show.fm couldn’t be reached to revoke this site’s key, so it may still work. Revoke it in show.fm under Connected sites.', 'showfm' );
+		return __( 'show.fm didn’t confirm the key was revoked, so it may still work. Revoke it in show.fm under Connected sites.', 'showfm' );
+	}
+
+	/**
+	 * The message when the local clear could not finish (the lock was busy or lost). After a
+	 * revoke that succeeded it says so, since the stored key no longer works: running
+	 * Disconnect again gets a 401, which counts as nothing left to revoke, and finishes.
+	 *
+	 * @param string $outcome One of the REVOKE_ constants.
+	 * @param string $error   `ERROR_BUSY` or `ERROR_LOST`.
+	 * @param bool   $cli     Whether the retry is the WP-CLI command.
+	 */
+	public static function unfinished_message( string $outcome, string $error, bool $cli = false ): string {
+		if ( self::REVOKE_DONE !== $outcome ) {
+			return self::message( $error );
+		}
+		return $cli
+			? __( 'This site’s key was revoked at show.fm, but another change to the connection was in progress, so this site hasn’t finished disconnecting. Run wp showfm disconnect again to finish.', 'showfm' )
+			: __( 'This site’s key was revoked at show.fm, but another change to the connection was in progress, so this site hasn’t finished disconnecting. Select Disconnect again to finish.', 'showfm' );
 	}
 
 	/**

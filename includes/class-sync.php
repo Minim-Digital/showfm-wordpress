@@ -19,6 +19,12 @@ final class Sync {
 	const MAX_PAGES      = 10;
 	const APPLY_ATTEMPTS = 5;
 	/**
+	 * Retry requests from the Publishing tab, as a counter (autoload off). A pull that sees a
+	 * value it has not handled drops its back-off, so a fix saved while another pull holds
+	 * the lock still gets its immediate retry.
+	 */
+	const RETRY_OPTION = 'showfm_sync_retry_requested';
+	/**
 	 * In-process guard, since MySQL locks are re-entrant.
 	 *
 	 * @var array<int,bool>
@@ -47,6 +53,7 @@ final class Sync {
 				'failures'       => 0,
 				'retry_at'       => 0,
 				'error'          => '',
+				'retry_seen'     => 0,
 			),
 			$state
 		);
@@ -123,9 +130,17 @@ final class Sync {
 					'failures'       => 0,
 					'retry_at'       => 0,
 					'error'          => '',
+					'retry_seen'     => 0,
 				);
 			}
 			$result['cursor'] = (int) $state['cursor'];
+			$requested        = self::retry_requested();
+			if ( $requested !== (int) $state['retry_seen'] ) {
+				// The settings were fixed since the last back-off: try again now.
+				$state['retry_seen'] = $requested;
+				$state['retry_at']   = 0;
+				$state['failures']   = 0;
+			}
 			if ( $state['retry_at'] > time() || Api_Client::rate_limit_remaining() ) {
 				if ( ! $dry_run ) {
 					self::wake( max( (int) $state['retry_at'], time() + Api_Client::rate_limit_remaining() ) );
@@ -260,25 +275,24 @@ final class Sync {
 	}
 
 	/**
-	 * After the Publishing tab fixed the settings a held row failed on: drops the back-off and
-	 * queues a pull now. Skips the reset while a pull holds the lock, since that pull already
-	 * uses the new settings.
+	 * After the Publishing tab fixed the settings a held row failed on: records a retry
+	 * request and queues a pull now. The request is durable, so it holds even while another
+	 * pull has the lock: that pull does not persist a back-off once it sees the request, and
+	 * the next pull drops any back-off and uses the new settings.
 	 */
 	public static function retry_now(): void {
-		$lock = new Sync_Lock();
-		if ( $lock->acquire() ) {
-			try {
-				wp_cache_delete( self::OPTION, 'options' );
-				$state             = self::state();
-				$state['retry_at'] = 0;
-				$state['failures'] = 0;
-				update_option( self::OPTION, $state, false );
-			} finally {
-				$lock->release();
-			}
-		}
+		update_option( self::RETRY_OPTION, self::retry_requested() + 1, false );
 		self::wake( time() );
 	}
+
+	/**
+	 * The retry request counter, read from the database rather than this request's cache.
+	 */
+	private static function retry_requested(): int {
+		wp_cache_delete( self::RETRY_OPTION, 'options' );
+		return (int) get_option( self::RETRY_OPTION, 0 );
+	}
+
 
 	/**
 	 * Fail closed on malformed pages before applying anything.
@@ -536,6 +550,17 @@ final class Sync {
 	 */
 	private function failure( array $state, array $result, string $error, int $retry_after = 0 ): array {
 		$error = in_array( $error, array( Api_Result::UNAUTHORISED, Api_Result::RATE_LIMITED, Api_Result::TRANSIENT_FAILURE, Api_Result::FAILED, Api_Result::UNAVAILABLE, Api_Result::NOT_MODIFIED, 'invalid_feed', 'apply_failed', 'row_post_type', 'row_author', 'row_write_failed' ), true ) ? $error : 'apply_failed';
+		if ( self::retry_requested() !== (int) $state['retry_seen'] ) {
+			// The settings were fixed while this pull ran on the old ones: no back-off, so the
+			// queued pull runs at once, sees the request and uses the new settings.
+			$state['error']    = $error;
+			$state['retry_at'] = 0;
+			self::save( $state );
+			self::wake( time() );
+			$result['status'] = $error;
+			$result['cursor'] = (int) $state['cursor'];
+			return $result;
+		}
 		++$state['failures'];
 		$state['error']    = $error;
 		$state['retry_at'] = time() + max( $retry_after, min( 3600, 30 * ( 2 ** min( 7, $state['failures'] - 1 ) ) + wp_rand( 0, 15 ) ) );
