@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-07T23:11:05+00:00\n"
+"POT-Creation-Date: 2026-10-07T23:51:05+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: showfm\n"
@@ -408,135 +408,135 @@ msgid "No blocking configuration or server contract problem is recorded for this
 msgstr ""
 
 #. translators: %s: the name of the admin who started the swap.
-#: includes/class-migration-admin.php:177
+#: includes/class-migration-admin.php:187
 #, php-format
 msgid "%s started this swap. Confirm to carry it on."
 msgstr ""
 
-#: includes/class-migration-admin.php:178
+#: includes/class-migration-admin.php:188
 msgid "Confirm the swap first."
 msgstr ""
 
-#: includes/class-migration-admin.php:224
+#: includes/class-migration-admin.php:238
 msgid "You can’t edit this post, so it wasn’t changed."
 msgstr ""
 
-#: includes/class-migration-admin.php:265
+#: includes/class-migration-admin.php:279
 msgid "The swap has started, so choices can’t change. Scan again to review the rest."
 msgstr ""
 
-#: includes/class-migration-admin.php:275
+#: includes/class-migration-admin.php:289
 msgid "Choose one of the episodes listed for this embed."
 msgstr ""
 
-#: includes/class-migration-admin.php:485
+#: includes/class-migration-admin.php:499
 msgid "The connection to show.fm was lost part way through. Nothing else has changed. Reconnect, then carry on."
 msgstr ""
 
-#: includes/class-migration-admin.php:485
+#: includes/class-migration-admin.php:499
 msgid "Connect this site to show.fm to swap old embeds. Matching needs your connected shows."
 msgstr ""
 
-#: includes/class-migration-admin.php:487
+#: includes/class-migration-admin.php:501
 msgid "Only a site administrator who can edit these posts can migrate embeds."
 msgstr ""
 
-#: includes/class-migration-admin.php:489
+#: includes/class-migration-admin.php:503
 msgid "Another scan or swap is running on this site, perhaps from WP-CLI. Try again when it finishes."
 msgstr ""
 
-#: includes/class-migration-admin.php:498
+#: includes/class-migration-admin.php:512
 msgid "show.fm no longer accepts this site’s key. Reconnect, then scan again."
 msgstr ""
 
 #. translators: %s: time of day, for example "10:42".
-#: includes/class-migration-admin.php:505
+#: includes/class-migration-admin.php:519
 #, php-format
 msgid "show.fm is limiting requests from this site. Your progress is saved. Try again after %s."
 msgstr ""
 
-#: includes/class-migration-admin.php:509
+#: includes/class-migration-admin.php:523
 msgid "We couldn’t reach show.fm to list your episodes. Your progress is saved. Try again in a moment."
 msgstr ""
 
 #. translators: %s: the name of the admin running the scan or swap.
-#: includes/class-migration-admin.php:556
+#: includes/class-migration-admin.php:570
 #, php-format
 msgid "%s is already running a scan or swap. Try again when it finishes."
 msgstr ""
 
-#: includes/class-migration-admin.php:597
+#: includes/class-migration-admin.php:611
 msgid "Done, but another request held the site lock, so other admins may have to wait up to two minutes to start a scan."
 msgstr ""
 
-#: includes/class-migration-admin.php:689
+#: includes/class-migration-admin.php:703
 msgid "Audio file"
 msgstr ""
 
-#: includes/class-migration-admin.php:690
+#: includes/class-migration-admin.php:704
 msgid "Episode ID"
 msgstr ""
 
-#: includes/class-migration-admin.php:691
+#: includes/class-migration-admin.php:705
 msgid "Title and date"
 msgstr ""
 
-#: includes/class-migration-admin.php:693
-#: includes/class-migration-admin.php:716
+#: includes/class-migration-admin.php:707
+#: includes/class-migration-admin.php:730
 #: build/admin.js:51
 msgid "None"
 msgstr ""
 
-#: includes/class-migration-admin.php:706
+#: includes/class-migration-admin.php:720
 #: build/admin.js:33
 msgid "Ready"
 msgstr ""
 
-#: includes/class-migration-admin.php:707
+#: includes/class-migration-admin.php:721
 #: build/admin.js:33
 msgid "Choose one"
 msgstr ""
 
-#: includes/class-migration-admin.php:708
+#: includes/class-migration-admin.php:722
 #: build/admin.js:33
 msgid "Left as is"
 msgstr ""
 
-#: includes/class-migration-admin.php:709
+#: includes/class-migration-admin.php:723
 #: build/admin.js:33
 msgid "Nothing to do"
 msgstr ""
 
-#: includes/class-migration-admin.php:710
-#: includes/class-migration-cli.php:286
+#: includes/class-migration-admin.php:724
+#: includes/class-migration-cli.php:292
 #: build/admin.js:33
 #: build/admin.js:35
 msgid "Check by hand"
 msgstr ""
 
-#: includes/class-migration-admin.php:714
+#: includes/class-migration-admin.php:728
 msgid "show.fm block"
 msgstr ""
 
-#: includes/class-migration-admin.php:715
+#: includes/class-migration-admin.php:729
 #: build/admin.js:33
 msgid "Swapped"
 msgstr ""
 
-#: includes/class-migration-admin.php:731
+#: includes/class-migration-admin.php:745
 msgid "You can’t edit this post."
 msgstr ""
 
-#: includes/class-migration-admin.php:731
+#: includes/class-migration-admin.php:745
 msgid "This post couldn’t be checked."
 msgstr ""
 
-#: includes/class-migration-admin.php:760
+#: includes/class-migration-admin.php:774
 msgid "Two players share one block, so this post needs editing by hand."
 msgstr ""
 
 #. translators: %d: number of embeds, always more than one.
-#: includes/class-migration-admin.php:793
+#: includes/class-migration-admin.php:807
 #, php-format
 msgid "%d embed → show.fm Player"
 msgid_plural "%d embeds → show.fm Player"
@@ -544,65 +544,66 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %s: podcast host, for example "PowerPress".
-#: includes/class-migration-admin.php:800
+#: includes/class-migration-admin.php:814
 #, php-format
 msgid "%s episode file → show.fm Player"
 msgstr ""
 
 #. translators: %s: podcast host, for example "PowerPress".
-#: includes/class-migration-admin.php:804
+#: includes/class-migration-admin.php:818
 #, php-format
 msgid "%s shortcode → show.fm Player"
 msgstr ""
 
 #. translators: %s: podcast host, for example "Seriously Simple Podcasting".
-#: includes/class-migration-admin.php:808
+#: includes/class-migration-admin.php:822
 #, php-format
 msgid "%s player → show.fm Player"
 msgstr ""
 
 #. translators: %s: podcast host, for example "Buzzsprout".
-#: includes/class-migration-admin.php:811
+#: includes/class-migration-admin.php:825
 #, php-format
 msgid "%s embed → show.fm Player"
 msgstr ""
 
-#: includes/class-migration-admin.php:814
+#: includes/class-migration-admin.php:828
 msgid "Embed → show.fm Player"
 msgstr ""
 
 #. translators: %s: post field name, for example "enclosure".
-#: includes/class-migration-admin.php:829
+#: includes/class-migration-admin.php:843
 #, php-format
 msgid "%s field"
 msgstr ""
 
 #. translators: %d: post ID.
-#: includes/class-migration-admin.php:879
+#: includes/class-migration-admin.php:893
 #, php-format
 msgid "Deleted post %d"
 msgstr ""
 
 #. translators: %d: post ID.
-#: includes/class-migration-admin.php:888
+#: includes/class-migration-admin.php:902
 #, php-format
 msgid "Untitled post %d"
 msgstr ""
 
-#: includes/class-migration-admin.php:900
+#: includes/class-migration-admin.php:914
 msgctxt "migration report date"
 msgid "j M Y"
 msgstr ""
 
-#: includes/class-migration-admin.php:999
+#: includes/class-migration-admin.php:1013
 msgid "The scan changed in another tab or by another admin. This is the latest."
 msgstr ""
 
-#: includes/class-migration-admin.php:1004
+#: includes/class-migration-admin.php:1018
+#: includes/class-migrator.php:170
 msgid "This site reconnected to show.fm after the scan. Scan again before swapping."
 msgstr ""
 
-#: includes/class-migration-admin.php:1014
+#: includes/class-migration-admin.php:1028
 msgid "Another admin"
 msgstr ""
 
@@ -658,15 +659,15 @@ msgstr ""
 msgid "Each choice must name an ambiguous embed and one of its reported candidates."
 msgstr ""
 
-#: includes/class-migration-cli.php:226
+#: includes/class-migration-cli.php:232
 msgid "Scan paused. Continue with --resume; no posts have been changed."
 msgstr ""
 
-#: includes/class-migration-cli.php:246
+#: includes/class-migration-cli.php:252
 msgid "Couldn’t give the run back because another request held the site lock. Other admins may wait up to two minutes."
 msgstr ""
 
-#: includes/class-migration-cli.php:272
+#: includes/class-migration-cli.php:278
 msgid "Use --choose=post:embed:episode-uuid, with one choice per ambiguous embed."
 msgstr ""
 
@@ -767,16 +768,16 @@ msgstr ""
 msgid "Complete a scan for this connection before swapping."
 msgstr ""
 
-#: includes/class-migrator.php:169
+#: includes/class-migrator.php:174
 msgid "This post has no migration report."
 msgstr ""
 
-#: includes/class-migrator.php:204
+#: includes/class-migrator.php:209
 msgid "Use --user=<administrator> to reset pending migration data."
 msgstr ""
 
-#: includes/class-migrator.php:232
-#: includes/class-migrator.php:248
+#: includes/class-migrator.php:237
+#: includes/class-migrator.php:253
 msgid "The active scan changed."
 msgstr ""
 

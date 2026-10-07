@@ -227,6 +227,10 @@ final class Migration_Admin {
 				if ( is_wp_error( $result ) ) {
 					// Stop the run, without moving on, when it can't go on at all. A post this
 					// admin can't edit is that post's failure; the rest carry on.
+					if ( 'showfm_reconnected' === $result->get_error_code() ) {
+						self::save_cursor( $run, $cursor );
+						return self::reconnected();
+					}
 					if ( in_array( $result->get_error_code(), array( 'showfm_not_connected', 'showfm_busy', 'showfm_stale_run' ), true ) || ( 'showfm_forbidden' === $result->get_error_code() && ! current_user_can( 'manage_options' ) ) ) {
 						self::save_cursor( $run, $cursor );
 						return $result;

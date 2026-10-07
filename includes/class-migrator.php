@@ -161,10 +161,13 @@ final class Migrator {
 			return $access;
 		}
 		$state = Migration_Store::state();
-		// owns_now() reads the connection from the database for every post, so a reconnect to
-		// another account part way through a step stops the swap at the next post.
-		if ( empty( $state['dry_run'] ) || empty( $state['complete'] ) || ! $this->owns_now( $state ) ) {
+		if ( empty( $state['dry_run'] ) || empty( $state['complete'] ) ) {
 			return new \WP_Error( 'showfm_scan_required', __( 'Complete a scan for this connection before swapping.', 'showfm' ) );
+		}
+		// owns_now() reads the connection from the database for every post, so a reconnect to
+		// another account part way through a step stops the whole swap at the next post.
+		if ( ! $this->owns_now( $state ) ) {
+			return new \WP_Error( 'showfm_reconnected', __( 'This site reconnected to show.fm after the scan. Scan again before swapping.', 'showfm' ) );
 		}
 		$report = Migration_Store::get( $state['run'], $post_id );
 		if ( ! $report ) {

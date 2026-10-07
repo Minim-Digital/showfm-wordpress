@@ -198,8 +198,9 @@ final class Migration_Cli {
 		} else {
 			\WP_CLI::line( "POST\tEMBED\tHOST\tSTATUS\tMETHOD\tCANDIDATES\tREVISION" );
 		}
-		$first  = true;
-		$failed = false;
+		$first   = true;
+		$failed  = false;
+		$stopped = false;
 		foreach ( Migration_Store::reports( $state['run'] ) as $report ) {
 			if ( $apply && 'scanned' === $report['status'] ) {
 				$this->claim();
@@ -208,6 +209,8 @@ final class Migration_Cli {
 					$report['error']  = $result->get_error_message();
 					$report['status'] = 'error';
 					$failed           = true;
+					// A run-wide problem stops the swap here rather than failing every post after it.
+					$stopped = in_array( $result->get_error_code(), array( 'showfm_reconnected', 'showfm_not_connected', 'showfm_stale_run' ), true );
 				} else {
 					$report = $result;
 				}
@@ -219,6 +222,9 @@ final class Migration_Cli {
 				self::table( $report );
 			}
 			$first = false;
+			if ( $stopped ) {
+				break;
+			}
 		}
 		if ( 'json' === $format ) {
 			\WP_CLI::line( ']}' );

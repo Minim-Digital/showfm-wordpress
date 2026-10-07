@@ -756,7 +756,7 @@ class Test_Migrate_Endpoint extends WP_UnitTestCase {
 			}
 		};
 		add_action( 'save_post', $hook );
-		$this->dispatch(
+		$response = $this->dispatch(
 			'POST',
 			'/swap',
 			array(
@@ -767,6 +767,11 @@ class Test_Migrate_Endpoint extends WP_UnitTestCase {
 		remove_action( 'save_post', $hook );
 
 		$this->assertTrue( $started, 'The interleaving was simulated.' );
+		$this->assertSame( 409, $response->get_status(), wp_json_encode( $response->get_data() ) );
+		$this->assertSame( 'reconnected', $response->get_data()['data']['reason'] );
+		$cursor = get_option( 'showfm_migration_' . $run . '_swap' );
+		$this->assertSame( array(), $cursor['failures'], 'The post after the reconnect is not reported as a failure.' );
+		$this->assertFalse( $cursor['done'], 'The swap is not finished.' );
 		$swapped = array_filter(
 			array( $first, $second ),
 			static function ( $id ) {
@@ -1005,6 +1010,52 @@ class Test_Migrate_Endpoint extends WP_UnitTestCase {
 		$here = Migration_Admin::claim();
 		$this->assertWPError( $here );
 		$this->assertSame( 'showfm_migration_busy', $here->get_error_code() );
+	}
+
+	public function test_wp_cli_stops_the_swap_when_the_site_reconnects_part_way(): void {
+		$first  = $this->post( '[powerpress url="https://media.example/Hello.mp3"]', 'Hello' );
+		$second = $this->post( '[powerpress url="https://media.example/Hello.mp3"]', 'Hello again' );
+		$third  = $this->post( '[powerpress url="https://media.example/Hello.mp3"]', 'Hello once more' );
+		$this->catalogue();
+		$this->scan_until( 'report' );
+		$this->dispatch( 'POST', '/stop' );
+		delete_option( Migration_Admin::LEASE );
+
+		$old     = get_option( Connection::OPTION );
+		$started = false;
+		$hook    = static function () use ( &$started, $old ) {
+			if ( ! $started ) {
+				$started = true;
+				( new Connection() )->save( 'showfm_live_ANOTHERKEY12345678901234567890', str_repeat( 'b', 64 ), self::PODCAST, 0 );
+				wp_cache_set( Connection::OPTION, $old, 'options' );
+			}
+		};
+		add_action( 'save_post', $hook );
+		\WP_CLI::$output = array();
+		try {
+			( new Migration_Cli( new Migrator( Plugin::connection(), Plugin::api_client() ) ) )(
+				array(),
+				array(
+					'yes'    => true,
+					'format' => 'json',
+				)
+			);
+		} catch ( ShowFM_Cli_Halt $halt ) {
+			unset( $halt );
+		} finally {
+			remove_action( 'save_post', $hook );
+		}
+		$output = implode( "\n", wp_list_pluck( \WP_CLI::$output, 1 ) );
+
+		$this->assertTrue( $started, 'The interleaving was simulated.' );
+		$swapped = array_filter(
+			array( $first, $second, $third ),
+			static function ( $id ) {
+				return false !== strpos( get_post( $id )->post_content, 'showfm/player' );
+			}
+		);
+		$this->assertCount( 1, $swapped, 'Only the post swapped before the reconnect changed.' );
+		$this->assertSame( 1, substr_count( $output, 'reconnected to show.fm after the scan' ), 'The swap stops at the first post after the reconnect.' );
 	}
 
 	public function test_wp_cli_reset_waits_while_another_admin_runs_the_tab(): void {

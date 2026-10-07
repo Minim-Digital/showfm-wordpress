@@ -186,7 +186,7 @@ Every swap step checks, under the site lock, that the scan is still current and 
 stored key is still the one the scan used, reading the connection from the database rather
 than the request's cache. Each post is checked again the same way just before it is
 swapped. A reconnect to another account therefore stops the swap at the next post with
-`reconnected`, and a new scan is needed.
+`reconnected` (WP-CLI reports that post and stops), and a new scan is needed.
 
 One window is accepted: a reconnect that lands while a single post is being swapped. That
 post is still swapped to the episode the scan matched under the previous connection. It is
