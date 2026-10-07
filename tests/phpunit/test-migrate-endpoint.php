@@ -6,6 +6,7 @@
  */
 
 use ShowFM\Api_Client;
+use ShowFM\Connection;
 use ShowFM\Migration_Admin;
 use ShowFM\Migration_Catalogue;
 use ShowFM\Migration_Cli;
@@ -693,6 +694,46 @@ class Test_Migrate_Endpoint extends WP_UnitTestCase {
 		$this->assertSame( 'reconnected', $this->dispatch( 'GET' )->get_data()['problem']['reason'] );
 		$response = $this->dispatch( 'POST', '/swap', array( 'run' => $run ) );
 		$this->assertSame( 409, $response->get_status() );
+		$this->assertSame( 'reconnected', $response->get_data()['data']['reason'] );
+		$this->assertStringNotContainsString( 'showfm/player', get_post( $hello )->post_content );
+	}
+
+	public function test_a_swap_that_waited_while_the_site_reconnected_does_not_swap(): void {
+		$hello = $this->post( '[powerpress url="https://media.example/Hello.mp3"]', 'Hello' );
+		$this->catalogue();
+		$run = $this->scan_until( 'report' )['run'];
+
+		// The site reconnects with another key while this swap request waits for the lock,
+		// and this request's option cache still holds the old connection.
+		$old     = get_option( Connection::OPTION );
+		$reads   = 0;
+		$started = false;
+		$hook    = static function ( $sql ) use ( &$reads, &$started, $old ) {
+			if ( ! $started && false !== strpos( $sql, Migration_Store::STATE ) && 0 === strpos( ltrim( $sql ), 'SELECT option_value' ) && 2 === ++$reads ) {
+				$started = true;
+				( new Connection() )->save( 'showfm_live_ANOTHERKEY12345678901234567890', str_repeat( 'b', 64 ), self::PODCAST, 0 );
+				wp_cache_set( Connection::OPTION, $old, 'options' );
+				$all = wp_cache_get( 'alloptions', 'options' );
+				if ( is_array( $all ) && array_key_exists( Connection::OPTION, $all ) ) {
+					$all[ Connection::OPTION ] = maybe_serialize( $old );
+					wp_cache_set( 'alloptions', $all, 'options' );
+				}
+			}
+			return $sql;
+		};
+		add_filter( 'query', $hook );
+		$response = $this->dispatch(
+			'POST',
+			'/swap',
+			array(
+				'run'     => $run,
+				'confirm' => true,
+			)
+		);
+		remove_filter( 'query', $hook );
+
+		$this->assertTrue( $started, 'The interleaving was simulated.' );
+		$this->assertSame( 409, $response->get_status(), wp_json_encode( $response->get_data() ) );
 		$this->assertSame( 'reconnected', $response->get_data()['data']['reason'] );
 		$this->assertStringNotContainsString( 'showfm/player', get_post( $hello )->post_content );
 	}

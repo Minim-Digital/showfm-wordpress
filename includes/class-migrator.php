@@ -265,6 +265,17 @@ final class Migrator {
 		return $this->connection->is_connected() && is_string( $state['connection'] ?? null ) && hash_equals( $state['connection'], $this->fingerprint() );
 	}
 
+	/**
+	 * Like owns(), but reads the connection from the database rather than this request's
+	 * cache, for decisions made under the migration lock after waiting for it.
+	 *
+	 * @param array<string,mixed> $state Migration state.
+	 */
+	public function owns_now( array $state ): bool {
+		$connection = $this->connection->pinned();
+		return $connection->is_connected() && is_string( $state['connection'] ?? null ) && hash_equals( $state['connection'], hash( 'sha256', (string) $connection->key() ) );
+	}
+
 	/** Hash only; credentials never enter the report. */
 	private function fingerprint(): string {
 		return hash( 'sha256', (string) $this->connection->key() );

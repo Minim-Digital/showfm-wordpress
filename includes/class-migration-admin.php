@@ -162,14 +162,18 @@ final class Migration_Admin {
 		if ( ! $this->migrator->owns( $state ) ) {
 			return self::reconnected();
 		}
-		$user   = get_current_user_id();
-		$cursor = Migration_Store::locked(
-			static function () use ( $run, $user, $confirm ) {
-				// Checked again under the lock: another tab may have started a new scan while
-				// this request waited, and its report must not be swapped from.
+		$user     = get_current_user_id();
+		$migrator = $this->migrator;
+		$cursor   = Migration_Store::locked(
+			static function () use ( $run, $user, $confirm, $migrator ) {
+				// Checked again under the lock: another tab may have started a new scan, or the
+				// site may have reconnected with another key, while this request waited.
 				$state = Migration_Store::state();
 				if ( ( $state['run'] ?? '' ) !== $run || empty( $state['complete'] ) || self::fresh( Migration_Catalogue::PENDING ) ) {
 					return self::stale();
+				}
+				if ( ! $migrator->owns_now( $state ) ) {
+					return self::reconnected();
 				}
 				$cursor = self::cursor( $run );
 				if ( ( $cursor['user'] ?? 0 ) === $user ) {
