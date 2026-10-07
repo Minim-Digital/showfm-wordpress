@@ -1,0 +1,450 @@
+[
+	{
+		"name": "public",
+		"kind": "enclosure",
+		"input": "https://media.example/Audio/episode.mp3",
+		"normalised": "https://media.example/Audio/episode.mp3",
+		"sha256": "cd540f580eaf17f5f1de9864e4b7ad7307a47184c563de7489cd908333ad1d09"
+	},
+	{
+		"name": "authority and credentials",
+		"kind": "enclosure",
+		"input": " HTTPS://alice:secret@MEDIA.Example:443/Audio/episode.mp3?jwt=private#play ",
+		"normalised": "https://media.example/Audio/episode.mp3",
+		"sha256": "cd540f580eaf17f5f1de9864e4b7ad7307a47184c563de7489cd908333ad1d09"
+	},
+	{
+		"name": "http default port",
+		"kind": "enclosure",
+		"input": "http://MEDIA.example:80/episode.mp3",
+		"normalised": "http://media.example/episode.mp3",
+		"sha256": "0c60dfcfb9d80f44292b8d0a97a1276001168eeb46e6561d603e2454ebdfff07"
+	},
+	{
+		"name": "nondefault port",
+		"kind": "enclosure",
+		"input": "https://MEDIA.example:8443/episode.mp3",
+		"normalised": "https://media.example:8443/episode.mp3",
+		"sha256": "61b34996b8b9a147da2ee0163b7997ecc4eac57a1d05944393b07d39325b59ed"
+	},
+	{
+		"name": "empty path",
+		"kind": "enclosure",
+		"input": "https://media.example?auth=x",
+		"normalised": "https://media.example/",
+		"sha256": "fc0a3d7b9689b14182d9bb12abe2dd7c2329d00cfd2566938fe72a66fffe3aed"
+	},
+	{
+		"name": "escaped path",
+		"kind": "enclosure",
+		"input": "https://media.example/%7euser/a%2fb%3fc%23d.mp3",
+		"normalised": "https://media.example/%7Euser/a%2Fb%3Fc%23d.mp3",
+		"sha256": "a1c2d875ed4c825c7f208c17af5426d9420befd3074c3e929adbce548401b471"
+	},
+	{
+		"name": "dot segments preserved",
+		"kind": "enclosure",
+		"input": "https://media.example/a/.././%2e%2e/episode.mp3",
+		"normalised": "https://media.example/a/.././%2E%2E/episode.mp3",
+		"sha256": "3ecfb6dc2429795a6942ea7bd141070a015e9df3e107962af1af137cfc3b881c"
+	},
+	{
+		"name": "repeated slashes",
+		"kind": "enclosure",
+		"input": "https://media.example//A///episode.mp3",
+		"normalised": "https://media.example//A///episode.mp3",
+		"sha256": "474ffea6ca23f3e15c2066142b7cf2533569fa3603a99856cebb7aecda4fbe39"
+	},
+	{
+		"name": "unicode path",
+		"kind": "enclosure",
+		"input": "https://media.example/épisode.mp3",
+		"normalised": "https://media.example/épisode.mp3",
+		"sha256": "88280925e19615a8e0ee18344bd35cba8976d75eaafd67a480eb63be7353ebfc"
+	},
+	{
+		"name": "international host",
+		"kind": "enclosure",
+		"input": "https://BÜCHER.example/Audio.mp3",
+		"normalised": "https://xn--bcher-kva.example/Audio.mp3",
+		"sha256": "0c4d3120d305ee9084a4d7bde64b7dab551569776e49274edc53bdd2f661b9f9"
+	},
+	{
+		"name": "ipv6",
+		"kind": "enclosure",
+		"input": "http://[2001:DB8::1]:80/A.mp3",
+		"normalised": "http://[2001:db8::1]/A.mp3",
+		"sha256": "a4c7b786ab89c6b589e7e16d9beced491186856d32e64e55c0d1446e517b692f"
+	},
+	{
+		"name": "podtrac",
+		"kind": "enclosure",
+		"input": "https://dts.podtrac.com/redirect.mp3/media.example/Audio/episode.mp3?token=secret",
+		"normalised": "https://media.example/Audio/episode.mp3",
+		"sha256": "cd540f580eaf17f5f1de9864e4b7ad7307a47184c563de7489cd908333ad1d09"
+	},
+	{
+		"name": "legacy podtrac",
+		"kind": "enclosure",
+		"input": "https://www.podtrac.com/pts/redirect.m4a/media.example/Audio/episode.mp3?token=secret",
+		"normalised": "https://media.example/Audio/episode.mp3",
+		"sha256": "cd540f580eaf17f5f1de9864e4b7ad7307a47184c563de7489cd908333ad1d09"
+	},
+	{
+		"name": "chartable chrt",
+		"kind": "enclosure",
+		"input": "https://chrt.fm/track/ABC123/media.example/Audio/episode.mp3?token=secret",
+		"normalised": "https://media.example/Audio/episode.mp3",
+		"sha256": "cd540f580eaf17f5f1de9864e4b7ad7307a47184c563de7489cd908333ad1d09"
+	},
+	{
+		"name": "chartable chtbl",
+		"kind": "enclosure",
+		"input": "https://chtbl.com/track/XYZ789/media.example/Audio/episode.mp3?token=secret",
+		"normalised": "https://media.example/Audio/episode.mp3",
+		"sha256": "cd540f580eaf17f5f1de9864e4b7ad7307a47184c563de7489cd908333ad1d09"
+	},
+	{
+		"name": "op3",
+		"kind": "enclosure",
+		"input": "https://op3.dev/e/media.example/Audio/episode.mp3?token=secret",
+		"normalised": "https://media.example/Audio/episode.mp3",
+		"sha256": "cd540f580eaf17f5f1de9864e4b7ad7307a47184c563de7489cd908333ad1d09"
+	},
+	{
+		"name": "op3 podcast guid",
+		"kind": "enclosure",
+		"input": "https://op3.dev/e,pg=00000000-0000-0000-0000-000000000001/media.example/Audio/episode.mp3?token=secret",
+		"normalised": "https://media.example/Audio/episode.mp3",
+		"sha256": "cd540f580eaf17f5f1de9864e4b7ad7307a47184c563de7489cd908333ad1d09"
+	},
+	{
+		"name": "podsights",
+		"kind": "enclosure",
+		"input": "https://pdst.fm/e/media.example/Audio/episode.mp3?token=secret",
+		"normalised": "https://media.example/Audio/episode.mp3",
+		"sha256": "cd540f580eaf17f5f1de9864e4b7ad7307a47184c563de7489cd908333ad1d09"
+	},
+	{
+		"name": "vpixl",
+		"kind": "enclosure",
+		"input": "https://pfx.vpixl.com/abc12/media.example/Audio/episode.mp3?token=secret",
+		"normalised": "https://media.example/Audio/episode.mp3",
+		"sha256": "cd540f580eaf17f5f1de9864e4b7ad7307a47184c563de7489cd908333ad1d09"
+	},
+	{
+		"name": "magellan",
+		"kind": "enclosure",
+		"input": "https://mgln.ai/e/42/media.example/Audio/episode.mp3?token=secret",
+		"normalised": "https://media.example/Audio/episode.mp3",
+		"sha256": "cd540f580eaf17f5f1de9864e4b7ad7307a47184c563de7489cd908333ad1d09"
+	},
+	{
+		"name": "arttrk",
+		"kind": "enclosure",
+		"input": "https://arttrk.com/p/ABC12/media.example/Audio/episode.mp3?token=secret",
+		"normalised": "https://media.example/Audio/episode.mp3",
+		"sha256": "cd540f580eaf17f5f1de9864e4b7ad7307a47184c563de7489cd908333ad1d09"
+	},
+	{
+		"name": "podscribe legacy",
+		"kind": "enclosure",
+		"input": "https://verifi.podscribe.com/rss/p/media.example/Audio/episode.mp3?token=secret",
+		"normalised": "https://media.example/Audio/episode.mp3",
+		"sha256": "cd540f580eaf17f5f1de9864e4b7ad7307a47184c563de7489cd908333ad1d09"
+	},
+	{
+		"name": "podscribe",
+		"kind": "enclosure",
+		"input": "https://pscrb.fm/rss/p/media.example/Audio/episode.mp3?token=secret",
+		"normalised": "https://media.example/Audio/episode.mp3",
+		"sha256": "cd540f580eaf17f5f1de9864e4b7ad7307a47184c563de7489cd908333ad1d09"
+	},
+	{
+		"name": "claritas",
+		"kind": "enclosure",
+		"input": "https://claritaspod.com/measure/media.example/Audio/episode.mp3?token=secret",
+		"normalised": "https://media.example/Audio/episode.mp3",
+		"sha256": "cd540f580eaf17f5f1de9864e4b7ad7307a47184c563de7489cd908333ad1d09"
+	},
+	{
+		"name": "nested chain",
+		"kind": "enclosure",
+		"input": "https://dts.podtrac.com/redirect.mp3/pdst.fm/e/chrt.fm/track/ABC123/op3.dev/e,pg=123/media.example/Audio/episode.mp3?auth=x",
+		"normalised": "https://media.example/Audio/episode.mp3",
+		"sha256": "cd540f580eaf17f5f1de9864e4b7ad7307a47184c563de7489cd908333ad1d09"
+	},
+	{
+		"name": "explicit nested http",
+		"kind": "enclosure",
+		"input": "https://op3.dev/e/http://media.example:80/Audio/episode.mp3",
+		"normalised": "http://media.example/Audio/episode.mp3",
+		"sha256": "0eece6ce614678e46292a5b1038ba08e02306a5a767aeb25d12b4437be3927d8"
+	},
+	{
+		"name": "op3 default https",
+		"kind": "enclosure",
+		"input": "http://op3.dev/e/media.example/Audio/episode.mp3",
+		"normalised": "https://media.example/Audio/episode.mp3",
+		"sha256": "cd540f580eaf17f5f1de9864e4b7ad7307a47184c563de7489cd908333ad1d09"
+	},
+	{
+		"name": "other prefixes inherit http",
+		"kind": "enclosure",
+		"input": "http://pdst.fm/e/media.example/Audio/episode.mp3",
+		"normalised": "http://media.example/Audio/episode.mp3",
+		"sha256": "0eece6ce614678e46292a5b1038ba08e02306a5a767aeb25d12b4437be3927d8"
+	},
+	{
+		"name": "explicit nested https",
+		"kind": "enclosure",
+		"input": "http://chrt.fm/track/ABC/https://media.example/Audio/episode.mp3",
+		"normalised": "https://media.example/Audio/episode.mp3",
+		"sha256": "cd540f580eaf17f5f1de9864e4b7ad7307a47184c563de7489cd908333ad1d09"
+	},
+	{
+		"name": "protocol relative target",
+		"kind": "enclosure",
+		"input": "https://pdst.fm/e///media.example/Audio/episode.mp3",
+		"normalised": "https://media.example/Audio/episode.mp3",
+		"sha256": "cd540f580eaf17f5f1de9864e4b7ad7307a47184c563de7489cd908333ad1d09"
+	},
+	{
+		"name": "injector is audio host",
+		"kind": "enclosure",
+		"input": "https://injector.simplecastaudio.com/abc/episodes/123/audio.mp3?token=x",
+		"normalised": "https://injector.simplecastaudio.com/abc/episodes/123/audio.mp3",
+		"sha256": "c1574b56ff2788e320909924ad7e505d0a28e3d5da5efdce1dbe9836042bbf8a"
+	},
+	{
+		"name": "unknown prefix retained",
+		"kind": "enclosure",
+		"input": "https://unknown.example/e/media.example/A.mp3?sig=x",
+		"normalised": "https://unknown.example/e/media.example/A.mp3",
+		"sha256": "81b1e6c17c3e5815e0939d92e6dbb28895163acd79c4361d9f63017721409b38"
+	},
+	{
+		"name": "lookalike host retained",
+		"kind": "enclosure",
+		"input": "https://op3.dev.evil.example/e/media.example/A.mp3",
+		"normalised": "https://op3.dev.evil.example/e/media.example/A.mp3",
+		"sha256": "d8884b12df0985e2397a6bf412f3217e512b75756c45e51c7c59bd7c3c239334"
+	},
+	{
+		"name": "prefix path case retained",
+		"kind": "enclosure",
+		"input": "https://pdst.fm/E/media.example/A.mp3",
+		"normalised": "https://pdst.fm/E/media.example/A.mp3",
+		"sha256": "6e166777d6da0961e6e1f6abdffa43d8048e039183baa15ea39fac527a1674d3"
+	},
+	{
+		"name": "prefix custom port retained",
+		"kind": "enclosure",
+		"input": "https://pdst.fm:8443/e/media.example/A.mp3",
+		"normalised": "https://pdst.fm:8443/e/media.example/A.mp3",
+		"sha256": "36ce9ad4528bc0adb2f5c1f86707264c0207290c02f343c6aae9699510240379"
+	},
+	{
+		"name": "path secret stays hashed",
+		"kind": "enclosure",
+		"input": "https://media.example/token/private/A.mp3?session=x",
+		"normalised": "https://media.example/token/private/A.mp3",
+		"sha256": "cc78510a5e10f70a7bbee7d583ad3db287d226a948b08599af16fa785a417b2c"
+	},
+	{
+		"name": "unknown",
+		"kind": "enclosure",
+		"input": null,
+		"normalised": null,
+		"sha256": null
+	},
+	{
+		"name": "empty",
+		"kind": "enclosure",
+		"input": "  ",
+		"normalised": null,
+		"sha256": null
+	},
+	{
+		"name": "relative",
+		"kind": "enclosure",
+		"input": "/A.mp3",
+		"normalised": null,
+		"sha256": null
+	},
+	{
+		"name": "unsafe scheme",
+		"kind": "enclosure",
+		"input": "javascript:alert(1)",
+		"normalised": null,
+		"sha256": null
+	},
+	{
+		"name": "ftp scheme",
+		"kind": "enclosure",
+		"input": "ftp://media.example/A.mp3",
+		"normalised": null,
+		"sha256": null
+	},
+	{
+		"name": "invalid host",
+		"kind": "enclosure",
+		"input": "https://[invalid]/A.mp3",
+		"normalised": null,
+		"sha256": null
+	},
+	{
+		"name": "bad escape",
+		"kind": "enclosure",
+		"input": "https://media.example/%zz/A.mp3",
+		"normalised": null,
+		"sha256": null
+	},
+	{
+		"name": "backslash",
+		"kind": "enclosure",
+		"input": "https://media.example/a\\b.mp3",
+		"normalised": null,
+		"sha256": null
+	},
+	{
+		"name": "internal whitespace",
+		"kind": "enclosure",
+		"input": "https://media.example/a b.mp3",
+		"normalised": null,
+		"sha256": null
+	},
+	{
+		"name": "empty target",
+		"kind": "enclosure",
+		"input": "https://op3.dev/e/",
+		"normalised": null,
+		"sha256": null
+	},
+	{
+		"name": "nested unsafe scheme",
+		"kind": "enclosure",
+		"input": "https://pdst.fm/e/ftp://media.example/A.mp3",
+		"normalised": null,
+		"sha256": null
+	},
+	{
+		"name": "encoded nested URL",
+		"kind": "enclosure",
+		"input": "https://op3.dev/e/https%3A%2F%2Fmedia.example/A.mp3",
+		"normalised": null,
+		"sha256": null
+	},
+	{
+		"name": "plain guid",
+		"kind": "guid",
+		"input": "episode-42",
+		"normalised": "episode-42",
+		"sha256": "c92bc000b32a460ac49a0517e1981879dfda7336e10302cd713088318ba07644"
+	},
+	{
+		"name": "trim guid",
+		"kind": "guid",
+		"input": " \t episode-42\r\n",
+		"normalised": "episode-42",
+		"sha256": "c92bc000b32a460ac49a0517e1981879dfda7336e10302cd713088318ba07644"
+	},
+	{
+		"name": "case sensitive guid",
+		"kind": "guid",
+		"input": "Episode-42",
+		"normalised": "Episode-42",
+		"sha256": "7728dcf71e11042c5ab2a46d5f5e46478d760d6297e794447c16f875932febde"
+	},
+	{
+		"name": "internal whitespace guid",
+		"kind": "guid",
+		"input": " a  b\tc ",
+		"normalised": "a  b\tc",
+		"sha256": "402f6be5f2d039717df7ca09f2814b72ed0e49bc12ec2af38796606bf3a9c30f"
+	},
+	{
+		"name": "credential URL guid",
+		"kind": "guid",
+		"input": " https://alice:secret@media.example/a?token=private#x ",
+		"normalised": "https://alice:secret@media.example/a?token=private#x",
+		"sha256": "985d428bbd8d669b8a33840dd099f427047e5afe1ff453ea73b2d6c35fc00c7f"
+	},
+	{
+		"name": "escaped guid",
+		"kind": "guid",
+		"input": " https://EXAMPLE.com/%2f ",
+		"normalised": "https://EXAMPLE.com/%2f",
+		"sha256": "fccf6307014437b3af6147060610206f94037a2275bfb06a497ce840c13891fd"
+	},
+	{
+		"name": "unicode guid",
+		"kind": "guid",
+		"input": " é ",
+		"normalised": "é",
+		"sha256": "4a99557e4033c3539de2eb65472017cad5f9557f7a0625a09f1c3f6e2ba69c4c"
+	},
+	{
+		"name": "decomposed unicode guid",
+		"kind": "guid",
+		"input": " é ",
+		"normalised": "é",
+		"sha256": "bf12767b0f2a56b2190075bae8169f656e3ce8d6357d4aff184bc6c7ea48f9f6"
+	},
+	{
+		"name": "unicode trim",
+		"kind": "guid",
+		"input": "﻿ guid　",
+		"normalised": "guid",
+		"sha256": "4b565f53a6d8d395e073616f5ab41e3610b618f7c386def2f25ffeef28dded0e"
+	},
+	{
+		"name": "nontrim unicode",
+		"kind": "guid",
+		"input": "guid",
+		"normalised": "guid",
+		"sha256": "1f5fc592808aea0a7e93724c633438924bb4b0b83323e2825f244f1bbd3a69bf"
+	},
+	{
+		"name": "empty guid",
+		"kind": "guid",
+		"input": " \t ",
+		"normalised": null,
+		"sha256": null
+	},
+	{
+		"name": "unknown guid",
+		"kind": "guid",
+		"input": null,
+		"normalised": null,
+		"sha256": null
+	},
+	{
+		"name": "constructor host",
+		"kind": "enclosure",
+		"input": "https://constructor/A.mp3",
+		"normalised": "https://constructor/A.mp3",
+		"sha256": "2e44faa9d8cef0da4b6b168109eba292688364ca5345dd41abec38ce66c47de6"
+	},
+	{
+		"name": "prototype host",
+		"kind": "enclosure",
+		"input": "https://__proto__/A.mp3",
+		"normalised": "https://__proto__/A.mp3",
+		"sha256": "761bb666cfd2f6fcf41badc4a2fb7cc69b7ce2f864d4978666cc4eed84cd60cd"
+	},
+	{
+		"name": "invalid port",
+		"kind": "enclosure",
+		"input": "https://media.example:99999/A.mp3",
+		"normalised": null,
+		"sha256": null
+	},
+	{
+		"name": "prefix host case and default port",
+		"kind": "enclosure",
+		"input": "https://PDST.FM:443/e/media.example/Audio/episode.mp3",
+		"normalised": "https://media.example/Audio/episode.mp3",
+		"sha256": "cd540f580eaf17f5f1de9864e4b7ad7307a47184c563de7489cd908333ad1d09"
+	}
+]

@@ -82,6 +82,8 @@ final class Plugin {
 		add_action( 'before_delete_post', array( Sync_Identity::class, 'detach' ) );
 		add_action( 'deleted_post', array( Sync_Identity::class, 'report_detachment' ), 10, 2 );
 
+		Migration_Legacy::register();
+
 		add_action( 'init', array( Blocks::class, 'register' ) );
 		add_action( 'init', array( Bindings::class, 'register' ) );
 		add_action( 'init', array( Oembed::class, 'register' ) );
@@ -104,6 +106,7 @@ final class Plugin {
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			Cli::register( new Cli( self::connect(), self::connection() ) );
+			\WP_CLI::add_command( 'showfm migrate-embeds', new Migration_Cli( new Migrator( self::connection(), self::api_client() ) ) );
 		}
 	}
 

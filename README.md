@@ -13,6 +13,12 @@ code exchange, WP-CLI registration, the ownership challenge, the signed ping end
 the daily health report. Settings > show.fm has the Connection and Display tabs and the
 admin notices. Blocks and the shortcode are available, together with the background sync engine.
 
+## Embed migration
+
+The WP-5a engine and `wp showfm migrate-embeds` command are documented in
+[docs-migrator.md](docs-migrator.md), including the report interface for WP-5b, fixtures,
+undo behaviour and the current server contract gaps. No Migrate tab is included yet.
+
 ## Requirements
 
 - WordPress 6.6 or later, PHP 7.4 or later.
