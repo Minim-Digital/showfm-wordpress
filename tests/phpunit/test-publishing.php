@@ -714,6 +714,23 @@ class Test_Publishing extends WP_UnitTestCase {
 		$this->assertArrayHasKey( self::EPISODE, get_option( Sync_Activity::SKIPPED_OPTION ) );
 	}
 
+	public function test_an_interrupted_entry_after_a_not_posted_one_keeps_the_marker(): void {
+		Sync_Activity::record( Sync_Activity::SKIPPED, $this->row(), 0 );
+		$fail = static function () {
+			throw new \RuntimeException( 'lease lost' );
+		};
+		add_filter( 'pre_update_option_' . Sync_Activity::OPTION, $fail );
+		try {
+			Sync_Activity::record( Sync_Activity::PAUSED, $this->row(), 0 );
+			$this->fail( 'The activity write should have been interrupted.' );
+		} catch ( \RuntimeException $e ) {
+			$this->assertSame( 'lease lost', $e->getMessage() );
+		} finally {
+			remove_filter( 'pre_update_option_' . Sync_Activity::OPTION, $fail );
+		}
+		$this->assertArrayHasKey( self::EPISODE, get_option( Sync_Activity::SKIPPED_OPTION ), 'The marker goes only with a written entry.' );
+	}
+
 	public function test_the_not_posted_markers_are_bounded_and_cleared_by_another_event(): void {
 		$markers = array();
 		for ( $i = 0; $i < Sync_Activity::MAX_SKIPPED; ++$i ) {
