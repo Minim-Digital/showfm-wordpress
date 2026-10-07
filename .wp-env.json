@@ -4,7 +4,8 @@
 	"phpVersion": "8.3",
 	"plugins": [],
 	"mappings": {
-		"wp-content/plugins/showfm": "."
+		"wp-content/plugins/showfm": ".",
+		"wp-content/plugins/showfm-e2e-fixtures": "./tests/e2e/plugins/showfm-e2e-fixtures"
 	},
 	"config": {
 		"WP_DEBUG": true,
