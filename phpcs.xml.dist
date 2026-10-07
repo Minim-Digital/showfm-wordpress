@@ -1,0 +1,71 @@
+<?xml version="1.0"?>
+<ruleset name="show.fm">
+	<description>WordPress Coding Standards and PHP compatibility for the show.fm plugin.</description>
+
+	<file>.</file>
+
+	<exclude-pattern>/vendor/*</exclude-pattern>
+	<exclude-pattern>/node_modules/*</exclude-pattern>
+	<exclude-pattern>/build/*</exclude-pattern>
+	<exclude-pattern>/dist/*</exclude-pattern>
+	<exclude-pattern>/artifacts/*</exclude-pattern>
+	<exclude-pattern>/test-results/*</exclude-pattern>
+	<exclude-pattern>/playwright-report/*</exclude-pattern>
+
+	<arg name="extensions" value="php"/>
+	<arg name="basepath" value="."/>
+	<arg name="parallel" value="8"/>
+	<arg value="sp"/>
+
+	<config name="minimum_wp_version" value="6.6"/>
+	<config name="testVersion" value="7.4-"/>
+
+	<rule ref="WordPress"/>
+	<rule ref="PHPCompatibilityWP"/>
+
+	<rule ref="WordPress.WP.I18n">
+		<properties>
+			<property name="text_domain" type="array">
+				<element value="showfm"/>
+			</property>
+		</properties>
+	</rule>
+
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+		<properties>
+			<property name="prefixes" type="array">
+				<element value="showfm"/>
+				<element value="ShowFM"/>
+			</property>
+		</properties>
+	</rule>
+
+	<!-- Tests follow PHPUnit naming, not WordPress file naming. -->
+	<rule ref="WordPress.Files.FileName">
+		<exclude-pattern>/tests/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+		<exclude-pattern>/tests/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.WP.AlternativeFunctions">
+		<exclude-pattern>/tests/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.PHP.DevelopmentFunctions">
+		<exclude-pattern>/tests/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.PHP.DiscouragedPHPFunctions">
+		<exclude-pattern>/tests/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.PHP.IniSet">
+		<exclude-pattern>/tests/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.DB.DirectDatabaseQuery">
+		<exclude-pattern>/tests/*</exclude-pattern>
+	</rule>
+	<rule ref="Generic.Commenting.DocComment.MissingShort">
+		<exclude-pattern>/tests/*</exclude-pattern>
+	</rule>
+	<rule ref="Squiz.Commenting.FunctionComment.Missing">
+		<exclude-pattern>/tests/*</exclude-pattern>
+	</rule>
+</ruleset>

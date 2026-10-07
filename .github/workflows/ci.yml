@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  php-static:
+    name: PHPCS and PHPStan (PHP 7.4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '7.4'
+          tools: composer:v2
+          coverage: none
+      - run: composer install --no-interaction --no-progress
+      - name: PHP syntax on 7.4
+        run: find showfm.php uninstall.php includes -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: PHPCS (WordPress Coding Standards, PHPCompatibilityWP)
+        run: composer lint
+      - name: PHPStan (level 6)
+        run: composer analyse -- --no-progress
+
+  js:
+    name: JS lint and formatting
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint:js
+      - run: npm run format:check
+
+  phpunit:
+    name: PHPUnit on wp-env
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: composer install --no-interaction --no-progress
+      - name: Start wp-env
+        run: npm run env:start
+      - name: PHPUnit (single site)
+        run: npm run test:php
+      - name: PHPUnit (multisite)
+        run: npm run test:php:multisite
+
+  e2e:
+    name: Playwright smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Start wp-env
+        run: npm run env:start
+      - name: Playwright
+        run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-artifacts
+          path: artifacts/
+          retention-days: 7
+
+  build:
+    name: Build zip and Plugin Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Build the distribution zip
+        run: npm run zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: showfm-zip
+          path: dist/showfm-*.zip
+          retention-days: 14
+      - name: Plugin Check (Plugin Repo category) on the built plugin
+        uses: wordpress/plugin-check-action@v1
+        with:
+          build-dir: dist/showfm
+          categories: plugin_repo
