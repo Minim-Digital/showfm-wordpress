@@ -731,6 +731,20 @@ class Test_Publishing extends WP_UnitTestCase {
 		$this->assertArrayHasKey( self::EPISODE, get_option( Sync_Activity::SKIPPED_OPTION ), 'The marker goes only with a written entry.' );
 	}
 
+	public function test_a_silently_failed_activity_write_leaves_no_marker(): void {
+		$keep = static function ( $value, $old ) {
+			return $old;
+		};
+		add_filter( 'pre_update_option_' . Sync_Activity::OPTION, $keep, 10, 2 );
+		Sync_Activity::record( Sync_Activity::SKIPPED, $this->row(), 0 );
+		remove_filter( 'pre_update_option_' . Sync_Activity::OPTION, $keep, 10 );
+		$this->assertSame( array(), Sync_Activity::entries() );
+		$this->assertArrayNotHasKey( self::EPISODE, get_option( Sync_Activity::SKIPPED_OPTION, array() ), 'No marker without a stored entry.' );
+
+		Sync_Activity::record( Sync_Activity::SKIPPED, $this->row(), 0 );
+		$this->assertSame( array( Sync_Activity::SKIPPED ), wp_list_pluck( Sync_Activity::entries(), 'event' ) );
+	}
+
 	public function test_the_not_posted_markers_are_bounded_and_cleared_by_another_event(): void {
 		$markers = array();
 		for ( $i = 0; $i < Sync_Activity::MAX_SKIPPED; ++$i ) {

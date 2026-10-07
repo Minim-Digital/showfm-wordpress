@@ -112,8 +112,13 @@ final class Sync_Activity {
 		}
 		$events   = self::entries();
 		$events[] = $entry;
+		$stored   = array_slice( $events, -self::MAX );
 		Sync::guard();
-		update_option( self::OPTION, array_slice( $events, -self::MAX ), false );
+		if ( ! update_option( self::OPTION, $stored, false ) && get_option( self::OPTION ) !== $stored ) {
+			// The log is secondary to the sync, so a failed write is not an error, but the
+			// markers must not claim an entry that was never stored.
+			return;
+		}
 		if ( self::SKIPPED === $event ) {
 			$skipped[ $entry['episode'] ] = $entry['at'];
 		} elseif ( isset( $skipped[ $entry['episode'] ] ) ) {
