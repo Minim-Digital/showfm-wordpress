@@ -180,6 +180,21 @@ the admin who confirmed it. Anyone else sees Resume swapping, which asks them to
 first; the server also refuses a swap step without `confirm` from anyone but the admin
 who confirmed it.
 
+### Reconnecting during a swap
+
+Every swap step checks, under the site lock, that the scan is still current and that the
+stored key is still the one the scan used, reading the connection from the database rather
+than the request's cache. Each post is checked again the same way just before it is
+swapped. A reconnect to another account therefore stops the swap at the next post with
+`reconnected`, and a new scan is needed.
+
+One window is accepted: a reconnect that lands while a single post is being swapped. That
+post is still swapped to the episode the scan matched under the previous connection. It is
+one post at most, it has a revision (the undo, linked from the results), the block names a
+real public episode, and the key never enters the post. Closing that window would mean
+holding the connection lock across each post's save hooks, which risks breaking the save
+or blocking the reconnect for longer than its three-second wait.
+
 ### Resume
 
 The scan's cursor is the engine's (`Migration_Store::state()` and the pending catalogue).

@@ -161,7 +161,9 @@ final class Migrator {
 			return $access;
 		}
 		$state = Migration_Store::state();
-		if ( empty( $state['dry_run'] ) || empty( $state['complete'] ) || $state['connection'] !== $this->fingerprint() ) {
+		// owns_now() reads the connection from the database for every post, so a reconnect to
+		// another account part way through a step stops the swap at the next post.
+		if ( empty( $state['dry_run'] ) || empty( $state['complete'] ) || ! $this->owns_now( $state ) ) {
 			return new \WP_Error( 'showfm_scan_required', __( 'Complete a scan for this connection before swapping.', 'showfm' ) );
 		}
 		$report = Migration_Store::get( $state['run'], $post_id );

@@ -738,6 +738,44 @@ class Test_Migrate_Endpoint extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( 'showfm/player', get_post( $hello )->post_content );
 	}
 
+	public function test_a_reconnect_part_way_through_a_step_stops_at_the_next_post(): void {
+		$first  = $this->post( '[powerpress url="https://media.example/Hello.mp3"]', 'Hello' );
+		$second = $this->post( '[powerpress url="https://media.example/Hello.mp3"]', 'Hello again' );
+		$this->catalogue();
+		$run = $this->scan_until( 'report' )['run'];
+
+		// The site reconnects to another account as soon as the first post is saved, and this
+		// request's option cache keeps the old connection.
+		$old     = get_option( Connection::OPTION );
+		$started = false;
+		$hook    = static function () use ( &$started, $old ) {
+			if ( ! $started ) {
+				$started = true;
+				( new Connection() )->save( 'showfm_live_ANOTHERKEY12345678901234567890', str_repeat( 'b', 64 ), self::PODCAST, 0 );
+				wp_cache_set( Connection::OPTION, $old, 'options' );
+			}
+		};
+		add_action( 'save_post', $hook );
+		$this->dispatch(
+			'POST',
+			'/swap',
+			array(
+				'run'     => $run,
+				'confirm' => true,
+			)
+		);
+		remove_action( 'save_post', $hook );
+
+		$this->assertTrue( $started, 'The interleaving was simulated.' );
+		$swapped = array_filter(
+			array( $first, $second ),
+			static function ( $id ) {
+				return false !== strpos( get_post( $id )->post_content, 'showfm/player' );
+			}
+		);
+		$this->assertCount( 1, $swapped, 'Only the post swapped before the reconnect changed.' );
+	}
+
 	public function test_a_connection_lost_during_the_swap_stops_it_without_moving_on(): void {
 		$hello = $this->post( '[powerpress url="https://media.example/Hello.mp3"]', 'Hello' );
 		$this->catalogue();
