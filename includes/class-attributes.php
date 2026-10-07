@@ -22,9 +22,9 @@ final class Attributes {
 	public static function names( string $type ): array {
 		$common = array( 'theme', 'accent', 'api', 'credit', 'load', 'lang' );
 		$types  = array(
-			'player'     => array( 'episode', 'podcast', 'size', 'wave', 'heading-level', 'transcript', 'mini-player', 'strings' ),
-			'episodes'   => array( 'podcast', 'variant', 'layout', 'count', 'season', 'hide', 'descriptions', 'mini-player', 'heading-level' ),
-			'play'       => array( 'episode', 'variant', 'size', 'mini-player' ),
+			'player'     => array( 'id', 'episode', 'podcast', 'size', 'wave', 'heading-level', 'transcript', 'mini-player', 'strings' ),
+			'episodes'   => array( 'id', 'podcast', 'variant', 'layout', 'count', 'season', 'hide', 'descriptions', 'mini-player', 'heading-level' ),
+			'play'       => array( 'episode', 'podcast', 'variant', 'size', 'mini-player' ),
 			'transcript' => array( 'episode', 'for', 'height' ),
 		);
 		return isset( $types[ $type ] ) ? array_merge( $common, $types[ $type ] ) : array();
@@ -77,7 +77,7 @@ final class Attributes {
 			'descriptions'  => array( 'on', 'off' ),
 			'mini-player'   => array( 'on', 'off' ),
 			'transcript'    => array( 'on', 'off', 'open' ),
-			'size'          => 'play' === $type ? array( 'small', 'medium', 'large', 'standard', 'compact' ) : array( 'standard', 'compact' ),
+			'size'          => 'play' === $type ? array( 'sm', 'lg' ) : array( 'standard', 'compact' ),
 		);
 		$output = array();
 		foreach ( self::names( $type ) as $name ) {
@@ -114,6 +114,8 @@ final class Attributes {
 			} elseif ( 'hide' === $name ) {
 				$value = implode( ',', array_intersect( array( 'trailer', 'bonus' ), explode( ',', $value ) ) );
 			} elseif ( in_array( $name, array( 'for', 'lang' ), true ) && ! preg_match( '/^[a-zA-Z0-9_-]+\z/', $value ) ) {
+				continue;
+			} elseif ( 'id' === $name && ! preg_match( '/^[a-zA-Z][a-zA-Z0-9_-]{0,63}\z/', $value ) ) {
 				continue;
 			}
 			if ( '' !== $value ) {

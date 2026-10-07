@@ -3,12 +3,16 @@
 	"apiVersion": 3,
 	"name": "showfm/play",
 	"version": "0.1.0",
-	"title": "show.fm Play",
+	"title": "show.fm Play button",
 	"category": "embed",
 	"icon": "microphone",
-	"description": "A show.fm play with a server-rendered fallback.",
+	"description": "A play button for one episode, for use anywhere on the page.",
+	"keywords": [ "podcast", "play", "button" ],
 	"textdomain": "showfm",
 	"attributes": {
+		"podcast": {
+			"type": "string"
+		},
 		"theme": {
 			"type": "string"
 		},
@@ -63,5 +67,6 @@
 	"editorScript": "showfm-block-editor",
 	"providesContext": {
 		"showfm/episode": "episode"
-	}
+	},
+	"editorStyle": "showfm-block-editor"
 }

@@ -6,9 +6,13 @@
 	"title": "show.fm Player",
 	"category": "embed",
 	"icon": "microphone",
-	"description": "A show.fm player with a server-rendered fallback.",
+	"description": "Play one episode, with an optional transcript.",
+	"keywords": [ "podcast", "audio", "episode" ],
 	"textdomain": "showfm",
 	"attributes": {
+		"id": {
+			"type": "string"
+		},
 		"theme": {
 			"type": "string"
 		},
@@ -75,5 +79,6 @@
 	"editorScript": "showfm-block-editor",
 	"providesContext": {
 		"showfm/episode": "episode"
-	}
+	},
+	"editorStyle": "showfm-block-editor"
 }

@@ -6,9 +6,13 @@
 	"title": "show.fm Transcript",
 	"category": "embed",
 	"icon": "microphone",
-	"description": "A show.fm transcript with a server-rendered fallback.",
+	"description": "A follow-along transcript for a Player on this page.",
+	"keywords": [ "podcast", "transcript" ],
 	"textdomain": "showfm",
 	"attributes": {
+		"podcast": {
+			"type": "string"
+		},
 		"theme": {
 			"type": "string"
 		},
@@ -60,5 +64,6 @@
 	"editorScript": "showfm-block-editor",
 	"providesContext": {
 		"showfm/episode": "episode"
-	}
+	},
+	"editorStyle": "showfm-block-editor"
 }
