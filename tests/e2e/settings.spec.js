@@ -208,8 +208,12 @@ test.describe( 'show.fm settings', () => {
 		page,
 		requestUtils,
 	} ) => {
-		await setState( requestUtils, 'connected' );
+		// Fresh back from show.fm: the stored "Connected" outcome is showing.
+		await setState( requestUtils, 'connected', 'success' );
 		await admin.visitAdminPage( PAGE, QUERY );
+		await expect( page.locator( '.showfm-notice' ) ).toContainText(
+			'Connected to show.fm.'
+		);
 
 		await page.getByRole( 'button', { name: 'Disconnect' } ).click();
 		const dialog = page.getByRole( 'dialog', {
@@ -243,6 +247,7 @@ test.describe( 'show.fm settings', () => {
 		await expect(
 			page.getByRole( 'heading', { name: 'Connect to show.fm' } )
 		).toBeVisible();
+		await expect( page.locator( '.showfm-notice' ) ).toHaveCount( 0 );
 	} );
 
 	test( 'display: saves the switches and the front end follows them', async ( {

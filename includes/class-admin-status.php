@@ -98,9 +98,8 @@ final class Admin_Status {
 	 * @return array<string,mixed>
 	 */
 	public function view( int $user_id ): array {
-		$result = Connect::result( $user_id );
-
 		$state   = $this->state();
+		$result  = self::current_result( Connect::result( $user_id ), $state );
 		$details = 'not_connected' === $state || 'unreadable' === $state ? array(
 			'name'  => '',
 			'shows' => array(),
@@ -132,6 +131,31 @@ final class Admin_Status {
 			'sitesUrl'    => self::sites_url( $details['shows'] ),
 			'notice'      => $this->notices->current( $user_id ),
 		);
+	}
+
+	/**
+	 * The stored connect outcome, only while the live connection still agrees with it. The
+	 * live state always wins:
+	 *
+	 * - "Connected" shows only while the stored key works (not after a disconnect, an expiry,
+	 *   a refusal such as a password change, or a salt change) and only for the connection
+	 *   it describes: one stored later (a reconnect, or WP-CLI) overtakes it.
+	 * - A failure shows until a later connection is stored, so a reconnect that succeeded
+	 *   elsewhere (another tab, WP-CLI) hides it.
+	 *
+	 * @param array{status:string,error:string,retry_after:int,reason:string,at:int}|null $result Stored outcome.
+	 * @param string                                                                      $state  Live state.
+	 * @return array{status:string,error:string,retry_after:int,reason:string,at:int}|null
+	 */
+	public static function current_result( ?array $result, string $state ): ?array {
+		if ( null === $result || $result['at'] < Connection::connected_at() ) {
+			return null;
+		}
+		$working = in_array( $state, array( 'connected', 'expiring', 'paused', 'scheduled' ), true );
+		if ( Connect::STATUS_CONNECTED === $result['status'] && ! $working ) {
+			return null;
+		}
+		return $result;
 	}
 
 	/**
@@ -177,7 +201,7 @@ final class Admin_Status {
 	/**
 	 * The connect outcome as the screen shows it: the message and its one action.
 	 *
-	 * @param array{status:string,error:string,retry_after:int,reason:string} $result Outcome.
+	 * @param array{status:string,error:string,retry_after:int,reason:string,at:int} $result Outcome.
 	 * @return array{status:string,error:string,message:string,action:string}
 	 */
 	private static function result( array $result ): array {

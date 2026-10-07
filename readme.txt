@@ -116,4 +116,4 @@ The plugin keeps up to 50 local sync diagnostics containing its own reason codes
 * Connecting now stops early when the site's address does not use https, and a return from show.fm without approval says the connection was cancelled.
 * Added the account name and connected shows to the settings screen, fetched after connecting and with the daily health report, and updated the suggested privacy policy text.
 * Disconnect now says plainly that the site key stays valid at show.fm until the site is disconnected there, and links to Connected sites. Focus moves to the Connect card afterwards and the change is announced.
-* The outcome of connecting stays on the settings screen across reloads and tabs until it is dismissed or 15 minutes pass. Reconnect in an admin notice now submits a form instead of following a link.
+* The outcome of connecting stays on the settings screen across reloads and tabs until it is dismissed or 15 minutes pass, and only while it still matches the connection: Disconnect clears it, and an expired, refused or replaced connection hides it. Reconnect in an admin notice now submits a form instead of following a link.

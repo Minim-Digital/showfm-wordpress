@@ -283,6 +283,25 @@ describe( 'connection view', () => {
 		expect( disconnectedMessage() ).toContain( 'stays valid at show.fm' );
 	} );
 
+	it( 'never says Connected once the site is not connected', () => {
+		const success = {
+			status: 'connected',
+			error: '',
+			message: '',
+			action: 'none',
+		};
+		expect(
+			connectionNotice(
+				view( { state: 'not_connected', result: success } )
+			)
+		).toBeNull();
+		for ( const state of [ 'expired', 'refused', 'unreadable' ] ) {
+			expect(
+				connectionNotice( view( { state, result: success } ) ).title
+			).not.toBe( 'Connected to show.fm.' );
+		}
+	} );
+
 	it( 'lets the state notice win over a successful connect', () => {
 		const notice = connectionNotice(
 			view( {

@@ -312,7 +312,13 @@ export function connectionNotice( view ) {
 			};
 	}
 
-	if ( result && result.status === 'connected' ) {
+	// "Connected" only while the stored key works: the live state wins.
+	if (
+		result &&
+		result.status === 'connected' &&
+		hasConnection( view ) &&
+		! needsReconnect( view )
+	) {
 		if ( result.error ) {
 			return {
 				status: 'warning',

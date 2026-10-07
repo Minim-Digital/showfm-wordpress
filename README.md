@@ -64,7 +64,10 @@ admin notices. Blocks and the shortcode are available, together with the backgro
   `wp_rest` nonce. `Admin_Status` builds the Connection tab's data from local state only: no
   request, no key (the last four characters only), no ping secret. Reading it changes nothing:
   the connect outcome stays for 15 minutes (`Connect::RESULT_TTL`) until the admin dismisses it
-  or starts again, so a reload or a second tab still shows it.
+  or starts again, so a reload or a second tab still shows it. The live state wins: each
+  outcome records when it happened, "Connected" shows only while the stored key works and
+  for the connection it describes, a later stored connection hides an older failure, and
+  Disconnect clears the admin's outcome.
 - Disconnect removes the local connection only. The show.fm API has no route for a site key to
   revoke itself, so the key stays valid at show.fm until the site is disconnected there. The
   dialog and the result say so and link to the first show's Connected sites page

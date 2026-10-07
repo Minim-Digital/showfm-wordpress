@@ -346,6 +346,92 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 		);
 	}
 
+	public function test_disconnect_clears_the_stored_connect_result(): void {
+		$this->connect();
+		$this->result( Connect::STATUS_CONNECTED, '' );
+		$this->assertSame( 'connected', $this->view()['result']['status'] );
+
+		$this->dispatch( 'POST', '/showfm/v1/admin/disconnect' );
+
+		$this->assertNull( Connect::result( $this->admin ), 'Cleared, not just hidden.' );
+		$this->assertNull( $this->view()['result'], 'A reload after disconnecting shows no "Connected".' );
+	}
+
+	public function test_another_admins_success_is_hidden_after_a_disconnect(): void {
+		$other = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		if ( is_multisite() ) {
+			grant_super_admin( $other );
+		}
+		$this->connect();
+		$this->result( Connect::STATUS_CONNECTED, '', null, $other );
+
+		$this->dispatch( 'POST', '/showfm/v1/admin/disconnect' );
+		wp_set_current_user( $other );
+
+		$this->assertNull( $this->view()['result'], 'The live state wins for every user.' );
+	}
+
+	/**
+	 * @dataProvider broken_states
+	 *
+	 * @param string $state State to put the connection into.
+	 */
+	public function test_a_success_is_hidden_once_the_key_stops_working( string $state ): void {
+		$this->connect( 'expired' === $state ? time() - DAY_IN_SECONDS : 0 );
+		$this->result( Connect::STATUS_CONNECTED, '' );
+		if ( 'refused' === $state ) {
+			Plugin::connection()->mark_reconnect_needed();
+		} elseif ( 'unreadable' === $state ) {
+			$stored      = get_option( Connection::OPTION );
+			$stored['c'] = base64_encode( str_repeat( 'x', 80 ) );
+			update_option( Connection::OPTION, $stored );
+		}
+
+		$data = $this->view();
+
+		$this->assertSame( $state, $data['state'] );
+		$this->assertNull( $data['result'] );
+	}
+
+	/**
+	 * @return array<string,array{string}>
+	 */
+	public function broken_states(): array {
+		return array(
+			'expired'                                      => array( 'expired' ),
+			'refused, for example after a password change' => array( 'refused' ),
+			'unreadable after a salt change'               => array( 'unreadable' ),
+		);
+	}
+
+	public function test_a_success_from_an_earlier_connection_is_hidden(): void {
+		$this->result( Connect::STATUS_CONNECTED, '', time() - 60 );
+		$this->connect();
+
+		$this->assertNull( $this->view()['result'], 'A later connection (for example WP-CLI) overtakes it.' );
+	}
+
+	public function test_a_failure_is_hidden_once_a_later_connection_is_stored(): void {
+		$this->result( Connect::STATUS_FAILED, Connect::ERROR_CANCELLED, time() - 60 );
+		$this->assertSame( 'cancelled', $this->view()['result']['error'] );
+
+		$this->connect();
+
+		$this->assertNull( $this->view()['result'], 'A reconnect that succeeded elsewhere wins.' );
+	}
+
+	public function test_a_failed_reconnect_still_shows_while_the_old_key_works(): void {
+		$this->connect();
+		update_option( Connection::CONNECTED_AT_OPTION, time() - HOUR_IN_SECONDS );
+		$this->result( Connect::STATUS_FAILED, Connect::ERROR_EXPIRED );
+
+		$data = $this->view();
+
+		$this->assertSame( 'connected', $data['state'] );
+		$this->assertSame( 'expired', $data['result']['error'] );
+		$this->assertArrayNotHasKey( 'at', $data['result'] );
+	}
+
 	public function test_disconnect_removes_the_local_connection_and_says_the_key_stays_valid(): void {
 		$this->connect();
 
@@ -423,19 +509,22 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Records a connect outcome for the admin.
+	 * Records a connect outcome for a user, as Connect does.
 	 *
-	 * @param string $status Outcome status.
-	 * @param string $error  Error type.
+	 * @param string   $status  Outcome status.
+	 * @param string   $error   Error type.
+	 * @param int|null $at      When it happened (now by default).
+	 * @param int|null $user_id The user (the admin by default).
 	 */
-	private function result( string $status, string $error ): void {
+	private function result( string $status, string $error, ?int $at = null, ?int $user_id = null ): void {
 		set_transient(
-			Connect::RESULT_PREFIX . $this->admin,
+			Connect::RESULT_PREFIX . ( $user_id ?? $this->admin ),
 			array(
 				'status'      => $status,
 				'error'       => $error,
 				'retry_after' => 0,
 				'reason'      => '',
+				'at'          => $at ?? time(),
 			),
 			Connect::RESULT_TTL
 		);

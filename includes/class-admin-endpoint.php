@@ -132,6 +132,8 @@ final class Admin_Endpoint {
 	public function disconnect(): \WP_REST_Response {
 		$sites = $this->status->current_sites_url();
 		$this->connect->disconnect();
+		// An earlier "Connected" must not come back on a reload after disconnecting.
+		Connect::clear_result( get_current_user_id() );
 		$view                 = $this->status->view( get_current_user_id() );
 		$view['disconnected'] = array(
 			'keyRevoked' => false,
