@@ -17,7 +17,7 @@ final class Sync_Artwork {
 	const MAX_BYTES = 10485760;
 
 	/**
-	 * Import public artwork once. Scheduled episodes have no public media yet.
+	 * Import public artwork once, after publication. Missing metadata is retried.
 	 *
 	 * @param int    $post_id Post ID.
 	 * @param string $episode Episode UUID.
@@ -25,9 +25,6 @@ final class Sync_Artwork {
 	 */
 	public function apply( int $post_id, string $episode ) {
 		$response = Plugin::api_client()->get( '/v1/episodes/' . rawurlencode( $episode ) );
-		if ( $response->is( Api_Result::UNAVAILABLE ) ) {
-			return true;
-		}
 		if ( $response->is( Api_Result::RATE_LIMITED ) ) {
 			update_option( Api_Client::RATE_LIMIT_OPTION, time() + $response->retry_after(), false );
 		}

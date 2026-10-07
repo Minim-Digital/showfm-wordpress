@@ -549,4 +549,35 @@ class Test_Sync extends WP_UnitTestCase {
 		remove_filter( 'update_post_metadata', $fail, 10 );
 		$this->assertSame( 0, Sync::state()['cursor'] );
 	}
+	public function test_unchanged_content_hash_still_applies_lifecycle_changes(): void {
+		$row                             = $this->row( 1, 'scheduled' );
+		$id                              = $this->apply( $row );
+		$row['episode']['scheduled_for'] = gmdate( 'c', time() + 3 * DAY_IN_SECONDS );
+		$this->apply( $row );
+		$this->assertSame( gmdate( 'Y-m-d H:i:s', strtotime( $row['episode']['scheduled_for'] ) ), get_post( $id )->post_date_gmt );
+		$row['episode']['status'] = 'published';
+		$this->apply( $row );
+		$this->assertSame( 'publish', get_post_status( $id ) );
+		$this->assertSame( '2025-01-01 12:00:00', get_post( $id )->post_date_gmt );
+	}
+
+	public function test_artwork_waits_for_publication_and_retries_missing_public_metadata(): void {
+		update_option( Sync_Posts::SETTINGS, array( 'featured_image' => true ) );
+		$row = $this->row( 1, 'scheduled' );
+		$id  = $this->apply( $row );
+		$this->assertSame( 0, $this->http->count() );
+		$row['episode']['status'] = 'published';
+		$this->page( array( $row ) );
+		$this->http->respond( 404, '{}' );
+		$this->assertSame( 'showfm_artwork_metadata', $this->sync->pull()['status'] );
+		$this->assertSame( 0, Sync::state()['cursor'] );
+		$this->assertSame( '', get_post_meta( $id, '_showfm_artwork_done', true ) );
+		$this->clear_backoff();
+		$this->page( array( $row ) );
+		$this->http->respond( 200, '{"data":{"artwork":{"url":null}}}' );
+		$this->http->respond( 200, '{}' );
+		$this->page( array(), 1 );
+		$this->assertSame( 'caught_up', $this->sync->pull()['status'] );
+		$this->assertSame( '1', get_post_meta( $id, '_showfm_artwork_done', true ) );
+	}
 }

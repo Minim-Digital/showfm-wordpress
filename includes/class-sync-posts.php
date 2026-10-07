@@ -112,17 +112,21 @@ final class Sync_Posts {
 			return $id;
 		}
 
-		$episode  = $row['episode'];
-		$settings = (array) get_option( self::SETTINGS, array() );
-		$edited   = $post && $this->edited( $post );
-		$same     = $post && get_post_meta( $id, '_showfm_content_hash', true ) === $episode['content_hash'] && 'synced' === get_post_meta( $id, '_showfm_sync_state', true );
-		if ( $same ) {
+		$episode   = $row['episode'];
+		$settings  = (array) get_option( self::SETTINGS, array() );
+		$edited    = $post && $this->edited( $post );
+		$timestamp = strtotime( 'scheduled' === $episode['status'] ? $episode['scheduled_for'] : $episode['published_at'] );
+		$date      = gmdate( 'Y-m-d H:i:s', $timestamp );
+		// Match core's handling of a future date less than a minute away or already past.
+		$status        = 'scheduled' === $episode['status'] && $timestamp >= time() + MINUTE_IN_SECONDS ? 'future' : 'publish';
+		$needs_artwork = 'published' === $episode['status'] && ! empty( $settings['featured_image'] ) && ! $edited && ! get_post_meta( $id, '_showfm_artwork_done', true );
+		$same          = $post && get_post_meta( $id, '_showfm_content_hash', true ) === $episode['content_hash'] && 'synced' === get_post_meta( $id, '_showfm_sync_state', true );
+		if ( $same && $post->post_status === $status && $post->post_date_gmt === $date && ! $needs_artwork ) {
 			return $id;
 		}
-		$date   = gmdate( 'Y-m-d H:i:s', strtotime( 'scheduled' === $episode['status'] ? $episode['scheduled_for'] : $episode['published_at'] ) );
 		$fields = array(
 			'ID'            => $id,
-			'post_status'   => 'scheduled' === $episode['status'] ? 'future' : 'publish',
+			'post_status'   => $status,
 			'post_date_gmt' => $date,
 			'post_date'     => get_date_from_gmt( $date ),
 			'edit_date'     => true,
@@ -169,7 +173,7 @@ final class Sync_Posts {
 			self::meta( $id, '_showfm_synced_revision', self::hash( get_post( $id ) ) );
 		}
 		delete_post_meta( $id, '_showfm_pending_revision' );
-		if ( ! empty( $settings['featured_image'] ) && ! $edited && ! get_post_meta( $id, '_showfm_artwork_done', true ) ) {
+		if ( $needs_artwork ) {
 			$image = ( new Sync_Artwork() )->apply( $id, $row['episode_id'] );
 			if ( is_wp_error( $image ) ) {
 				return $image;
