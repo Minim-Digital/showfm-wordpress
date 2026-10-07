@@ -1,0 +1,61 @@
+[
+	{
+		"name": "entities-and-url-quotes",
+		"function": "renderEpisodeHTML",
+		"args": [
+			{
+				"title": "&amp; <script>\"' café 🎙",
+				"links": {
+					"listen": " HTTPS://example.test/\" onclick=\"bad?a=1&b=2 "
+				},
+				"audio": { "url": "javascript:alert(1)" }
+			}
+		]
+	},
+	{
+		"name": "source-uri-component",
+		"function": "renderEpisodeHTML",
+		"args": [
+			{
+				"title": "Tagged",
+				"links": { "listen": "data:text/html,hi" },
+				"audio": { "url": "https://example.test/a.mp3?x=1" }
+			},
+			{ "sourceTag": "WP !'()* /?&é" }
+		]
+	},
+	{
+		"name": "jsonld-offset-fraction",
+		"function": "episodeJsonLd",
+		"args": [
+			{
+				"title": "</script> & \" \u2028 \u2029",
+				"links": { "listen": "javascript:bad" },
+				"published_at": "2026-10-07T10:20:30.123+01:00",
+				"audio": {
+					"url": "https://example.test/a",
+					"duration_seconds": 3600.5
+				},
+				"season_number": 0,
+				"episode_number": 0
+			}
+		]
+	},
+	{
+		"name": "negative-limit",
+		"function": "renderEpisodeListHTML",
+		"args": [
+			{
+				"title": "Empty & safe",
+				"links": { "listen": "javascript:bad" }
+			},
+			[
+				{
+					"title": "Hidden",
+					"links": { "listen": "https://example.test" }
+				}
+			],
+			{ "limit": -2 }
+		]
+	}
+]

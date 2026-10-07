@@ -1,0 +1,19 @@
+showfm-player:not( :defined ),
+showfm-episodes:not( :defined ),
+showfm-play:not( :defined ),
+showfm-transcript:not( :defined ) {
+	display: block;
+	color: var( --showfm-text, inherit );
+	background: var( --showfm-background, transparent );
+	font-family: var( --showfm-font, inherit );
+	font-size: var( --showfm-font-size, inherit );
+	line-height: var( --showfm-line-height, inherit );
+}
+
+showfm-player:not( :defined ) audio,
+showfm-play:not( :defined ) audio {
+	display: block;
+	width: 100%;
+	max-width: 100%;
+	margin-top: 0.5em;
+}
