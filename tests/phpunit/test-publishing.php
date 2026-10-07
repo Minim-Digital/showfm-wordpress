@@ -694,6 +694,26 @@ class Test_Publishing extends WP_UnitTestCase {
 		$this->assertFalse( wp_load_alloptions()[ Sync_Activity::SKIPPED_OPTION ] ?? false, 'Not autoloaded.' );
 	}
 
+	public function test_an_interrupted_not_posted_entry_is_recorded_on_the_retry(): void {
+		$fail = static function () {
+			throw new \RuntimeException( 'lease lost' );
+		};
+		add_filter( 'pre_update_option_' . Sync_Activity::OPTION, $fail );
+		try {
+			Sync_Activity::record( Sync_Activity::SKIPPED, $this->row(), 0 );
+			$this->fail( 'The activity write should have been interrupted.' );
+		} catch ( \RuntimeException $e ) {
+			$this->assertSame( 'lease lost', $e->getMessage() );
+		} finally {
+			remove_filter( 'pre_update_option_' . Sync_Activity::OPTION, $fail );
+		}
+		$this->assertArrayNotHasKey( self::EPISODE, get_option( Sync_Activity::SKIPPED_OPTION, array() ), 'No marker without its entry.' );
+
+		Sync_Activity::record( Sync_Activity::SKIPPED, $this->row(), 0 );
+		$this->assertSame( array( Sync_Activity::SKIPPED ), wp_list_pluck( Sync_Activity::entries(), 'event' ) );
+		$this->assertArrayHasKey( self::EPISODE, get_option( Sync_Activity::SKIPPED_OPTION ) );
+	}
+
 	public function test_the_not_posted_markers_are_bounded_and_cleared_by_another_event(): void {
 		$markers = array();
 		for ( $i = 0; $i < Sync_Activity::MAX_SKIPPED; ++$i ) {

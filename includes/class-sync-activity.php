@@ -104,16 +104,14 @@ final class Sync_Activity {
 			$entry['changes'] = array_values( array_intersect( self::CHANGES, $extra['changes'] ) );
 		}
 		// Once per episode until something else happens to it, so repeated edits to episodes
-		// that are not posted cannot push real events out.
+		// that are not posted cannot push real events out. The marker is written only after
+		// its entry, and cleared before another event's entry: an interrupted write can at
+		// worst repeat an entry, never drop one.
 		$skipped = self::skipped();
-		if ( self::SKIPPED === $event ) {
-			if ( isset( $skipped[ $entry['episode'] ] ) ) {
-				return;
-			}
-			$skipped[ $entry['episode'] ] = $entry['at'];
-			Sync::guard();
-			update_option( self::SKIPPED_OPTION, array_slice( $skipped, -self::MAX_SKIPPED, null, true ), false );
-		} elseif ( isset( $skipped[ $entry['episode'] ] ) ) {
+		if ( self::SKIPPED === $event && isset( $skipped[ $entry['episode'] ] ) ) {
+			return;
+		}
+		if ( self::SKIPPED !== $event && isset( $skipped[ $entry['episode'] ] ) ) {
 			unset( $skipped[ $entry['episode'] ] );
 			Sync::guard();
 			update_option( self::SKIPPED_OPTION, $skipped, false );
@@ -122,6 +120,11 @@ final class Sync_Activity {
 		$events[] = $entry;
 		Sync::guard();
 		update_option( self::OPTION, array_slice( $events, -self::MAX ), false );
+		if ( self::SKIPPED === $event ) {
+			$skipped[ $entry['episode'] ] = $entry['at'];
+			Sync::guard();
+			update_option( self::SKIPPED_OPTION, array_slice( $skipped, -self::MAX_SKIPPED, null, true ), false );
+		}
 	}
 
 	/**
