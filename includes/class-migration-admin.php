@@ -165,6 +165,12 @@ final class Migration_Admin {
 		$user   = get_current_user_id();
 		$cursor = Migration_Store::locked(
 			static function () use ( $run, $user, $confirm ) {
+				// Checked again under the lock: another tab may have started a new scan while
+				// this request waited, and its report must not be swapped from.
+				$state = Migration_Store::state();
+				if ( ( $state['run'] ?? '' ) !== $run || empty( $state['complete'] ) || self::fresh( Migration_Catalogue::PENDING ) ) {
+					return self::stale();
+				}
 				$cursor = self::cursor( $run );
 				if ( ( $cursor['user'] ?? 0 ) === $user ) {
 					return $cursor;

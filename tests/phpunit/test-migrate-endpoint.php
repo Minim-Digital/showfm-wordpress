@@ -819,6 +819,50 @@ class Test_Migrate_Endpoint extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( 'showfm/player', get_post( $bakery )->post_content );
 	}
 
+	public function test_a_swap_that_waited_while_a_new_scan_started_does_not_swap(): void {
+		$hello = $this->post( '[powerpress url="https://media.example/Hello.mp3"]', 'Hello' );
+		$this->catalogue();
+		$run = $this->scan_until( 'report' )['run'];
+
+		// Another tab starts a new scan while this swap request waits for the site lock:
+		// the second read of the state (the one under the lock) sees the new run.
+		$reads   = 0;
+		$started = false;
+		$hook    = static function ( $sql ) use ( &$reads, &$started ) {
+			if ( ! $started && false !== strpos( $sql, Migration_Store::STATE ) && 0 === strpos( ltrim( $sql ), 'SELECT option_value' ) && 2 === ++$reads ) {
+				$started = true;
+				$state   = Migration_Store::state();
+				update_option(
+					Migration_Store::STATE,
+					array_merge(
+						$state,
+						array(
+							'run'      => 'replacement',
+							'complete' => false,
+						)
+					),
+					false
+				);
+			}
+			return $sql;
+		};
+		add_filter( 'query', $hook );
+		$response = $this->dispatch(
+			'POST',
+			'/swap',
+			array(
+				'run'     => $run,
+				'confirm' => true,
+			)
+		);
+		remove_filter( 'query', $hook );
+
+		$this->assertTrue( $started, 'The interleaving was simulated.' );
+		$this->assertSame( 409, $response->get_status(), wp_json_encode( $response->get_data() ) );
+		$this->assertStringNotContainsString( 'showfm/player', get_post( $hello )->post_content );
+		$this->assertSame( array(), get_option( 'showfm_migration_' . $run . '_swap', array() ), 'No cursor for the superseded run.' );
+	}
+
 	public function test_a_post_the_admin_cannot_edit_is_a_failure_row_and_the_swap_goes_on(): void {
 		$locked = $this->post( '[powerpress url="https://media.example/Hello.mp3"]', 'Hello' );
 		$open   = $this->post( '[powerpress url="https://media.example/Hello.mp3"]', 'Hello' );
