@@ -8,7 +8,7 @@ import {
 	useBlockProps,
 } from '@wordpress/block-editor';
 import { ToolbarButton, ToolbarGroup } from '@wordpress/components';
-import { useState } from '@wordpress/element';
+import { useRef, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import ServerSideRender from '@wordpress/server-side-render';
 import { request } from '../api';
@@ -80,6 +80,8 @@ export default function ShowfmBlockEdit( {
 	const [ ownPicking, setOwnPicking ] = useState( false );
 	const [ picking, setPicking ] = editState || [ ownPicking, setOwnPicking ];
 	const [ changingShow, setChangingShow ] = useState( false );
+	// The episode most recently chosen, so a slower lookup for an earlier one is ignored.
+	const chosen = useRef( null );
 	const { episode, podcast, snapshot = {} } = attributes;
 	const configured =
 		!! episode || ( !! podcast && ( ! needsEpisode || !! snapshot.title ) );
@@ -115,6 +117,7 @@ export default function ShowfmBlockEdit( {
 
 	const chooseEpisode = ( choice, show ) => {
 		setPicking( false );
+		chosen.current = choice === LATEST ? LATEST : choice.id;
 		if ( choice === LATEST ) {
 			setAttributes( {
 				episode: undefined,
@@ -131,7 +134,11 @@ export default function ShowfmBlockEdit( {
 		// The picker has no links; the episode route has the public listen and audio URLs.
 		request( 'episode', { id: choice.id, podcast: show.id } ).then(
 			( detail ) => {
-				if ( detail.state === 'ok' && detail.episode ) {
+				if (
+					chosen.current === choice.id &&
+					detail.state === 'ok' &&
+					detail.episode
+				) {
 					setAttributes( {
 						snapshot: episodeSnapshot( detail.episode ),
 					} );
