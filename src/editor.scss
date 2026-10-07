@@ -1,0 +1,359 @@
+// Editor-only styles for the show.fm blocks and post panel, after the design (areas 6 and 7).
+
+$showfm-muted: #757575;
+$showfm-border: #e0e0e0;
+$showfm-blue: #3858e9;
+
+.showfm-muted {
+	color: $showfm-muted;
+	font-size: 12px;
+}
+
+.showfm-placeholder.components-placeholder {
+	gap: 16px;
+
+	.components-placeholder__fieldset {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 16px;
+		max-width: none;
+	}
+
+	.showfm-switch {
+		align-self: flex-start;
+	}
+}
+
+.showfm-loading {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	color: $showfm-muted;
+
+	.components-spinner {
+		margin: 0;
+	}
+}
+
+.showfm-address {
+	display: flex;
+	align-items: flex-end;
+	gap: 8px;
+
+	.components-base-control {
+		flex: 1;
+	}
+}
+
+.showfm-problem {
+	margin: 0;
+	color: #cc1818;
+}
+
+.showfm-connect {
+	margin: 0;
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.showfm-art {
+	flex: none;
+	display: block;
+	border-radius: 2px;
+	object-fit: cover;
+	background: #f0f0f0;
+
+	&.is-latest {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+	}
+}
+
+.showfm-shows {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.showfm-show {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	width: 100%;
+	padding: 10px 12px;
+	border: 0;
+	border-radius: 2px;
+	background: #fff;
+	box-shadow: inset 0 0 0 1px $showfm-border;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+
+	&:hover,
+	&:focus-visible {
+		background: #f0f6fc;
+		box-shadow: inset 0 0 0 1px $showfm-blue;
+		outline: none;
+	}
+
+	svg {
+		color: $showfm-muted;
+	}
+}
+
+.showfm-show__text,
+.showfm-episode__text,
+.showfm-summary__text {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+.showfm-show__name,
+.showfm-episode__title,
+.showfm-summary__title {
+	font-weight: 500;
+}
+
+.showfm-picker__show {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: $showfm-muted;
+}
+
+.showfm-picker__filters {
+	display: flex;
+	gap: 8px;
+
+	.components-search-control {
+		flex: 1;
+	}
+
+	.components-base-control:last-child {
+		width: 170px;
+	}
+}
+
+.showfm-episodes {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	border: 1px solid $showfm-border;
+	border-radius: 2px;
+	max-height: 360px;
+	overflow-y: auto;
+}
+
+.showfm-episode {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 10px 12px;
+	background: #fff;
+	cursor: pointer;
+
+	& + & {
+		border-top: 1px solid #f0f0f0;
+	}
+
+	&.is-checked {
+		background: #f0f6fc;
+	}
+
+	input[type='radio'] {
+		flex: none;
+		margin: 0;
+	}
+}
+
+.showfm-episode__title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.showfm-tag {
+	flex: none;
+	padding: 2px 8px;
+	border-radius: 2px;
+	background: #f0f0f0;
+	font-size: 12px;
+}
+
+.showfm-empty {
+	margin: 0;
+	padding: 12px;
+}
+
+.showfm-picker__actions,
+.showfm-state__actions {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+}
+
+.showfm-state__actions {
+	margin-left: 28px;
+}
+
+.showfm-state__message {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+
+	p {
+		margin: 0;
+		line-height: 1.5;
+	}
+
+	&.is-error :is( svg, .dashicon ) {
+		color: #cc1818;
+	}
+
+	&.is-warning :is( svg, .dashicon ) {
+		color: #996800;
+	}
+
+	&.is-muted :is( svg, .dashicon ) {
+		color: $showfm-muted;
+	}
+}
+
+.showfm-strip {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	padding: 8px 12px;
+	border-left: 4px solid #f0b849;
+	background: #fef8ee;
+	font-size: 13px;
+	line-height: 1.5;
+	color: #1e1e1e;
+
+	&.is-info {
+		border-left-color: $showfm-blue;
+		background: #f0f6fc;
+	}
+
+	:is( svg, .dashicon ) {
+		flex: none;
+	}
+}
+
+.showfm-strip__text {
+	flex: 1;
+}
+
+.showfm-strip__sub {
+	color: #50575e;
+}
+
+.showfm-strip__preview {
+	padding-top: 12px;
+}
+
+.showfm-scheduled {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding: 16px;
+	border: 1px solid #e7e5ec;
+	border-radius: 14px;
+	opacity: 0.6;
+}
+
+.showfm-scheduled__text {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.showfm-summary {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.showfm-summary__row {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+}
+
+.wp-block-showfm-play {
+	width: fit-content;
+}
+
+// Core's heading level menu lays the levels out in a row.
+.showfm-heading-levels .components-dropdown-menu__menu {
+	display: flex;
+	flex-direction: row;
+	gap: 4px;
+}
+
+.showfm-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.showfm-panel__status {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+
+	> span {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	strong {
+		font-weight: 500;
+		line-height: 1.45;
+	}
+
+	&.is-success :is( svg, .dashicon ) {
+		color: #008a20;
+	}
+
+	&.is-warning {
+		padding: 8px 12px;
+		border-left: 4px solid #f0b849;
+		background: #fef8ee;
+
+		:is( svg, .dashicon ) {
+			color: #996800;
+		}
+	}
+
+	&.is-error {
+		padding: 8px 12px;
+		border-left: 4px solid #cc1818;
+		background: #fcf0f1;
+
+		:is( svg, .dashicon ) {
+			color: #cc1818;
+		}
+	}
+}
+
+.showfm-panel__sub {
+	color: #50575e;
+	font-size: 12px;
+	line-height: 1.5;
+}
+
+.showfm-panel__option {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+}

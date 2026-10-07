@@ -8,7 +8,7 @@ const target = 'assets/showfm-embed';
 const pkg = JSON.parse(
 	readFileSync( 'node_modules/@showfm/embed/package.json' )
 );
-assert.equal( pkg.version, '1.1.0' );
+assert.equal( pkg.version, '1.4.0' );
 assert.equal(
 	JSON.parse( readFileSync( 'package.json' ) ).devDependencies[
 		'@showfm/embed'

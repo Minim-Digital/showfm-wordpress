@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /** Registers assets early, but only enqueues them for rendered content. */
 final class Assets {
 	/** Exact npm package version. */
-	const VERSION = '1.1.0';
+	const VERSION = '1.4.0';
 	/** Shared script handle. */
 	const HANDLE = 'showfm-embed';
 
@@ -41,14 +41,15 @@ final class Assets {
 		}
 	}
 
-	/** Register for the iframe; an existing show.fm block also needs the preview runtime. */
+	/**
+	 * Register for the iframe. In the editor the elements are always loaded, so a block
+	 * inserted into a new post previews the real element. The front end loads them only
+	 * from render callbacks.
+	 */
 	public static function editor_assets(): void {
 		self::register();
 		if ( is_admin() ) {
-			$post = get_post();
-			if ( $post && preg_match( '/<!-- wp:showfm\/(player|episodes|play|transcript)\b/', $post->post_content ) ) {
-				self::enqueue();
-			}
+			self::enqueue();
 		}
 	}
 }

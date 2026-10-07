@@ -51,6 +51,7 @@
 /.prettierignore
 /.eslintrc*
 /eslint.config.*
+/vitest.config.*
 /.stylelintrc*
 /composer.json
 /composer.lock

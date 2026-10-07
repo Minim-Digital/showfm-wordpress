@@ -3,12 +3,16 @@
 	"apiVersion": 3,
 	"name": "showfm/episodes",
 	"version": "0.1.0",
-	"title": "show.fm Episodes",
+	"title": "show.fm Episode list",
 	"category": "embed",
 	"icon": "microphone",
-	"description": "A show.fm episodes with a server-rendered fallback.",
+	"description": "List a show’s episodes, newest first.",
+	"keywords": [ "podcast", "episodes", "list" ],
 	"textdomain": "showfm",
 	"attributes": {
+		"id": {
+			"type": "string"
+		},
 		"theme": {
 			"type": "string"
 		},
@@ -76,5 +80,6 @@
 		}
 	},
 	"editorScript": "showfm-block-editor",
-	"providesContext": {}
+	"providesContext": {},
+	"editorStyle": "showfm-block-editor"
 }
