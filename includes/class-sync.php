@@ -206,7 +206,11 @@ final class Sync {
 							continue;
 						}
 						$state['cursor'] = $row['seq'];
-						$detached        = in_array( $row['reason'] ?? null, array( 'access_removed', 'plan_or_policy' ), true );
+						$changed_at      = is_string( $row['changed_at'] ?? null ) ? strtotime( $row['changed_at'] ) : false;
+						if ( false !== $changed_at ) {
+							Ping_Endpoint::note_change( $changed_at );
+						}
+						$detached = in_array( $row['reason'] ?? null, array( 'access_removed', 'plan_or_policy' ), true );
 						if ( $id && ! $detached ) {
 							$state['reports'][ $row['episode_id'] ] = $id;
 						} else {

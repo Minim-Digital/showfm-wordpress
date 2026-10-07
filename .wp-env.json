@@ -5,7 +5,8 @@
 	"plugins": [],
 	"mappings": {
 		"wp-content/plugins/showfm": ".",
-		"wp-content/plugins/showfm-e2e-fixtures": "./tests/e2e/plugins/showfm-e2e-fixtures"
+		"wp-content/plugins/showfm-e2e-fixtures": "./tests/e2e/plugins/showfm-e2e-fixtures",
+		"wp-content/plugins/showfm-e2e-states": "./tests/e2e/plugin"
 	},
 	"config": {
 		"WP_DEBUG": true,

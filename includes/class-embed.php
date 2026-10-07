@@ -99,7 +99,7 @@ final class Embed {
 			}
 			// A standalone transcript links to the listen page; it never fetches VTT in PHP.
 			$html = 'transcript' === $type ? Fallback::episode_list( $episode, array() ) : Fallback::episode( $episode );
-			if ( $public && get_option( 'showfm_json_ld', true ) ) {
+			if ( $public && Embed_Settings::enabled( Embed_Settings::JSON_LD ) ) {
 				$json = '<script type="application/ld+json">' . Fallback::json_ld( $episode ) . '</script>';
 			}
 		}

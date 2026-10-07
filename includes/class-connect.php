@@ -39,6 +39,13 @@ final class Connect {
 	/** The settings page slug. The return address points here. */
 	const PAGE = 'showfm';
 
+	/**
+	 * Query argument added to the return address, holding a random token kept with the flow.
+	 * show.fm keeps it, and adds `code` and `state` only on approval, so a return with the
+	 * flow's own token alone means the admin cancelled or show.fm could not connect the site.
+	 */
+	const RETURN_ARG = 'showfm_return';
+
 	/** The show.fm app, where the admin approves the connection. */
 	const DEFAULT_APP_URL = 'https://my.show.fm';
 
@@ -64,8 +71,11 @@ final class Connect {
 	/** Per-user transient holding the outcome for the settings screen. */
 	const RESULT_PREFIX = 'showfm_connect_result_';
 
-	/** How long an outcome is kept for the settings screen. */
-	const RESULT_TTL = 3600;
+	/**
+	 * How long an outcome is kept for the settings screen. It survives reloads and other
+	 * tabs until the admin dismisses it, starts again or this time passes.
+	 */
+	const RESULT_TTL = 900;
 
 	/** Option holding when the last challenge stored expires (autoload off). */
 	const CHALLENGE_OPEN_OPTION = 'showfm_challenge_open_until';
@@ -129,6 +139,18 @@ final class Connect {
 
 	/** The API answered with something the plugin cannot use. */
 	const ERROR_BAD_RESPONSE = 'bad_response';
+
+	/** The admin came back from show.fm without approving the connection. */
+	const ERROR_CANCELLED = 'cancelled';
+
+	/** The site's address does not use https, which show.fm requires. */
+	const ERROR_INSECURE = 'https_required';
+
+	/** Another change to the connection held the lock for too long; nothing was changed. */
+	const ERROR_BUSY = 'busy';
+
+	/** A change outlived its lock part way through; it stopped before its next write. */
+	const ERROR_LOST = 'lock_lost';
 
 	/** The credentials could not be stored (for example, no libsodium). */
 	const ERROR_STORAGE = 'storage_failed';
@@ -215,25 +237,38 @@ final class Connect {
 	 * The settings page, where show.fm sends the admin back.
 	 */
 	public static function settings_url(): string {
-		return admin_url( 'admin.php?page=' . self::PAGE );
+		return admin_url( 'options-general.php?page=' . self::PAGE );
+	}
+
+	/**
+	 * Whether the site's address uses https. show.fm connects only https sites.
+	 */
+	public static function site_is_https(): bool {
+		return 'https' === wp_parse_url( home_url(), PHP_URL_SCHEME );
 	}
 
 	/**
 	 * Starts the browser flow for a user and returns the my.show.fm address to send them to.
 	 * Any flow the user had in progress is replaced. Makes no HTTP request.
 	 *
-	 * @param int $user_id The admin starting the flow.
+	 * @param int                                    $user_id  The admin starting the flow.
+	 * @param array{credentials:bool,id:string}|null $snapshot The state read at the start of the request; read once now when not given.
 	 */
-	public function start( int $user_id ): string {
+	public function start( int $user_id, ?array $snapshot = null ): string {
 		$this->forget_flow( $user_id );
 
-		$pkce = self::new_pkce();
+		$pkce  = self::new_pkce();
+		$token = self::base64url( random_bytes( 16 ) );
 		set_transient(
 			self::FLOW_PREFIX . $user_id,
 			array(
 				'state'     => $pkce['state'],
 				'verifier'  => $pkce['verifier'],
 				'challenge' => $pkce['challenge'],
+				'return'    => $token,
+				// The state this flow started from, read once: every outcome it records
+				// belongs to this state, never to one read later.
+				'snapshot'  => $snapshot ?? $this->connection->pinned()->snapshot(),
 			),
 			self::FLOW_TTL
 		);
@@ -245,7 +280,7 @@ final class Connect {
 			'rest_root'      => rest_url(),
 			'state'          => $pkce['state'],
 			'code_challenge' => $pkce['challenge'],
-			'return'         => self::settings_url(),
+			'return'         => add_query_arg( self::RETURN_ARG, $token, self::settings_url() ),
 		);
 		$partner = self::partner();
 		if ( null !== $partner ) {
@@ -298,23 +333,43 @@ final class Connect {
 	 * @param array<string,mixed> $query   The request's query arguments.
 	 */
 	public function handle_return( int $user_id, array $query ): ?string {
-		if ( ! isset( $query['code'] ) && ! isset( $query['state'] ) ) {
+		$clean = self::settings_url();
+		if ( ! isset( $query['code'] ) && ! isset( $query['state'] ) && ! isset( $query[ self::RETURN_ARG ] ) ) {
 			return null;
 		}
+		// Read once for this request; the flow's own outcomes use the state it started from.
+		$here = $this->connection->pinned();
+		$flow = get_transient( self::FLOW_PREFIX . $user_id );
+		$from = self::flow_snapshot( $flow ) ?? $here->snapshot();
+		if ( ! isset( $query['code'] ) && ! isset( $query['state'] ) ) {
+			// Back from show.fm without approval. Only the flow's own token, while the flow
+			// still waits for its code, counts as cancelled: a stale or crafted link changes
+			// nothing.
+			$token = is_string( $query[ self::RETURN_ARG ] ) ? $query[ self::RETURN_ARG ] : '';
+			if (
+				is_array( $flow )
+				&& is_string( $flow['state'] ?? null )
+				&& ! isset( $flow['code'] )
+				&& is_string( $flow['return'] ?? null )
+				&& hash_equals( $flow['return'], $token )
+			) {
+				$this->forget_flow( $user_id );
+				$this->fail( $user_id, self::ERROR_CANCELLED, 0, $from );
+			}
+			return $clean;
+		}
 
-		$clean = remove_query_arg( array( 'code', 'state' ), self::settings_url() );
 		$code  = is_string( $query['code'] ?? null ) ? $query['code'] : '';
 		$state = is_string( $query['state'] ?? null ) ? $query['state'] : '';
-		$flow  = get_transient( self::FLOW_PREFIX . $user_id );
 
 		// A stray or crafted link neither cancels the flow in progress nor replaces a notice
 		// the admin has not seen yet.
 		if ( ! is_array( $flow ) || ! is_string( $flow['state'] ?? null ) || ! is_string( $flow['verifier'] ?? null ) ) {
-			$this->fail_unless_noted( $user_id, self::ERROR_EXPIRED );
+			$this->fail_unless_noted( $user_id, self::ERROR_EXPIRED, $here );
 			return $clean;
 		}
 		if ( ! hash_equals( $flow['state'], $state ) ) {
-			$this->fail_unless_noted( $user_id, self::ERROR_STATE_MISMATCH );
+			$this->fail_unless_noted( $user_id, self::ERROR_STATE_MISMATCH, $here );
 			return $clean;
 		}
 
@@ -322,7 +377,7 @@ final class Connect {
 		self::forget_challenge( $flow['state'] );
 		if ( ! preg_match( self::CODE_PATTERN, $code ) ) {
 			delete_transient( self::FLOW_PREFIX . $user_id );
-			$this->fail( $user_id, self::ERROR_EXCHANGE_REFUSED );
+			$this->fail( $user_id, self::ERROR_EXCHANGE_REFUSED, 0, $from );
 			return $clean;
 		}
 
@@ -331,6 +386,7 @@ final class Connect {
 			array(
 				'verifier' => $flow['verifier'],
 				'code'     => $code,
+				'snapshot' => $from,
 			),
 			self::FLOW_TTL
 		);
@@ -350,6 +406,7 @@ final class Connect {
 		}
 		// Taken before the request, so a reload cannot send the code twice.
 		delete_transient( self::FLOW_PREFIX . $user_id );
+		$from = self::flow_snapshot( $flow ) ?? $this->connection->pinned()->snapshot();
 
 		$code     = $flow['code'];
 		$verifier = $flow['verifier'];
@@ -363,7 +420,7 @@ final class Connect {
 		);
 
 		if ( ! $result->is( Api_Result::SUCCESS ) ) {
-			$this->fail( $user_id, self::error_for( $result, self::ERROR_EXCHANGE_REFUSED ), $result->retry_after() );
+			$this->fail( $user_id, self::error_for( $result, self::ERROR_EXCHANGE_REFUSED ), $result->retry_after(), $from );
 			return true;
 		}
 
@@ -373,11 +430,11 @@ final class Connect {
 			|| ! is_string( $data['api_key'] ?? null )
 			|| ! preg_match( self::KEY_PATTERN, $data['api_key'] )
 		) {
-			$this->fail( $user_id, self::ERROR_BAD_RESPONSE );
+			$this->fail( $user_id, self::ERROR_BAD_RESPONSE, 0, $from );
 			return true;
 		}
 
-		$this->record( $user_id, $this->store( $data['api_key'], $data ) );
+		$this->record( $user_id, $this->store( $data['api_key'], $data ), $from );
 		return true;
 	}
 
@@ -445,12 +502,40 @@ final class Connect {
 		}
 
 		$result = $this->api_client->post_keyed( '/v1/me/sites/' . rawurlencode( $site_id ) . '/verify', $body );
-		if ( $result->is( Api_Result::SUCCESS ) ) {
-			delete_option( self::VERIFY_PENDING_OPTION );
-		} else {
-			update_option( self::VERIFY_PENDING_OPTION, 1, false );
-		}
+		self::settle_verify( $result );
 		return $result;
+	}
+
+	/**
+	 * Records a verify's outcome under the connection lock, for the state whose key it used
+	 * only: the plan pause, and whether the site still has to report in. A verify for a
+	 * connection that has since been replaced or disconnected changes nothing.
+	 *
+	 * @param Api_Result $result Verify result.
+	 */
+	private static function settle_verify( Api_Result $result ): void {
+		$id = $result->state_id();
+		if ( null === $id || '' === $id ) {
+			return;
+		}
+		try {
+			Connection::mutate(
+				static function ( Connection $fresh ) use ( $id, $result ): void {
+					if ( $fresh->snapshot()['id'] !== $id ) {
+						return;
+					}
+					Connection::note_report( $result );
+					if ( $result->is( Api_Result::SUCCESS ) ) {
+						Connection::remove( self::VERIFY_PENDING_OPTION );
+					} else {
+						Connection::write( self::VERIFY_PENDING_OPTION, 1 );
+					}
+				}
+			);
+		} catch ( Connection_Busy $busy ) {
+			// The marker stays as it was; the next sync or health run verifies again.
+			return;
+		}
 	}
 
 	/**
@@ -463,21 +548,50 @@ final class Connect {
 	/**
 	 * Removes the local connection: credentials, scheduled events and connection state.
 	 * The key stays live at show.fm until it is revoked there.
+	 *
+	 * The swap and the whole teardown run in one change under the connection lock, on the
+	 * state read fresh inside it: only the state the caller read is disconnected, and a
+	 * reconnect by another request can only come before (then nothing changes) or after (then
+	 * its jobs, marker and account details are its own).
+	 *
+	 * @param Connection|null $pinned  The caller's pinned connection; read once now when not given.
+	 * @param int             $user_id The admin whose connect outcome is cleared too, or 0.
+	 * @return bool Whether that state was disconnected; false when it moved on.
+	 * @throws Connection_Busy When another change holds the lock for longer than the wait.
 	 */
-	public function disconnect(): void {
-		$this->connection->disconnect();
-		Plugin::unschedule_events();
-		delete_option( self::VERIFY_PENDING_OPTION );
-		delete_option( Api_Client::RATE_LIMIT_OPTION );
-		delete_option( Ping_Endpoint::LAST_PING_OPTION );
-		Ping_Endpoint::forget_nonces();
+	public function disconnect( ?Connection $pinned = null, int $user_id = 0 ): bool {
+		$expected = ( $pinned ?? $this->connection->pinned() )->snapshot()['id'];
+		return (bool) Connection::mutate(
+			static function ( Connection $fresh ) use ( $expected, $user_id ): bool {
+				if ( $fresh->snapshot()['id'] !== $expected || ! $fresh->disconnect() ) {
+					return false;
+				}
+				// Short steps, each after a lease check: a change that outlived its lease stops
+				// before touching whatever a later change has set up.
+				Connection::guarded( array( Plugin::class, 'unschedule_events' ) );
+				Connection::remove( self::VERIFY_PENDING_OPTION );
+				Connection::remove( Api_Client::RATE_LIMIT_OPTION );
+				Connection::remove( Ping_Endpoint::LAST_PING_OPTION );
+				Connection::remove( Ping_Endpoint::MISSED_OPTION );
+				Connection::remove( Account::OPTION );
+				Connection::guarded( array( Ping_Endpoint::class, 'forget_nonces' ) );
+				if ( $user_id > 0 ) {
+					Connection::guarded(
+						static function () use ( $user_id ): void {
+							self::clear_result( $user_id );
+						}
+					);
+				}
+				return true;
+			}
+		);
 	}
 
 	/**
 	 * The last outcome for the settings screen, or null.
 	 *
 	 * @param int $user_id The admin.
-	 * @return array{status:string,error:string,retry_after:int,reason:string}|null
+	 * @return array{status:string,error:string,retry_after:int,reason:string,state_id:string|null}|null
 	 */
 	public static function result( int $user_id ): ?array {
 		$result = get_transient( self::RESULT_PREFIX . $user_id );
@@ -489,6 +603,7 @@ final class Connect {
 			'error'       => is_string( $result['error'] ?? null ) ? $result['error'] : '',
 			'retry_after' => (int) ( $result['retry_after'] ?? 0 ),
 			'reason'      => is_string( $result['reason'] ?? null ) ? $result['reason'] : '',
+			'state_id'    => is_string( $result['state_id'] ?? null ) ? $result['state_id'] : null,
 		);
 	}
 
@@ -531,6 +646,14 @@ final class Connect {
 				return __( 'show.fm could not be reached. Try again in a few minutes.', 'showfm' );
 			case self::ERROR_BAD_RESPONSE:
 				return __( 'show.fm sent an answer this plugin does not understand. Update the plugin, then try again.', 'showfm' );
+			case self::ERROR_CANCELLED:
+				return __( 'The connection was cancelled.', 'showfm' );
+			case self::ERROR_INSECURE:
+				return __( 'This site’s address must use https.', 'showfm' );
+			case self::ERROR_LOST:
+				return __( 'The change took too long and another change took over part way through. Reload to see the connection as it is now.', 'showfm' );
+			case self::ERROR_BUSY:
+				return __( 'Another change to this site’s show.fm connection was in progress. Try again in a moment.', 'showfm' );
 			case self::ERROR_STORAGE:
 				return __( 'The connection could not be saved. Your server needs the PHP sodium extension, or WordPress 6.6 or later. Then try again.', 'showfm' );
 			case self::ERROR_VERIFY:
@@ -559,13 +682,29 @@ final class Connect {
 			return self::outcome( self::ERROR_BAD_RESPONSE );
 		}
 
-		if ( ! $this->connection->save( $key, $ping_secret, $site_id, $expires_at ) ) {
+		// The credentials, the verify marker and the scheduled jobs change together, under
+		// the connection lock, so a disconnect can never tear down half of a new connection.
+		try {
+			$saved = Connection::mutate(
+				function () use ( $key, $ping_secret, $site_id, $expires_at ): bool {
+					if ( ! $this->connection->save( $key, $ping_secret, $site_id, $expires_at ) ) {
+						return false;
+					}
+					Connection::remove( Api_Client::RATE_LIMIT_OPTION );
+					Connection::write( self::VERIFY_PENDING_OPTION, 1 );
+					Connection::guarded( array( Health::class, 'schedule' ) );
+					Connection::guarded( array( Sync::class, 'schedule' ) );
+					return true;
+				}
+			);
+		} catch ( Connection_Lost $lost ) {
+			return self::outcome( self::ERROR_LOST );
+		} catch ( Connection_Busy $busy ) {
+			return self::outcome( self::ERROR_BUSY );
+		}
+		if ( ! $saved ) {
 			return self::outcome( self::ERROR_STORAGE );
 		}
-		delete_option( Api_Client::RATE_LIMIT_OPTION );
-		update_option( self::VERIFY_PENDING_OPTION, 1, false );
-		Health::schedule();
-		Sync::schedule();
 
 		$verified = $this->verify();
 		if ( ! $verified->is( Api_Result::SUCCESS ) ) {
@@ -573,6 +712,7 @@ final class Connect {
 			$outcome['status'] = self::STATUS_CONNECTED;
 			return $outcome;
 		}
+		( new Account( $this->connection, $this->api_client ) )->refresh();
 		return array(
 			'status'      => self::STATUS_CONNECTED,
 			'error'       => '',
@@ -649,34 +789,82 @@ final class Connect {
 	/**
 	 * Records an error for the settings screen.
 	 *
-	 * @param int    $user_id     The admin.
-	 * @param string $error       Error type.
-	 * @param int    $retry_after Seconds to wait, for a rate limit.
+	 * @param int                                    $user_id     The admin.
+	 * @param string                                 $error       Error type.
+	 * @param int                                    $retry_after Seconds to wait, for a rate limit.
+	 * @param array{credentials:bool,id:string}|null $snapshot    The state the attempt started from; read once now when not given.
 	 */
-	private function fail( int $user_id, string $error, int $retry_after = 0 ): void {
-		$this->record( $user_id, self::outcome( $error, $retry_after ) );
+	public function fail( int $user_id, string $error, int $retry_after = 0, ?array $snapshot = null ): void {
+		$this->record( $user_id, self::outcome( $error, $retry_after ), $snapshot ?? $this->connection->pinned()->snapshot() );
 	}
 
 	/**
-	 * Records a failure only when no outcome is waiting to be shown.
+	 * The snapshot a flow carries, if it is well formed.
 	 *
-	 * @param int    $user_id The admin.
-	 * @param string $error   Error type.
+	 * @param mixed $flow Flow transient.
+	 * @return array{credentials:bool,id:string}|null
 	 */
-	private function fail_unless_noted( int $user_id, string $error ): void {
-		if ( null === self::result( $user_id ) ) {
-			$this->fail( $user_id, $error );
+	private static function flow_snapshot( $flow ): ?array {
+		$snapshot = is_array( $flow ) ? ( $flow['snapshot'] ?? null ) : null;
+		if ( ! is_array( $snapshot ) || ! is_bool( $snapshot['credentials'] ?? null ) || ! is_string( $snapshot['id'] ?? null ) ) {
+			return null;
+		}
+		return array(
+			'credentials' => $snapshot['credentials'],
+			'id'          => $snapshot['id'],
+		);
+	}
+
+	/**
+	 * Records a failure only when no outcome is waiting to be shown. An outcome the screen
+	 * would hide (another connection, or a "Connected" whose key no longer works) is not
+	 * waiting, so it never keeps a new failure from being seen.
+	 *
+	 * @param int        $user_id The admin.
+	 * @param string     $error   Error type.
+	 * @param Connection $here    This request's pinned connection, read once.
+	 */
+	private function fail_unless_noted( int $user_id, string $error, Connection $here ): void {
+		$snapshot = $here->snapshot();
+		$result   = self::result( $user_id );
+		$waiting  = null !== $result
+			&& $snapshot['id'] === $result['state_id']
+			&& ( self::STATUS_CONNECTED !== $result['status'] || $here->is_connected() );
+		if ( ! $waiting ) {
+			$this->fail( $user_id, $error, 0, $snapshot );
 		}
 	}
 
 	/**
 	 * Records an outcome for the settings screen.
 	 *
-	 * @param int                                                             $user_id The admin.
-	 * @param array{status:string,error:string,retry_after:int,reason:string} $outcome Outcome.
+	 * @param int                                                             $user_id  The admin.
+	 * @param array{status:string,error:string,retry_after:int,reason:string} $outcome  Outcome.
+	 * @param array{credentials:bool,id:string}                               $snapshot The state the attempt started from.
 	 */
-	private function record( int $user_id, array $outcome ): void {
-		set_transient( self::RESULT_PREFIX . $user_id, $outcome, self::RESULT_TTL );
+	private function record( int $user_id, array $outcome, array $snapshot ): void {
+		// The state the outcome belongs to: the id this connect wrote with its credentials,
+		// or for a failure the state it leaves (see Connection::failure_state_id()). Decided
+		// and written under the connection lock, so no change to the connection can land
+		// between them. The settings screen shows the outcome only while that id is still the
+		// stored one. A "Connected" with no save of its own in this request gets null, which
+		// matches nothing.
+		$saved = $this->connection->saved_state_id();
+		try {
+			Connection::mutate(
+				static function () use ( $user_id, $outcome, $snapshot, $saved ): void {
+					$outcome['state_id'] = self::STATUS_CONNECTED === $outcome['status'] ? $saved : Connection::failure_state_id( $snapshot );
+					Connection::guarded(
+						static function () use ( $user_id, $outcome ): bool {
+							return set_transient( self::RESULT_PREFIX . $user_id, $outcome, self::RESULT_TTL );
+						}
+					);
+				}
+			);
+		} catch ( Connection_Busy $busy ) {
+			// Nothing is recorded: an outcome with no state would match nothing anyway.
+			return;
+		}
 	}
 
 	/**

@@ -202,13 +202,27 @@ final class Cli {
 	 * @param array<string,string> $assoc_args Named arguments.
 	 */
 	public function disconnect( array $args, array $assoc_args ): void {
-		if ( Connection::STATE_DISCONNECTED === $this->connection->state() ) {
+		// One read: the state confirmed here is the only state this command may disconnect.
+		$pinned = $this->connection->pinned();
+		if ( Connection::STATE_DISCONNECTED === $pinned->state() ) {
 			\WP_CLI::success( __( 'This site is not connected to show.fm.', 'showfm' ) );
 			return;
 		}
 		\WP_CLI::confirm( __( 'Disconnect this site from show.fm? Posts already created stay.', 'showfm' ), $assoc_args );
 
-		$this->connect->disconnect();
+		try {
+			$done = $this->connect->disconnect( $pinned );
+		} catch ( Connection_Lost $lost ) {
+			\WP_CLI::error( Connect::message( Connect::ERROR_LOST ) );
+			return;
+		} catch ( Connection_Busy $busy ) {
+			\WP_CLI::error( Connect::message( Connect::ERROR_BUSY ) );
+			return;
+		}
+		if ( ! $done ) {
+			\WP_CLI::error( __( 'The connection changed while this command ran, so nothing was disconnected. Check it with wp showfm status, then run the command again.', 'showfm' ) );
+			return;
+		}
 		\WP_CLI::success( __( 'Disconnected. Revoke the key in show.fm under Connected sites if you no longer need it.', 'showfm' ) );
 	}
 

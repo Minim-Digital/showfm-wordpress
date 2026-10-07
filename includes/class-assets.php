@@ -28,7 +28,7 @@ final class Assets {
 	public static function enqueue(): void {
 		self::register();
 		wp_enqueue_script( self::HANDLE );
-		if ( ! wp_style_is( self::HANDLE, 'enqueued' ) && ! wp_style_is( self::HANDLE, 'done' ) ) {
+		if ( Embed_Settings::enabled( Embed_Settings::THEME_STYLES ) && ! wp_style_is( self::HANDLE, 'enqueued' ) && ! wp_style_is( self::HANDLE, 'done' ) ) {
 			wp_add_inline_style( self::HANDLE, Theme::global_css() );
 		}
 		wp_enqueue_style( self::HANDLE );

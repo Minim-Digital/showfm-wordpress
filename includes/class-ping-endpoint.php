@@ -45,6 +45,12 @@ final class Ping_Endpoint {
 	/** Option holding the time of the last accepted ping (autoload off). */
 	const LAST_PING_OPTION = 'showfm_last_ping_at';
 
+	/** Option set when a change arrived by the 15-minute check because no ping came (autoload off). */
+	const MISSED_OPTION = 'showfm_ping_missed_at';
+
+	/** How long show.fm keeps retrying a ping for a change, with margin, in seconds. */
+	const PING_GRACE = 600;
+
 	/** Signature scheme prefix. */
 	const SCHEME = 'v1';
 
@@ -183,6 +189,7 @@ final class Ping_Endpoint {
 			wp_schedule_single_event( time(), self::PULL_HOOK );
 		}
 		update_option( self::LAST_PING_OPTION, time(), false );
+		delete_option( self::MISSED_OPTION );
 
 		// Without this the pull waits for the next page view (before WordPress 6.9).
 		spawn_cron();
@@ -190,6 +197,34 @@ final class Ping_Endpoint {
 		$response = new \WP_REST_Response( null, 202 );
 		$response->header( 'Cache-Control', 'no-store' );
 		return $response;
+	}
+
+	/**
+	 * Called by the sync with the newest change it applied. show.fm pings the site for each
+	 * change and retries for a few minutes. A change made after the site connected, older
+	 * than that, with no ping since, means show.fm cannot reach the site, so new posts wait
+	 * for the 15-minute check. The next accepted ping clears this.
+	 *
+	 * @param int $changed_at When the change was made at show.fm, as a Unix timestamp.
+	 */
+	public static function note_change( int $changed_at ): void {
+		if (
+			$changed_at <= Connection::connected_at()
+			|| time() - $changed_at < self::PING_GRACE
+			|| (int) get_option( self::LAST_PING_OPTION, 0 ) >= $changed_at
+		) {
+			return;
+		}
+		if ( 0 === self::missed_at() ) {
+			update_option( self::MISSED_OPTION, time(), false );
+		}
+	}
+
+	/**
+	 * When a missed ping was first noticed, or 0.
+	 */
+	public static function missed_at(): int {
+		return (int) get_option( self::MISSED_OPTION, 0 );
 	}
 
 	/**

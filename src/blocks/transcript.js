@@ -44,8 +44,12 @@ export function followLabel( block, index ) {
 	if ( title ) {
 		return title.length > 32 ? `${ title.slice( 0, 30 ) }…` : title;
 	}
-	/* translators: 1: block kind, such as Player. 2: its number on the page. */
-	return sprintf( __( '%1$s %2$d', 'showfm' ), kind, index + 1 );
+	return sprintf(
+		/* translators: 1: block kind, such as Player. 2: its number on the page. */
+		__( '%1$s %2$d', 'showfm' ),
+		kind,
+		index + 1
+	);
 }
 
 /**

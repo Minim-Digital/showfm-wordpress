@@ -1,0 +1,499 @@
+// Settings > show.fm. wp-admin and @wordpress/components defaults, with the page header,
+// tabs and cards laid out as in the design (1280px and 390px).
+
+$showfm-text: #1e1e1e;
+$showfm-muted: #757575;
+$showfm-border: rgba( 0, 0, 0, 0.1 );
+$showfm-row-border: #f0f0f0;
+$showfm-small: 600px;
+
+.settings_page_showfm {
+	#wpcontent {
+		padding-left: 0;
+	}
+
+	#wpbody-content {
+		padding-bottom: 48px;
+	}
+}
+
+.showfm-settings {
+	color: $showfm-text;
+	font-size: 13px;
+	line-height: 1.4;
+
+	h1,
+	h2,
+	h3,
+	p {
+		color: $showfm-text;
+	}
+}
+
+.showfm-settings__header {
+	background: #fff;
+	padding: 0 20px;
+
+	h1 {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin: 0;
+		padding: 18px 0 8px;
+		font-size: 23px;
+		font-weight: 400;
+		line-height: 1.3;
+		color: #1d2327;
+	}
+}
+
+.showfm-logo {
+	display: block;
+	flex: none;
+}
+
+.showfm-settings__tabs .components-tab-panel__tabs {
+	display: flex;
+	gap: 4px;
+	padding: 0 20px;
+	background: #fff;
+	border-bottom: 1px solid #dcdcde;
+
+	.components-tab-panel__tabs-item {
+		height: 48px;
+		padding: 3px 16px;
+		font-size: 13px;
+		color: #50575e;
+		white-space: nowrap;
+
+		&.is-active {
+			font-weight: 600;
+			color: $showfm-text;
+			box-shadow: inset 0 -3px 0 0 var( --wp-admin-theme-color, #2271b1 );
+		}
+
+		&::after {
+			display: none;
+		}
+	}
+}
+
+.showfm-settings__content {
+	box-sizing: border-box;
+	max-width: 780px;
+	padding: 24px 20px 0;
+}
+
+.showfm-tab {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.showfm-settings .components-notice.showfm-notice {
+	margin: 0 0 16px;
+	font-size: 13px;
+	line-height: 1.5;
+
+	p {
+		margin: 2px 0;
+		text-wrap: pretty;
+	}
+
+	strong {
+		font-weight: 600;
+	}
+}
+
+.showfm-settings .showfm-tab > .components-notice.showfm-notice {
+	margin: 0;
+}
+
+.showfm-card {
+	h2 {
+		margin: 0;
+		font-size: 15px;
+		font-weight: 600;
+		line-height: 1.4;
+	}
+
+	.components-card__header,
+	.components-card__footer {
+		padding: 16px 24px;
+	}
+}
+
+.showfm-card__header {
+	justify-content: space-between;
+
+	&.is-stacked {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 2px;
+	}
+}
+
+.showfm-card__footer {
+	gap: 8px;
+}
+
+.showfm-help {
+	margin: 0;
+	font-size: 12px;
+	color: $showfm-muted;
+}
+
+.showfm-muted {
+	font-size: 12px;
+	color: $showfm-muted;
+}
+
+.showfm-error {
+	color: #cc1818;
+}
+
+// Not connected.
+
+.showfm-connect.components-card__body {
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+	padding: 20px 24px;
+}
+
+.showfm-connect__intro {
+	max-width: 600px;
+	margin: 0;
+	line-height: 1.6;
+}
+
+.showfm-connect__lists {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 24px;
+
+	h3 {
+		margin: 0 0 10px;
+		font-size: 11px;
+		font-weight: 500;
+		line-height: 1.4;
+		text-transform: uppercase;
+	}
+
+	ul {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		margin: 0;
+	}
+
+	li {
+		display: flex;
+		gap: 8px;
+		margin: 0;
+		line-height: 1.5;
+	}
+}
+
+.showfm-tick {
+	flex: none;
+	fill: #00a32a;
+
+	&.is-muted {
+		fill: $showfm-muted;
+	}
+}
+
+.showfm-connect__form,
+.showfm-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 16px;
+}
+
+.showfm-actions {
+	gap: 8px;
+}
+
+// Connected.
+
+.showfm-status {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	font-size: 13px;
+}
+
+.showfm-status__dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: #00a32a;
+
+	&.is-warning {
+		background: #dba617;
+	}
+
+	&.is-error {
+		background: #d63638;
+	}
+
+	&.is-info {
+		background: #72aee6;
+	}
+}
+
+.showfm-details.components-card__body {
+	padding: 4px 24px;
+
+	dl {
+		margin: 0;
+	}
+}
+
+.showfm-row {
+	display: grid;
+	grid-template-columns: 180px 1fr;
+	gap: 16px;
+	padding: 14px 0;
+	border-bottom: 1px solid $showfm-row-border;
+
+	&:last-child {
+		border-bottom: 0;
+	}
+
+	dt {
+		font-weight: 600;
+	}
+
+	dd {
+		min-width: 0;
+		margin: 0;
+	}
+
+	code {
+		padding: 2px 6px;
+		font-family: Menlo, Consolas, monaco, monospace;
+		font-size: 12px;
+		background: #f0f0f1;
+		overflow-wrap: anywhere;
+	}
+}
+
+.showfm-stack {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.showfm-masked {
+	font-family: Menlo, Consolas, monaco, monospace;
+}
+
+.showfm-shows {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	margin: 0;
+}
+
+.showfm-show {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin: 0;
+}
+
+.showfm-show__art {
+	display: flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	width: 36px;
+	height: 36px;
+	border-radius: 2px;
+	object-fit: cover;
+	font-weight: 600;
+	color: #fff;
+	background: #50575e;
+}
+
+.showfm-show__text {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	min-width: 0;
+}
+
+.showfm-show__name {
+	font-weight: 600;
+}
+
+.showfm-show__paused {
+	font-size: 12px;
+	color: #996800;
+}
+
+// Display.
+
+.showfm-toggles.components-card__body {
+	display: flex;
+	flex-direction: column;
+	gap: 22px;
+	padding: 20px 24px;
+
+	.components-toggle-control .components-base-control__help {
+		max-width: 560px;
+		margin-top: 8px;
+		font-size: 12px;
+		line-height: 1.5;
+		color: $showfm-muted;
+	}
+}
+
+// Disconnect dialog.
+
+.showfm-modal {
+	.showfm-modal__body {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		font-size: 13px;
+		line-height: 1.6;
+
+		p {
+			margin: 0;
+		}
+	}
+
+	.showfm-modal__actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 8px;
+		margin-top: 24px;
+	}
+}
+
+// Phones: tabs share the width, rows stack label over value, buttons fill the width.
+
+@media ( max-width: $showfm-small ) {
+	.showfm-settings {
+		font-size: 14px;
+		line-height: 1.5;
+	}
+
+	.showfm-settings__header {
+		padding: 0 12px;
+
+		h1 {
+			padding: 14px 0 4px;
+		}
+	}
+
+	.showfm-settings__tabs .components-tab-panel__tabs {
+		gap: 0;
+		padding: 0 12px;
+
+		.components-tab-panel__tabs-item {
+			flex: 1 1 0;
+			justify-content: center;
+			padding: 3px 4px;
+		}
+	}
+
+	.showfm-settings__content {
+		padding: 16px 12px 0;
+	}
+
+	.showfm-tab {
+		gap: 14px;
+	}
+
+	.showfm-card {
+		h2 {
+			font-size: 16px;
+		}
+
+		.components-card__header {
+			padding: 14px 16px;
+		}
+
+		.components-card__footer {
+			padding: 16px;
+		}
+	}
+
+	.showfm-connect.components-card__body,
+	.showfm-toggles.components-card__body {
+		gap: 14px;
+		padding: 16px;
+	}
+
+	.showfm-details.components-card__body {
+		padding: 0 16px;
+	}
+
+	.showfm-connect__lists {
+		grid-template-columns: 1fr;
+		gap: 14px;
+	}
+
+	.showfm-row {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+		padding: 12px 0;
+
+		dt {
+			font-size: 13px;
+		}
+	}
+
+	.showfm-muted,
+	.showfm-help {
+		font-size: 13px;
+	}
+
+	.showfm-connect__form {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 8px;
+		width: 100%;
+	}
+
+	.showfm-actions {
+		flex-wrap: nowrap;
+		width: 100%;
+	}
+
+	.showfm-connect__form .components-button,
+	.showfm-actions .components-button,
+	.showfm-card__footer > .components-button {
+		flex: 1;
+		justify-content: center;
+		height: 44px;
+		font-size: 14px;
+	}
+
+	.showfm-card__footer > .components-button {
+		width: 100%;
+	}
+
+	.showfm-modal {
+		.showfm-modal__body {
+			font-size: 14px;
+		}
+
+		.showfm-modal__actions {
+			flex-direction: column-reverse;
+			gap: 8px;
+
+			.components-button {
+				justify-content: center;
+				height: 44px;
+				font-size: 14px;
+			}
+		}
+	}
+}

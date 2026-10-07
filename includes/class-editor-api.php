@@ -130,7 +130,7 @@ final class Editor_Api {
 			'privateData' => Connection::STATE_CONNECTED === $state && current_user_can( 'publish_posts' ),
 			'reconnect'   => Connection::STATE_RECONNECT_NEEDED === $state,
 			'canConnect'  => current_user_can( Admin::CAPABILITY ),
-			'connectUrl'  => admin_url( 'admin.php?page=' . Connect::PAGE ),
+			'connectUrl'  => Connect::settings_url(),
 			'appUrl'      => Connect::app_url(),
 			'api'         => Api_Client::base_url(),
 		);

@@ -44,15 +44,25 @@ export function formatDuration( seconds ) {
 	const hours = Math.floor( minutes / 60 );
 	const rest = minutes % 60;
 	if ( ! hours ) {
-		/* translators: %d: minutes. */
-		return sprintf( __( '%d min', 'showfm' ), minutes );
+		return sprintf(
+			/* translators: %d: minutes. */
+			__( '%d min', 'showfm' ),
+			minutes
+		);
 	}
 	if ( ! rest ) {
-		/* translators: %d: hours. */
-		return sprintf( __( '%d hr', 'showfm' ), hours );
+		return sprintf(
+			/* translators: %d: hours. */
+			__( '%d hr', 'showfm' ),
+			hours
+		);
 	}
-	/* translators: 1: hours. 2: minutes. */
-	return sprintf( __( '%1$d hr %2$d min', 'showfm' ), hours, rest );
+	return sprintf(
+		/* translators: 1: hours. 2: minutes. */
+		__( '%1$d hr %2$d min', 'showfm' ),
+		hours,
+		rest
+	);
 }
 
 /**

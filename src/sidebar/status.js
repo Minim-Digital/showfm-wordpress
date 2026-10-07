@@ -16,8 +16,11 @@ export function updatedWhen( iso, now = new Date() ) {
 	const formats = getDateSettings().formats || {};
 	const time = dateI18n( formats.time || 'H:i', iso );
 	if ( dateI18n( 'Y-m-d', iso ) === dateI18n( 'Y-m-d', now ) ) {
-		/* translators: %s: time, such as 09:00. */
-		return sprintf( __( 'today at %s', 'showfm' ), time );
+		return sprintf(
+			/* translators: %s: time, such as 09:00. */
+			__( 'today at %s', 'showfm' ),
+			time
+		);
 	}
 	return sprintf(
 		/* translators: 1: date. 2: time. */

@@ -17,7 +17,7 @@ show.fm hosts podcasts. This plugin brings a show.fm show into WordPress:
 * A podcast player, episode lists, a play button and transcripts, as blocks and a shortcode.
 * Publish to WordPress: connect the site to show.fm and each new episode becomes a post.
 
-This version is an early development release. Four blocks (Player, Episode list, Play button and Transcript) and the [showfm] shortcode are available, and the site can connect to show.fm from the show.fm menu or with WP-CLI. In the block editor you add a show by its address, or pick one of your shows once the site is connected, then choose an episode or "Latest episode", and the block previews the real player. Posts created by show.fm have a "show.fm" panel in the post sidebar. The designed connection screen follows in separate work.
+This version is an early development release. Four blocks (Player, Episode list, Play button and Transcript) and the [showfm] shortcode are available. Settings > show.fm connects the site to show.fm (or use WP-CLI), shows the state of the connection, and holds the site-wide display settings. In the block editor you add a show by its address, or pick one of your shows once the site is connected, then choose an episode or "Latest episode", and the block previews the real player. Posts created by show.fm have a "show.fm" panel in the post sidebar.
 
 The plugin works for any public show.fm show without an account. Publish to WordPress needs a show.fm account and a connected site.
 
@@ -33,6 +33,8 @@ This plugin relies on show.fm, a podcast hosting service run by show.fm Ltd. It 
 * When: when WP-Cron refreshes a missing or stale cache entry (fresh for 15 minutes, with retries after errors). Page rendering reads only cached public data and schedules a background refresh; it makes no inline HTTP request. The enhanced player also requests public episode data directly from the visitor's browser when it loads, or after a click with load="click".
 * In the block editor: when someone who can edit posts enters a show's address or opens a show.fm block, the site looks the show and its episodes up (cached for five minutes), and the block's preview loads the player in the editor's browser like it does for visitors. Sent: the show or episode identifier, and your site's address in the User-Agent header.
 * What is sent: the show or episode identifier, and your site's address in the request's User-Agent header. Your server's IP address is visible to show.fm, as with any web request. Background requests send no visitor data. Browser requests expose the visitor's IP address and browser details to the service. WordPress may also request /v1/oembed to resolve a pasted listen-page URL, then caches the returned iframe in post meta.
+* With "Load players only after a visitor clicks" turned on (Settings > show.fm > Display), the visitor's browser requests nothing from show.fm until the visitor presses play.
+* While the site is connected, the settings screen shows each connected show's artwork from the same cached public show details (/v1/podcasts/{id}), refreshed in the background. Opening the screen makes no request itself.
 
 **show.fm API for connected sites (api.show.fm)**
 
@@ -40,7 +42,8 @@ This plugin relies on show.fm, a podcast hosting service run by show.fm Ltd. It 
 * Connecting (code exchange): once, when the administrator returns from my.show.fm after approving the connection. Sent: the one-time code from my.show.fm and the matching verifier this site created, in the body of a request to api.show.fm/v1/sites/exchange. show.fm answers with the site key and ping secret, which the plugin stores encrypted.
 * Connecting with WP-CLI: once, when someone runs `wp showfm connect`. Sent: the site key, your site's address and REST API address, and a one-time state and challenge, to api.show.fm/v1/me/sites.
 * Reporting in (verify): right after connecting. If that fails, it is retried before the next sync or health report. Sent: the site key, the plugin, WordPress and PHP versions, and the site's name.
-* Health report: once a day while connected. Sent: the site key, the plugin, WordPress and PHP versions, the time of the last sync and the number of sync errors.
+* Health report: once a day while connected. Sent: the site key, the plugin, WordPress and PHP versions, the time of the last sync and the number of sync errors. If show.fm answers that the shows' plan does not include connected sites, the settings screen says auto-posting is paused.
+* Account details: right after connecting, and after each daily health report. Sent: the site key, to api.show.fm/v1/me and /v1/me/podcasts. show.fm answers with the account holder's name and the ID, title and address of each show the site key can read. The plugin keeps these to show on the settings screen and deletes them on disconnect and uninstall.
 * Sync: a check every 15 minutes (with a staggered start), signed wake-up requests and explicit WP-CLI sync commands pull episode changes in the background. Sent: the site key, the last applied sequence number and page size. Post reports send the episode identifier, post ID, HTTPS post address, publication state and source content hash. Transient report failures are queued and retried; terminal refusals, missing posts and invalid addresses are dropped with a local reason code; no WordPress post text or visitor data is uploaded. A dry run previews one page at the applied cursor (or zero with --from-start), recording contact with show.fm but never acknowledging unapplied changes. It leaves local posts and the saved cursor unchanged.
 * Block editor: while connected, when someone who can publish posts adds a show.fm block, the site lists the account's shows and their episodes, including scheduled ones, so they can be chosen before they go live. Sent: the site key in the authentication header, and show and episode IDs. Answers are cached for five minutes and only ever reach the browser as titles, dates and links, never the key. Contributors see public shows and episodes only.
 * Embed migration: when an administrator explicitly runs a migration scan, the plugin lists the connected key's accessible shows and published episodes, including import matching fingerprints. No per-episode detail requests are made. Sent: the site key in the authentication header, pagination cursors, show and episode IDs, and the site address in the User-Agent. Post content and third-party embed URLs stay on the WordPress site.
@@ -69,6 +72,7 @@ show.fm [Terms of Service](https://show.fm/terms) and [Privacy Policy](https://s
 
 1. Install and activate the plugin from the Plugins screen.
 2. Add a show.fm block to a post or page.
+3. To post new episodes automatically, go to Settings > show.fm and choose Connect to show.fm.
 
 == Frequently Asked Questions ==
 
@@ -83,6 +87,18 @@ Add a show.fm Player, Episode list, Play button or Transcript block. Type the sh
 = Who can see scheduled episodes in the editor? =
 
 On a connected site, only people who can publish posts (Authors, Editors and Administrators) see the account's shows and its scheduled episodes. Contributors can add public shows and episodes by address, and a block with a scheduled episode tells them it isn't public yet. A scheduled episode's title is never saved in the post, and visitors see nothing until the episode is public.
+
+= Where are the settings? =
+
+Settings > show.fm. The Connection tab connects the site and shows the account, the connected shows, when the key expires and when the site last checked for changes. The Display tab has four site-wide switches: the "Powered by show.fm" credit (off by default), loading players only after a visitor clicks (off), episode structured data for search engines (on) and using your theme's colours and fonts (on).
+
+= What do the admin notices mean? =
+
+The plugin shows at most one notice, only on the Dashboard, Plugins and show.fm screens, and only to administrators. It warns 30 and 7 days before the site key expires, when show.fm stops accepting the key (for example after the account password changes), when the shows' plan pauses auto-posting, and when a publishing setting stops new episodes being posted. Each notice has one button that fixes the problem. Dismissing a notice hides it for you until the next stage.
+
+= Does disconnecting cancel the site key? =
+
+No. Disconnect in Settings > show.fm (or `wp showfm disconnect`) removes the key from this site and stops posting, but the key stays valid at show.fm until you disconnect the site there too, on a show's Connected sites page in show.fm. The settings screen links to it.
 
 = Can I connect from the command line? =
 
@@ -119,3 +135,10 @@ The plugin keeps up to 50 local sync diagnostics containing its own reason codes
 * Fixed lifecycle-only sync updates, terminal report handling, bounded artwork retries and limits, poison-row recovery, dry-run cursor safety, user deletion protection, fallback locking and local diagnostics.
 * Fixed feed cursor boundary validation, completed artwork queue cleanup, recoverable apply errors with a five-attempt budget, local deletion reports and a 16 MP artwork limit.
 * Fixed configuration retries so episodes are never skipped for a setting problem, added local Site Health diagnostics, and re-attached restored posts with edit protection and a durable restored-state report.
+* Added Settings > show.fm with Connection and Display tabs. The Connection tab shows every connection state (connected, expiring, expired, disconnected by show.fm, paused by the plan, using scheduled checks, unreadable after the salts changed) and the outcome of connecting, with Reconnect and Disconnect. The old show.fm menu address redirects to it.
+* Added the Display settings "Load players only after a visitor clicks" and "Use my theme's colours and fonts", next to the existing credit and structured data settings.
+* Added admin notices for key expiry at 30 and 7 days, a refused key, a plan pause and a sync configuration problem: at most one at a time, dismissible per user.
+* Connecting now stops early when the site's address does not use https, and a return from show.fm without approval says the connection was cancelled.
+* Added the account name and connected shows to the settings screen, fetched after connecting and with the daily health report, and updated the suggested privacy policy text.
+* Disconnect now says plainly that the site key stays valid at show.fm until the site is disconnected there, and links to Connected sites. Focus moves to the Connect card afterwards and the change is announced.
+* The outcome of connecting stays on the settings screen across reloads and tabs until it is dismissed or 15 minutes pass, and only while it still matches the connection: Disconnect clears it, and an expired, refused or replaced connection hides it. Reconnect in an admin notice now submits a form instead of following a link.
