@@ -476,6 +476,35 @@ class Test_Cli extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'nothing left to revoke', end( WP_CLI::$output )[1] );
 	}
 
+	public function test_disconnect_never_calls_a_key_from_another_environment_already_revoked(): void {
+		// A production key, with a test environment selected: nothing is sent, and the admin
+		// is told the key may still work.
+		$this->connection->save( self::KEY, self::SECRET, self::SITE_ID, 0 );
+		showfm_use_test_environment();
+		$this->cli = $this->cli();
+
+		$this->cli->disconnect( array(), array( 'yes' => true ) );
+
+		$this->assertSame( Connection::STATE_DISCONNECTED, $this->connection->state() );
+		$this->assertSame( 0, $this->http->count() );
+		$this->assertSame( array( 'success', 'Disconnected here.' ), end( WP_CLI::$output ) );
+		$warning = prev( WP_CLI::$output );
+		$this->assertSame( 'warning', $warning[0] );
+		$this->assertStringContainsString( 'may still work', $warning[1] );
+		$this->assertStringNotContainsString( 'nothing left to revoke', implode( ' ', array_column( WP_CLI::$output, 1 ) ) );
+
+		// And the other way: a test key once the filter is gone.
+		$this->connection->save( self::KEY, self::SECRET, self::SITE_ID, 0 );
+		remove_filter( 'showfm_environment', 'showfm_test_environment' );
+		WP_CLI::$output = array();
+
+		$this->cli->disconnect( array(), array( 'yes' => true ) );
+
+		$this->assertSame( 0, $this->http->count() );
+		$this->assertSame( array( 'success', 'Disconnected here.' ), end( WP_CLI::$output ) );
+		$this->assertStringContainsString( 'may still work', prev( WP_CLI::$output )[1] );
+	}
+
 	public function test_a_busy_lock_after_a_revoke_says_the_key_was_revoked_and_running_again_finishes(): void {
 		$this->connection->save( self::KEY, self::SECRET, self::SITE_ID, 0 );
 		$held = new ShowFM\Sync_Lock( Connection::LOCK_OPTION, Connection::LOCK_TTL );

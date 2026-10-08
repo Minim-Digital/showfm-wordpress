@@ -171,7 +171,18 @@ class Test_Environment extends WP_UnitTestCase {
 	public function tear_down(): void {
 		Plugin::connect()->disconnect();
 		delete_option( Oembed::SEEN_OPTION );
+		delete_option( Connection::ISSUER_PINNED_OPTION );
 		parent::tear_down();
+	}
+
+	/**
+	 * The issuing API saved in the stored credentials, or null when none is saved.
+	 */
+	private function saved_issuer(): ?string {
+		$decrypted = new ReflectionMethod( Connection::class, 'decrypted' );
+		$decrypted->setAccessible( true );
+		$data = $decrypted->invoke( new Connection() );
+		return is_array( $data ) && is_string( $data['api'] ?? null ) ? $data['api'] : null;
 	}
 
 	/**
@@ -217,6 +228,10 @@ class Test_Environment extends WP_UnitTestCase {
 			$this->assertSame( 'environment', strtok( ( new Notices( $connection ) )->candidates()[0]['key'], ':' ) );
 			( new Api_Client( $connection ) )->get_keyed( '/v1/me' );
 			$this->assertSame( 0, $http->count() );
+			// Disconnect can't revoke it from here, and says it may still work.
+			$this->assertSame( Connect::REVOKE_FAILED, Plugin::connect()->revoke( $connection->pinned() ) );
+			$this->assertStringContainsString( 'Connected sites', Connect::revoke_message( Connect::REVOKE_FAILED ) );
+			$this->assertSame( 0, $http->count() );
 
 			// Reconnecting there gives a key for that API, which production never gets.
 			$this->assertTrue( $connection->save( self::KEY, str_repeat( 'a', 64 ), 'site-43', 0 ) );
@@ -226,10 +241,44 @@ class Test_Environment extends WP_UnitTestCase {
 			$this->assertFalse( $connection->is_connected() );
 			$this->assertTrue( $connection->issued_elsewhere() );
 			( new Api_Client( $connection ) )->get_keyed( '/v1/me' );
+			$this->assertSame( Connect::REVOKE_FAILED, Plugin::connect()->revoke( $connection->pinned() ) );
 			$this->assertSame( 0, $http->count() );
 		} finally {
 			$http->detach();
 		}
+	}
+
+	public function test_the_issuer_of_credentials_from_before_1_0_2_is_saved_once(): void {
+		delete_option( Connection::ISSUER_PINNED_OPTION );
+		$this->save_legacy_credentials();
+		$this->assertNull( $this->saved_issuer() );
+		$state = ( new Connection() )->snapshot()['id'];
+
+		Connection::pin_issuer();
+
+		$this->assertSame( 'https://api.show.fm', $this->saved_issuer() );
+		$this->assertSame( '1', (string) get_option( Connection::ISSUER_PINNED_OPTION ) );
+		$this->assertSame( $state, ( new Connection() )->snapshot()['id'], 'The same state.' );
+		$this->assertSame( self::KEY, ( new Connection() )->key() );
+	}
+
+	/**
+	 * The old constant cannot be undefined, so this runs in its own process.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_a_constant_defined_after_the_issuer_is_saved_changes_nothing(): void {
+		delete_option( Connection::ISSUER_PINNED_OPTION );
+		$this->save_legacy_credentials();
+		Connection::pin_issuer();
+
+		define( 'SHOWFM_API_URL', 'https://api.example.test' );
+		showfm_use_test_environment();
+		$connection = new Connection();
+		$this->assertTrue( $connection->issued_elsewhere() );
+		$this->assertFalse( $connection->is_connected() );
+		$this->assertSame( 'https://api.show.fm', $this->saved_issuer() );
 	}
 
 	public function test_credentials_from_before_1_0_2_belong_to_production_without_the_old_constant(): void {
@@ -249,23 +298,43 @@ class Test_Environment extends WP_UnitTestCase {
 	 */
 	public function test_credentials_from_a_1_0_1_test_site_never_reach_production(): void {
 		define( 'SHOWFM_API_URL', 'https://api.example.test' );
+		delete_option( Connection::ISSUER_PINNED_OPTION );
 		$http = new ShowFM_Http_Mock();
 		try {
 			$this->save_legacy_credentials();
 
-			// Production: the key the old constant's API issued is kept, never sent.
+			// Production: the constant names an API no filter selects, so who issued the key
+			// isn't known yet. It is kept, never sent, and nothing is saved.
 			$connection = new Connection();
 			$this->assertTrue( $connection->issued_elsewhere() );
 			$this->assertNull( $connection->key() );
 			( new Api_Client( $connection ) )->get_keyed( '/v1/me' );
 			$this->assertSame( 0, $http->count() );
+			Connection::pin_issuer();
+			$this->assertNull( $this->saved_issuer() );
+			$this->assertFalse( get_option( Connection::ISSUER_PINNED_OPTION ) );
 
-			// The filter selects that API again: connected, with no reconnect.
+			// The Reconnect error comes before the warning about the old constant.
+			$keys = wp_list_pluck( ( new Notices( $connection ) )->candidates(), 'key' );
+			$this->assertSame( 'environment', strtok( $keys[0], ':' ) );
+			$this->assertSame( 'constants:1', $keys[1] );
+
+			// WP-CLI says why.
+			WP_CLI::$output = array();
+			( new ShowFM\Cli( new Connect( $connection, new Api_Client( $connection ) ), $connection ) )->status();
+			$this->assertContains( 'State: reconnect needed (connected to a different show.fm environment; reconnect)', array_column( WP_CLI::$output, 1 ) );
+
+			// The filter selects that API: connected, with no reconnect, and now saved.
 			showfm_use_test_environment();
 			$this->assertTrue( ( new Connection() )->is_connected() );
+			Connection::pin_issuer();
+			$this->assertSame( 'https://api.example.test', $this->saved_issuer() );
+			remove_filter( 'showfm_environment', 'showfm_test_environment' );
+			$this->assertTrue( ( new Connection() )->issued_elsewhere() );
+			showfm_use_test_environment();
 
-			// The old constant gets a dismissible notice pointing to the filter.
-			$this->assertSame( 'constants:1', ( new Notices( new Connection() ) )->candidates()[0]['key'] );
+			// Connected, only the dismissible notice about the old constant is left.
+			$this->assertSame( array( 'constants:1' ), wp_list_pluck( ( new Notices( new Connection() ) )->candidates(), 'key' ) );
 		} finally {
 			$http->detach();
 		}

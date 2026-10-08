@@ -136,7 +136,8 @@ final class Notices {
 	 * @return array<int,array{key:string,type:string,text:string,action:array{type:string,label:string,url:string}}>
 	 */
 	public function candidates(): array {
-		$notices = array();
+		// The connection's own notices come first: they say what to do to keep posting.
+		$notices = $this->connection_notices();
 		// 1.0.2 replaced these constants with the showfm_environment filter.
 		if ( defined( 'SHOWFM_API_URL' ) || defined( 'SHOWFM_APP_URL' ) ) {
 			$notices[] = array(
@@ -150,10 +151,20 @@ final class Notices {
 				),
 			);
 		}
+		return $notices;
+	}
+
+	/**
+	 * The connection's notices, highest first.
+	 *
+	 * @return array<int,array{key:string,type:string,text:string,action:array{type:string,label:string,url:string}}>
+	 */
+	private function connection_notices(): array {
 		if ( Connection::STATE_DISCONNECTED === $this->connection->state() || $this->connection->is_unreadable() ) {
-			return $notices;
+			return array();
 		}
 
+		$notices   = array();
 		$reconnect = array(
 			'type'  => 'reconnect',
 			'label' => __( 'Reconnect', 'showfm' ),

@@ -77,6 +77,12 @@ final class Connection {
 	 */
 	const LEGACY_GENERATION_OPTION = 'showfm_connection_generation';
 
+	/**
+	 * Set once credentials from before 1.0.2 have their issuing API saved, or there were none
+	 * (autoloaded, so the check costs no query).
+	 */
+	const ISSUER_PINNED_OPTION = 'showfm_connection_issuer_pinned';
+
 	/** `state_id()` for credentials stored before state ids existed, or an unreadable value. */
 	const LEGACY_ID = 'legacy';
 
@@ -141,7 +147,7 @@ final class Connection {
 			return false;
 		}
 
-		$plain = wp_json_encode(
+		$sealed = self::seal(
 			array(
 				'key'         => $key,
 				'ping_secret' => $ping_secret,
@@ -151,26 +157,14 @@ final class Connection {
 				'api'         => Api_Client::base_url(),
 			)
 		);
-		if ( false === $plain ) {
-			return false;
-		}
-
-		try {
-			$nonce  = random_bytes( SODIUM_CRYPTO_SECRETBOX_NONCEBYTES );
-			$cipher = sodium_crypto_secretbox( $plain, $nonce, self::encryption_key() );
-		} catch ( \Throwable $e ) {
+		if ( null === $sealed ) {
 			return false;
 		}
 
 		// A random id for this state, written with the credentials. Nothing is counted or
 		// ordered: a connect outcome matches a state by this id only.
 		$id     = wp_generate_uuid4();
-		$stored = array(
-			'v' => self::FORMAT_VERSION,
-			'n' => base64_encode( $nonce ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Binary ciphertext stored as text.
-			'c' => base64_encode( $cipher ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Binary ciphertext stored as text.
-			'i' => $id,
-		);
+		$stored = $sealed + array( 'i' => $id );
 
 		// Under the connection lock, one UPDATE (or INSERT when nothing is stored) writes the
 		// credentials and their state id together, and the flags of the old state go with
@@ -802,11 +796,35 @@ final class Connection {
 	}
 
 	/**
-	 * Decrypts the stored credentials.
+	 * Encrypts credentials for storage.
 	 *
-	 * @return array{key:string,ping_secret:string,site_id:string,expires_at:int,api:string}|null Null when missing or unreadable.
+	 * @param array<string,mixed> $data Credentials.
+	 * @return array{v:int,n:string,c:string}|null Null when they can't be encrypted.
 	 */
-	private function credentials(): ?array {
+	private static function seal( array $data ): ?array {
+		$plain = wp_json_encode( $data );
+		if ( false === $plain ) {
+			return null;
+		}
+		try {
+			$nonce  = random_bytes( SODIUM_CRYPTO_SECRETBOX_NONCEBYTES );
+			$cipher = sodium_crypto_secretbox( $plain, $nonce, self::encryption_key() );
+		} catch ( \Throwable $e ) {
+			return null;
+		}
+		return array(
+			'v' => self::FORMAT_VERSION,
+			'n' => base64_encode( $nonce ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Binary ciphertext stored as text.
+			'c' => base64_encode( $cipher ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Binary ciphertext stored as text.
+		);
+	}
+
+	/**
+	 * Decrypts the stored credentials, unchecked.
+	 *
+	 * @return array<string,mixed>|null Null when missing or unreadable.
+	 */
+	private function decrypted(): ?array {
 		$stored = $this->stored();
 		if (
 			! is_array( $stored )
@@ -834,6 +852,16 @@ final class Connection {
 		}
 
 		$data = json_decode( $plain, true );
+		return is_array( $data ) ? $data : null;
+	}
+
+	/**
+	 * Decrypts and checks the stored credentials.
+	 *
+	 * @return array{key:string,ping_secret:string,site_id:string,expires_at:int,api:string}|null Null when missing or unreadable.
+	 */
+	private function credentials(): ?array {
+		$data = $this->decrypted();
 		if (
 			! is_array( $data )
 			|| ! is_string( $data['key'] ?? null )
@@ -849,18 +877,70 @@ final class Connection {
 			'ping_secret' => $data['ping_secret'],
 			'site_id'     => $data['site_id'],
 			'expires_at'  => $data['expires_at'],
-			'api'         => is_string( $data['api'] ?? null ) ? $data['api'] : self::legacy_issuer(),
+			'api'         => is_string( $data['api'] ?? null ) ? $data['api'] : self::legacy_issuer()[0],
 		);
 	}
 
 	/**
-	 * The API that issued credentials saved before 1.0.2, which didn't record it: the one a
-	 * `SHOWFM_API_URL` constant selected then, otherwise production. A site that keeps the
-	 * old constant while it moves to the `showfm_environment` filter stays connected.
+	 * The API that issued credentials saved before 1.0.2, which didn't record it, and whether
+	 * that is known. 1.0.1 honoured `SHOWFM_API_URL` for production's API and one test API,
+	 * and used production for anything else:
+	 *
+	 * - no constant, an invalid one, or production's API: production, known;
+	 * - the API the site's `showfm_environment` filter selects now: that API, known;
+	 * - any other https origin: not known. The key counts as that origin's, so it is never
+	 *   sent anywhere, until the filter selects that API or the constant goes.
+	 *
+	 * `pin_issuer()` saves a known answer once, so a constant defined later changes nothing.
+	 *
+	 * @return array{0:string,1:bool} The origin, and whether it is known.
 	 */
-	private static function legacy_issuer(): string {
-		$constant = defined( 'SHOWFM_API_URL' ) ? Environment::origin( constant( 'SHOWFM_API_URL' ) ) : null;
-		return $constant ?? Environment::PRODUCTION['api'];
+	private static function legacy_issuer(): array {
+		$production = Environment::PRODUCTION['api'];
+		$constant   = defined( 'SHOWFM_API_URL' ) ? Environment::origin( constant( 'SHOWFM_API_URL' ) ) : null;
+		if ( null === $constant || $production === $constant ) {
+			return array( $production, true );
+		}
+		return array( $constant, Api_Client::base_url() === $constant );
+	}
+
+	/**
+	 * Saves the issuing API into credentials saved before 1.0.2, once it is known, so the
+	 * rule in `legacy_issuer()` applies once and no more. Runs early on `init`. When it is
+	 * done, or there is nothing to pin, an autoloaded flag makes later requests skip it with
+	 * no query.
+	 */
+	public static function pin_issuer(): void {
+		if ( get_option( self::ISSUER_PINNED_OPTION ) || ! self::legacy_issuer()[1] ) {
+			return;
+		}
+		try {
+			$done = self::mutate(
+				static function ( Connection $fresh ): bool {
+					$stored = $fresh->stored();
+					if ( ! self::stores_credentials( $stored ) ) {
+						return true;
+					}
+					$data = $fresh->decrypted();
+					if ( null === $data ) {
+						// Unreadable for now (the salts changed): try again later.
+						return false;
+					}
+					if ( is_string( $data['api'] ?? null ) ) {
+						return true;
+					}
+					$data['api'] = self::legacy_issuer()[0];
+					$sealed      = self::seal( $data );
+					return null !== $sealed && self::write( self::OPTION, $sealed + (array) $stored );
+				}
+			);
+		} catch ( Connection_Busy $e ) {
+			// Busy, or the lock lost part way (Connection_Lost extends it): next request.
+			return;
+		}
+		if ( true === $done ) {
+			update_option( self::ISSUER_PINNED_OPTION, 1, true );
+		}
 	}
 
 	/**

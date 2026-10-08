@@ -536,15 +536,16 @@ final class Connect {
 	 * - Success: the key is revoked.
 	 * - A 401 now, or a key show.fm already refused or that has expired: show.fm no longer
 	 *   accepts it, so there is nothing to revoke. A 401 is never retried.
-	 * - Anything else (no answer, a server error, a rate limit, or a key that can't be read
-	 *   after the salts changed): the key may still work, so it must be revoked at show.fm.
+	 * - Anything else (no answer, a server error, a rate limit, a key that can't be read
+	 *   after the salts changed, or a key another show.fm environment's API issued, which is
+	 *   never sent here): the key may still work, so it must be revoked at show.fm.
 	 *
 	 * @param Connection $pinned The connection, pinned when the caller read it.
 	 * @return string One of the REVOKE_ constants.
 	 */
 	public function revoke( Connection $pinned ): string {
 		$site = $pinned->site_id();
-		if ( null === $site || $pinned->is_unreadable() ) {
+		if ( null === $site || $pinned->is_unreadable() || $pinned->issued_elsewhere() ) {
 			return self::REVOKE_FAILED;
 		}
 		$key = $pinned->key();
