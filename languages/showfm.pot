@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-08T03:11:03+00:00\n"
+"POT-Creation-Date: 2026-10-08T08:06:42+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: showfm\n"
@@ -247,11 +247,39 @@ msgstr ""
 msgid "Sync: %1$s; rows: %2$d; cursor: %3$d."
 msgstr ""
 
-#: includes/class-cli.php:308
+#: includes/class-cli.php:321
+msgid "Use wp showfm cache flush."
+msgstr ""
+
+#. translators: %d: number of stored entries.
+#: includes/class-cli.php:329
+#, php-format
+msgid "Flushed the show.fm cache: removed %d stored entry."
+msgid_plural "Flushed the show.fm cache: removed %d stored entries."
+msgstr[0] ""
+msgstr[1] ""
+
+#: includes/class-cli.php:336
+msgid "This is not a multisite network. Run wp showfm cache flush without --network."
+msgstr ""
+
+#. translators: 1: site URL, 2: number of stored entries.
+#: includes/class-cli.php:352
+#, php-format
+msgid "%1$s: removed %2$d stored entries."
+msgstr ""
+
+#. translators: 1: number of sites, 2: number of stored entries.
+#: includes/class-cli.php:360
+#, php-format
+msgid "Flushed the show.fm cache on %1$d sites: removed %2$d stored entries."
+msgstr ""
+
+#: includes/class-cli.php:378
 msgid "A key given as --key=VALUE stays in your shell history and shows in the process list. Use SHOWFM_KEY or --key=- next time."
 msgstr ""
 
-#: includes/class-cli.php:318
+#: includes/class-cli.php:388
 msgid "Site key from show.fm (input hidden)"
 msgstr ""
 
@@ -828,7 +856,8 @@ msgid_plural "Your show.fm connection expires in %d days."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/class-oembed.php:66
+#: includes/class-oembed.php:64
+#: includes/class-oembed.php:107
 msgid "Listen on show.fm"
 msgstr ""
 

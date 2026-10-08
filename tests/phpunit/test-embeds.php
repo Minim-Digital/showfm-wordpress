@@ -541,6 +541,61 @@ class Test_Embeds extends WP_UnitTestCase {
 		$this->assertTrue( wp_script_is( Assets::HANDLE, 'enqueued' ) );
 	}
 
+	public function test_oembed_never_passes_a_show_fm_embed_through(): void {
+		$url    = 'https://test.show.fm/e/first';
+		$iframe = static function ( string $src ): string {
+			return '<iframe src="' . $src . '" title="Episode &amp; title" width="100%" height="200"></iframe>';
+		};
+		$player = array(
+			'https://embed.cdn.media/ep/' . self::ID,
+			'https://embed.cdn.media/ep/' . self::ID . '/',
+			'https://embed.cdn.media/ep/' . self::ID . '?size=compact&theme=dark',
+			'https://embed.cdn.media/ep/' . self::ID . '/?size=compact',
+			'https://EMBED.CDN.MEDIA/ep/' . self::ID,
+			'//embed.cdn.media/ep/' . self::ID,
+			'https://embed.showfm.dev/ep/' . self::ID,
+			'https://embed.cdn.media/latest/my-show',
+			'https://embed.cdn.media/latest/my-show/?size=compact',
+		);
+		$link   = array(
+			'https://embed.cdn.media/',
+			'https://embed.cdn.media/player/v1.js',
+			'https://embed.cdn.media/ep/not-a-uuid',
+			'https://embed.cdn.media/ep/' . self::ID . '/extra',
+			'https://embed.cdn.media/latest/Not_A_Slug',
+			'https://embed.cdn.media/show/my-show?size=compact',
+			'https://embed.showfm.dev/anything',
+		);
+		foreach ( $player as $src ) {
+			$html = apply_filters( 'embed_oembed_html', $iframe( $src ), $url );
+			$this->assertStringContainsString( '<showfm-player', $html, $src );
+			$this->assertStringNotContainsString( '<iframe', $html, $src );
+		}
+		$html = apply_filters( 'embed_oembed_html', $iframe( 'https://embed.cdn.media/ep/' . self::ID . '/?size=compact' ), $url );
+		$this->assertStringContainsString( 'size="compact"', $html );
+		$this->assertStringContainsString( 'podcast="my-show"', apply_filters( 'embed_oembed_html', $iframe( 'https://embed.cdn.media/latest/my-show/' ), $url ) );
+
+		foreach ( $link as $src ) {
+			$this->assertSame( '<p class="showfm-oembed-link"><a href="https://test.show.fm/e/first">Episode &amp; title</a></p>', apply_filters( 'embed_oembed_html', $iframe( $src ), $url ), $src );
+		}
+		// Any show.fm embed markup, not only an iframe, and whatever URL was pasted.
+		$script = '<div><script src="https://embed.cdn.media/player/v1.js"></script></div>'; // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- Cached oEmbed markup under test, never printed.
+		$this->assertSame( '<p class="showfm-oembed-link"><a href="https://example.com/post">Listen on show.fm</a></p>', apply_filters( 'embed_oembed_html', $script, 'https://example.com/post' ) );
+		$this->assertSame( '', apply_filters( 'embed_oembed_html', $iframe( 'https://embed.cdn.media/unknown' ), 'javascript:alert(1)' ) );
+
+		// The invariant: no show.fm script or iframe host in any output.
+		foreach ( array_merge( $player, $link ) as $src ) {
+			$html = apply_filters( 'embed_oembed_html', $iframe( $src ), $url );
+			$this->assertStringNotContainsStringIgnoringCase( 'embed.cdn.media', $html, $src );
+			$this->assertStringNotContainsStringIgnoringCase( 'embed.showfm.dev', $html, $src );
+		}
+
+		// Other sites' embeds are left exactly as they are.
+		$other = '<iframe src="https://www.youtube.com/embed/abc?feature=oembed" title="Video"></iframe>';
+		$this->assertSame( $other, apply_filters( 'embed_oembed_html', $other, 'https://www.youtube.com/watch?v=abc' ) );
+		$this->assertSame( '<blockquote>No iframe</blockquote>', apply_filters( 'embed_oembed_html', '<blockquote>No iframe</blockquote>', $url ) );
+	}
+
 	public function test_theme_global_defaults_and_block_overrides(): void {
 		$filter = static function ( $data ) {
 			return $data->update_with(

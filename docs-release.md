@@ -34,6 +34,18 @@ category, including the runtime and experimental checks. The readme passed the W
 readme validator with no errors. Its one warning was that `showfm` is not yet a WordPress.org
 user, which the account above fixes.
 
+## Publish the GitHub release
+
+The plugin's public download, until WordPress.org approves it, is a GitHub release. Once PR #10
+is merged and `main` is green:
+
+1. Download the `showfm-zip` artifact from the CI run on `main`, or build it with
+   `npm run release` from a clean checkout of that commit.
+2. Tag the merge commit `v1.0.0` and push the tag.
+3. Create the GitHub release `v1.0.0` from that tag, with the 1.0.0 changelog from
+   `readme.txt` as its notes, and attach `showfm-1.0.0.zip`.
+4. Check the attached zip installs on a fresh site before I share the link.
+
 ## Submit
 
 1. Sign in and open <https://wordpress.org/plugins/developers/add/>.
@@ -125,6 +137,13 @@ directory can take a few hours to show new images.
 
 4. If the screens changed, run `npm run wporg:screenshots` (wp-env must be running) and
    `npm run wporg:assets`, check the images by eye, and copy them into `assets/`.
+
+## Support
+
+- `wp showfm cache flush` clears the plugin's cache of show.fm data on one site, and
+  `wp showfm cache flush --network` on every site of a network. It's the first thing to try
+  when a block shows old episode details. Pages fall back to each block's saved copy until
+  the background refresh catches up.
 
 ## The bundled package and WordPress.org
 

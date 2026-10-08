@@ -87,7 +87,7 @@ The Player loads the episode's details from api.show.fm and its artwork as soon 
 
 = show.fm embed CDN (embed.cdn.media) =
 
-Not used. No script in the plugin names it or can load from it: the player scripts ship inside the plugin, and the click loader loads only the bundled copy. A pasted show.fm link that WordPress resolves to an embed.cdn.media iframe is shown as a local player instead.
+Not used. No script in the plugin names it or can load from it: the player scripts ship inside the plugin, and the click loader loads only the bundled copy. A pasted show.fm link that WordPress resolves to an embed.cdn.media iframe is shown as a local player, or as a plain link to the show.fm page when the plugin can't play it locally. A show.fm iframe or script is never passed through.
 
 = show.fm's test service =
 
@@ -146,6 +146,10 @@ The plugin shows at most one notice, on the Dashboard, Plugins and show.fm scree
 
 Yes. Create a site key in show.fm under Connected sites, then run `wp showfm connect`. It asks for the key with the input hidden, or reads it from the `SHOWFM_KEY` environment variable or standard input (`--key=-`). On a multisite network, add `--url=` to pick the site.
 
+= How do I clear the plugin's cache? =
+
+Run `wp showfm cache flush`. It clears the show and episode details the blocks render from and the block editor's lookups, and says how many stored entries it removed. Pages show each block's saved copy until the background refresh fetches the data again. On a multisite network, `wp showfm cache flush --network` does it for every site. Nothing else in your site's cache is touched.
+
 = How is the connection stored? =
 
 The site key and ping secret are encrypted with a key derived from your WordPress salts, and are never shown in full, logged or sent to the browser. Set the salts in `wp-config.php`. If they change, connect again.
@@ -176,6 +180,8 @@ The plugin's settings, cache, scheduled events and its own post meta. Your posts
 * Connect a site to show.fm in the browser or with WP-CLI. The site key is stored encrypted.
 * Publish to WordPress: new episodes become posts that follow the episode when it is rescheduled, unpublished or deleted, and keep any edits made in WordPress.
 * Embed migration from eight podcast hosts, with a dry run, episode picks and revisions to undo.
+* `wp showfm cache flush` (with `--network` on multisite) clears the plugin's cache of show.fm data.
+* A pasted show.fm link becomes a local player, or a plain link when the plugin can't play it locally, never a show.fm iframe.
 * The Player, Episode list and Play button can open a mini-player, with a choice of corner. The Player's is off by default and takes over when a visitor scrolls past it while it plays.
 * Bundles @showfm/embed 1.6.1. Every element carries `platform="wordpress"`, so with the credit setting off, no show displays "Powered by show.fm".
 

@@ -27,47 +27,84 @@ final class Oembed {
 		wp_oembed_add_provider( '~^https://[a-z0-9]+(?:-[a-z0-9]+)*\.show\.fm/?(?:[?#].*)?\z~i', $endpoint, true );
 	}
 
+	/** The show.fm script and iframe hosts. No markup from them is ever passed through. */
+	const CDN_HOSTS = array( 'embed.cdn.media', 'embed.showfm.dev' );
+
 	/**
-	 * Enqueue only when cached oEmbed markup is actually output, never on registration.
-	 * The provider remains authoritative about accepted paths.
+	 * Replaces any show.fm embed in cached oEmbed markup, never passing a show.fm iframe or
+	 * script through. A recognised episode or latest-episode iframe becomes the local Player
+	 * block, which applies the site's credit and load settings and the bundled scripts. Any
+	 * other show.fm embed becomes a plain link to the pasted URL. Markup from other sites is
+	 * left alone. Enqueues only when a player is actually output, never on registration.
 	 *
 	 * @param string $html Cached embed HTML.
-	 * @param string $url Original listen URL.
+	 * @param string $url Original URL.
 	 */
 	public static function output( string $html, string $url ): string {
-		$host = wp_parse_url( $url, PHP_URL_HOST );
-		$root = 'https://api.showfm.dev' === Api_Client::base_url() ? 'showfm.dev' : 'show.fm';
-		if ( ! is_string( $host ) || ! preg_match( '/^(?:[a-z0-9-]+\.)?' . preg_quote( $root, '/' ) . '\z/i', $host ) ) {
+		$found = self::show_fm_tag( $html );
+		if ( null === $found ) {
 			return $html;
 		}
-		$tags = new \WP_HTML_Tag_Processor( $html );
-		if ( ! $tags->next_tag( array( 'tag_name' => 'iframe' ) ) ) {
-			return $html;
-		}
-		$src   = $tags->get_attribute( 'src' );
-		$parts = is_string( $src ) ? wp_parse_url( $src ) : false;
-		if ( ! is_array( $parts ) || ! in_array( $parts['host'] ?? '', array( 'embed.cdn.media', 'embed.showfm.dev' ), true ) ) {
-			return $html;
-		}
-		$path  = $parts['path'] ?? '';
+		$path  = $found['parts']['path'] ?? '';
 		$attrs = array();
-		if ( preg_match( '~^/ep/([^/]+)\z~', $path, $match ) && Attributes::uuid( $match[1] ) ) {
+		if ( 'IFRAME' !== $found['tag'] ) {
+			return self::link( $url, $found['title'] );
+		}
+		if ( preg_match( '~^/ep/([^/]+)/?\z~', $path, $match ) && Attributes::uuid( $match[1] ) ) {
 			$attrs['episode'] = $match[1];
-		} elseif ( preg_match( '~^/latest/([a-z0-9]+(?:-[a-z0-9]+)*)\z~', $path, $match ) ) {
+		} elseif ( preg_match( '~^/latest/([a-z0-9]+(?:-[a-z0-9]+)*)/?\z~', $path, $match ) ) {
 			$attrs['podcast'] = $match[1];
 		} else {
-			return $html;
+			return self::link( $url, $found['title'] );
 		}
 		$query = array();
-		wp_parse_str( $parts['query'] ?? '', $query );
+		wp_parse_str( $found['parts']['query'] ?? '', $query );
 		$attrs['size']     = $query['size'] ?? 'standard';
-		$title             = $tags->get_attribute( 'title' );
 		$attrs['snapshot'] = array(
-			'title'     => is_string( $title ) ? $title : __( 'Listen on show.fm', 'showfm' ),
+			'title'     => '' !== $found['title'] ? $found['title'] : __( 'Listen on show.fm', 'showfm' ),
 			'listenUrl' => $url,
 		);
 		// Upgrade core's cached iframe to a local player so the site credit setting and
 		// bundled-script policy also apply to oEmbeds, without another HTTP request.
 		return Embed::render( 'player', $attrs );
+	}
+
+	/**
+	 * The first tag in the markup whose `src` is on a show.fm embed host, or null.
+	 *
+	 * @param string $html Markup.
+	 * @return array{tag:string,parts:array<string,mixed>,title:string}|null
+	 */
+	private static function show_fm_tag( string $html ): ?array {
+		$tags = new \WP_HTML_Tag_Processor( $html );
+		while ( $tags->next_tag() ) {
+			$src   = $tags->get_attribute( 'src' );
+			$parts = is_string( $src ) ? wp_parse_url( trim( $src ) ) : false;
+			if ( is_array( $parts ) && in_array( strtolower( (string) ( $parts['host'] ?? '' ) ), self::CDN_HOSTS, true ) ) {
+				$title = $tags->get_attribute( 'title' );
+				return array(
+					'tag'   => (string) $tags->get_tag(),
+					'parts' => $parts,
+					'title' => is_string( $title ) ? trim( $title ) : '',
+				);
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * A show.fm embed the plugin can't play locally: a plain link to the pasted URL, or
+	 * nothing when that URL isn't http or https.
+	 *
+	 * @param string $url   Original URL.
+	 * @param string $title The embed's title, if any.
+	 */
+	private static function link( string $url, string $title ): string {
+		$scheme = wp_parse_url( $url, PHP_URL_SCHEME );
+		if ( ! in_array( is_string( $scheme ) ? strtolower( $scheme ) : '', array( 'http', 'https' ), true ) ) {
+			return '';
+		}
+		$text = '' !== $title ? $title : __( 'Listen on show.fm', 'showfm' );
+		return '<p class="showfm-oembed-link"><a href="' . esc_url( $url ) . '">' . esc_html( $text ) . '</a></p>';
 	}
 }

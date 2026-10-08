@@ -170,7 +170,9 @@ change that arrived through the 15-minute check with no ping after a 10-minute g
 `showfm_return={token}`, a random token kept with the flow. With the flow's own token and no
 `code` or `state`, it means the admin cancelled; any other value changes nothing.
 
-- `Cli` is `wp showfm connect`, `status` and `disconnect` (which revokes the key first, as above).
+- `Cli` is `wp showfm connect`, `status` and `disconnect` (which revokes the key first, as above),
+  and `wp showfm cache flush [--network]`, which bumps the cache key version, deletes the stored
+  entries it can find and says how many.
 - `Privacy` adds the suggested privacy policy text.
 - `Editor_Api` is the block editor's read-only REST proxy (`showfm/v1/editor/*`), and
   `Editor` prints the editor's settings and the post panel's `showfm_sync` field. See
@@ -226,8 +228,8 @@ Plan sections 5.2.2, 5.2.6 and 5.3.5 (show.fm issue #731). Every admin action ne
    connection "reconnect needed" and stops keyed calls. A 429 holds every keyed call until
    its Retry-After has passed (`showfm_rate_limited_until`).
 
-A WordPress install in a subdirectory sends a `site_url` with a path. show.fm accepts that
-once podcaster-plus-app PR #741 is merged.
+A WordPress install in a subdirectory sends a `site_url` with a path, and show.fm accepts it
+(podcaster-plus-app PR #741, merged and live).
 
 ### Publishing engine
 
