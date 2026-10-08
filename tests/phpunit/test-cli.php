@@ -626,6 +626,17 @@ class Test_Cli extends WP_UnitTestCase {
 		);
 	}
 
+	public function test_cache_flush_reports_the_version_with_a_persistent_object_cache(): void {
+		set_transient( Cache::key( '/v1/episodes/11111111-2222-4333-8444-555555555555' ), array( 'state' => 'ok' ), HOUR_IN_SECONDS );
+		$previous = wp_using_ext_object_cache( true );
+		try {
+			$this->cli->cache( array( 'flush' ), array() );
+		} finally {
+			wp_using_ext_object_cache( $previous );
+		}
+		$this->assertSame( array( 'success', 'Flushed the show.fm cache (cache version now ' . Cache::version() . ').' ), end( WP_CLI::$output ) );
+	}
+
 	public function test_cache_flush_removes_the_stored_entries_and_says_how_many(): void {
 		$episode = Cache::key( '/v1/episodes/11111111-2222-4333-8444-555555555555' );
 		$editor  = Cache::key( 'editor:public:/v1/podcasts/my-show' );

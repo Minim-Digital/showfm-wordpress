@@ -476,6 +476,37 @@ class Test_Embeds extends WP_UnitTestCase {
 		}
 	}
 
+	public function test_a_transcript_with_none_renders_nothing_in_click_mode(): void {
+		$attrs   = array(
+			'episode'  => self::ID,
+			'snapshot' => $this->snapshot(),
+		);
+		$episode = $this->episode();
+		$this->cache( '/v1/episodes/' . self::ID, array( 'data' => array_merge( $episode, array( 'transcript' => null ) ) ) );
+
+		// Without click mode the element collapses itself, so it is still output.
+		$this->assertStringContainsString( '<showfm-transcript', $this->block( 'transcript', $attrs ) );
+
+		update_option( 'showfm_load_on_click', true );
+		$this->assertSame( '', $this->block( 'transcript', $attrs ), 'No 377px "Load transcript" box for nothing.' );
+
+		// With a transcript, or before the cache knows, the facade still shows.
+		$this->cache( '/v1/episodes/' . self::ID, array( 'data' => array_merge( $episode, array( 'transcript' => array( 'url' => 'https://m.cdn.media/t.vtt' ) ) ) ) );
+		$this->assertStringContainsString( '<showfm-transcript', $this->block( 'transcript', $attrs ) );
+		ShowFM\Plugin::cache()->flush();
+		$this->assertStringContainsString( '<showfm-transcript', $this->block( 'transcript', $attrs ) );
+	}
+
+	public function test_a_transcript_reserves_its_own_height(): void {
+		$attrs = array(
+			'episode'  => self::ID,
+			'snapshot' => $this->snapshot(),
+		);
+		$this->assertStringNotContainsString( '--showfm-height', $this->block( 'transcript', $attrs ), 'The default, 377px, needs nothing.' );
+		$this->assertStringContainsString( 'style="--showfm-height:177px"', $this->block( 'transcript', array_merge( $attrs, array( 'height' => '120' ) ) ) );
+		$this->assertStringNotContainsString( '--showfm-height', $this->block( 'player', array_merge( $attrs, array( 'height' => '120' ) ) ) );
+	}
+
 	public function test_load_on_click_applies_to_every_embed_when_on(): void {
 		$this->assertStringNotContainsString( 'load="click"', $this->block( 'player', array( 'episode' => self::ID ) ) );
 

@@ -127,6 +127,11 @@ final class Sync_Artwork {
 			$transient = in_array( $response->type(), array( Api_Result::RATE_LIMITED, Api_Result::TRANSIENT_FAILURE ), true ) || 404 === $response->status();
 			return new \WP_Error( $transient ? 'showfm_artwork_transient' : 'showfm_artwork_terminal', '', $response->retry_after() );
 		}
+		// The players render from the same public answer: keep it, so the post's first render
+		// has the episode, not just its saved copy.
+		if ( 1 === preg_match( '/\A[0-9a-f-]{36}\z/i', $episode ) ) {
+			Plugin::cache()->store( '/v1/episodes/' . strtolower( $episode ), $response );
+		}
 		$data    = $response->data();
 		$artwork = is_array( $data ) && is_array( $data['data'] ?? null ) ? ( $data['data']['artwork'] ?? null ) : null;
 		if ( ! is_array( $artwork ) || ! array_key_exists( 'url', $artwork ) || ( null !== $artwork['url'] && ! is_string( $artwork['url'] ) ) ) {

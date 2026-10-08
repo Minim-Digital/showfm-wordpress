@@ -56,18 +56,36 @@ class Test_Account extends WP_UnitTestCase {
 		$this->assertSame( 'Bearer ' . self::KEY, $this->http->requests[0]['args']['headers']['Authorization'] );
 		$this->assertSame(
 			array(
-				'name'  => 'Maya',
-				'shows' => array(
+				'name'        => 'Maya',
+				'shows'       => array(
 					array(
 						'id'    => '7c9e6679-7425-40de-944b-e07fc1f90ae7',
 						'title' => 'Show',
 						'slug'  => '',
 					),
 				),
+				'transcripts' => null,
 			),
 			$this->account->details()
 		);
 		$this->assertStringNotContainsString( self::KEY, maybe_serialize( get_option( Account::OPTION ) ) );
+	}
+
+	public function test_refresh_records_whether_the_connection_includes_transcripts(): void {
+		$this->http->respond( 200, '{"data":{"user":{"name":"Maya"},"key":{"scopes":["episodes:read","sites:write","transcripts:read"]}}}' );
+		$this->http->respond( 200, '{"data":[]}' );
+		$this->assertTrue( $this->account->refresh() );
+		$this->assertTrue( $this->account->details()['transcripts'] );
+
+		$this->http->respond( 200, '{"data":{"user":{"name":"Maya"},"key":{"scopes":["episodes:read","sites:write"]}}}' );
+		$this->http->respond( 200, '{"data":[]}' );
+		$this->assertTrue( $this->account->refresh() );
+		$this->assertFalse( $this->account->details()['transcripts'] );
+
+		$this->http->respond( 200, '{"data":{"user":{"name":"Maya"},"key":{"scopes":"transcripts:read"}}}' );
+		$this->http->respond( 200, '{"data":[]}' );
+		$this->assertTrue( $this->account->refresh() );
+		$this->assertNull( $this->account->details()['transcripts'], 'Not a list: unknown.' );
 	}
 
 	public function test_a_failed_refresh_keeps_the_stored_copy(): void {
@@ -123,8 +141,9 @@ class Test_Account extends WP_UnitTestCase {
 		// A reconnect: same site id, new key, new state.
 		$this->assertTrue( Plugin::connection()->save( 'showfm_live_NEWabcdefghijklmnopqrst', str_repeat( 'b', 43 ), self::SITE_ID, time() + 300 * DAY_IN_SECONDS ) );
 		$hidden = array(
-			'name'  => '',
-			'shows' => array(),
+			'name'        => '',
+			'shows'       => array(),
+			'transcripts' => null,
 		);
 		$this->assertSame( $hidden, $this->account->details(), 'The old key\'s account is hidden at once.' );
 		$this->assertSame( ShowFM\Connect::app_url() . '/dashboard', ShowFM\Admin_Status::sites_url_for( Plugin::connection()->pinned() ), 'The Connected sites link does not use the old shows.' );

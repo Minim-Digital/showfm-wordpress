@@ -169,17 +169,7 @@ final class Cache {
 
 		switch ( $result->type() ) {
 			case Api_Result::SUCCESS:
-				$this->write(
-					$path,
-					array(
-						'state'        => self::STATE_OK,
-						'data'         => $result->data(),
-						'etag'         => $result->etag(),
-						'fetched_at'   => $now,
-						'backoff'      => 0,
-						'next_attempt' => 0,
-					)
-				);
+				$this->store( $path, $result, $entry );
 				return;
 
 			case Api_Result::NOT_MODIFIED:
@@ -205,10 +195,81 @@ final class Cache {
 						'next_attempt' => 0,
 					)
 				);
+				if ( null === $entry || self::STATE_UNAVAILABLE !== $entry['state'] ) {
+					self::purge_posts( $path );
+				}
 				return;
 		}
 
 		$this->back_off( $path, $entry, $result );
+	}
+
+	/**
+	 * Stores a successful public API answer the sync already fetched (the artwork step reads
+	 * the same `/v1/episodes/{id}` the players render from), so the first render after a post
+	 * is created can use it. Also the refresh's own success path.
+	 *
+	 * @param string                   $path     Public API path.
+	 * @param Api_Result               $result   A successful result.
+	 * @param array<string,mixed>|null $previous The entry it replaces, if already read.
+	 */
+	public function store( string $path, Api_Result $result, ?array $previous = null ): void {
+		if ( ! $result->is( Api_Result::SUCCESS ) ) {
+			return;
+		}
+		$previous = $previous ?? $this->read( $path );
+		$this->write(
+			$path,
+			array(
+				'state'        => self::STATE_OK,
+				'data'         => $result->data(),
+				'etag'         => $result->etag(),
+				'fetched_at'   => time(),
+				'backoff'      => 0,
+				'next_attempt' => 0,
+			)
+		);
+		if ( null === $previous || self::STATE_OK !== $previous['state'] || $previous['data'] !== $result->data() ) {
+			self::purge_posts( $path );
+		}
+	}
+
+	/**
+	 * Cleans the post cache of every post that renders this path, so page-cache plugins that
+	 * hook clean_post_cache purge the pages showing the old render (or the cold one, with no
+	 * data). Matches synced posts by their episode and other posts by the ID or slug in a
+	 * show.fm block or shortcode. Runs only when an entry changed, from WP-Cron or the sync.
+	 *
+	 * @param string $path Public API path.
+	 * @return int[] The posts cleaned.
+	 */
+	public static function purge_posts( string $path ): array {
+		global $wpdb;
+		if ( ! preg_match( '~\A/v1/(?:episodes|podcasts)/([a-z0-9-]+)~i', $path, $match ) ) {
+			return array();
+		}
+		$token = $match[1];
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- A bounded lookup, run only when a cached entry changes.
+		$ids    = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT ID FROM {$wpdb->posts} WHERE post_status IN ('publish','future','private') AND post_content LIKE %s AND ( post_content LIKE %s OR post_content LIKE %s ) LIMIT 200",
+				'%' . $wpdb->esc_like( $token ) . '%',
+				'%' . $wpdb->esc_like( '<!-- wp:showfm/' ) . '%',
+				'%' . $wpdb->esc_like( '[showfm' ) . '%'
+			)
+		);
+		$synced = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_showfm_episode_id' AND meta_value = %s LIMIT 200",
+				$token
+			)
+		);
+		// phpcs:enable
+		$ids = array_values( array_unique( array_map( 'intval', array_merge( $ids, $synced ) ) ) );
+		foreach ( $ids as $id ) {
+			clean_post_cache( $id );
+		}
+		return $ids;
 	}
 
 	/**

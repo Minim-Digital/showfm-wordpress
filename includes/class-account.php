@@ -88,6 +88,7 @@ final class Account {
 
 		$me_data   = $me->data();
 		$user      = is_array( $me_data ) && is_array( $me_data['data']['user'] ?? null ) ? $me_data['data']['user'] : array();
+		$scopes    = is_array( $me_data ) ? ( $me_data['data']['key']['scopes'] ?? null ) : null;
 		$list_data = $podcasts->data();
 		$list      = is_array( $list_data ) && is_array( $list_data['data'] ?? null ) ? $list_data['data'] : array();
 
@@ -105,10 +106,13 @@ final class Account {
 		}
 
 		$details = array(
-			'state' => $state,
-			'site'  => $site_id,
-			'name'  => self::text( $user['name'] ?? null ),
-			'shows' => $shows,
+			'state'       => $state,
+			'site'        => $site_id,
+			'name'        => self::text( $user['name'] ?? null ),
+			'shows'       => $shows,
+			// Whether the connection was approved with "Include transcripts in posts", which
+			// gives the key transcripts:read. Null when show.fm didn't say.
+			'transcripts' => is_array( $scopes ) ? in_array( 'transcripts:read', $scopes, true ) : null,
 		);
 		// The site id and both answers must belong to one state: the one pinned at the start.
 		// A connection replaced at any point between them means the data is discarded, never
@@ -135,7 +139,7 @@ final class Account {
 	/**
 	 * The stored details for the connection as it is now, or empty ones.
 	 *
-	 * @return array{name:string,shows:array<int,array{id:string,title:string,slug:string}>}
+	 * @return array{name:string,shows:array<int,array{id:string,title:string,slug:string}>,transcripts:bool|null}
 	 */
 	public function details(): array {
 		return self::details_of( $this->connection->pinned() );
@@ -145,7 +149,7 @@ final class Account {
 	 * The stored details for a connection the caller has already pinned, or empty ones.
 	 *
 	 * @param Connection $pinned Pinned connection.
-	 * @return array{name:string,shows:array<int,array{id:string,title:string,slug:string}>}
+	 * @return array{name:string,shows:array<int,array{id:string,title:string,slug:string}>,transcripts:bool|null}
 	 */
 	public static function details_of( Connection $pinned ): array {
 		return self::details_for( $pinned->site_id(), $pinned->snapshot()['id'] );
@@ -159,12 +163,13 @@ final class Account {
 	 *
 	 * @param string|null $site_id  Connected site id.
 	 * @param string      $state_id The connection state id read with it.
-	 * @return array{name:string,shows:array<int,array{id:string,title:string,slug:string}>}
+	 * @return array{name:string,shows:array<int,array{id:string,title:string,slug:string}>,transcripts:bool|null}
 	 */
 	public static function details_for( ?string $site_id, string $state_id ): array {
 		$empty  = array(
-			'name'  => '',
-			'shows' => array(),
+			'name'        => '',
+			'shows'       => array(),
+			'transcripts' => null,
 		);
 		$stored = get_option( self::OPTION, array() );
 		if ( null === $site_id || ! is_array( $stored ) || ( $stored['site'] ?? null ) !== $site_id || ( $stored['state'] ?? null ) !== $state_id ) {
@@ -182,8 +187,9 @@ final class Account {
 			}
 		}
 		return array(
-			'name'  => self::text( $stored['name'] ?? null ),
-			'shows' => $shows,
+			'name'        => self::text( $stored['name'] ?? null ),
+			'shows'       => $shows,
+			'transcripts' => is_bool( $stored['transcripts'] ?? null ) ? $stored['transcripts'] : null,
 		);
 	}
 

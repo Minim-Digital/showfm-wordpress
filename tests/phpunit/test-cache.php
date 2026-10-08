@@ -187,6 +187,53 @@ class Test_Cache extends WP_UnitTestCase {
 		$this->assertSame( array( 'title' => 'Back' ), $this->cache->get( self::PATH ) );
 	}
 
+	public function test_a_changed_entry_cleans_the_post_cache_of_the_posts_that_render_it(): void {
+		$episode = '2f1c9a1e-0000-4000-8000-000000000001';
+		$block   = self::factory()->post->create( array( 'post_content' => '<!-- wp:showfm/player {"episode":"' . $episode . '"} /-->' ) );
+		$code    = self::factory()->post->create( array( 'post_content' => '[showfm episode="' . $episode . '"]' ) );
+		$synced  = self::factory()->post->create( array( 'post_content' => 'Synced.' ) );
+		update_post_meta( $synced, '_showfm_episode_id', $episode );
+		$other   = self::factory()->post->create( array( 'post_content' => 'Mentions ' . $episode . ' without a block.' ) );
+		$draft   = self::factory()->post->create(
+			array(
+				'post_status'  => 'draft',
+				'post_content' => '<!-- wp:showfm/player {"episode":"' . $episode . '"} /-->',
+			)
+		);
+		$cleaned = array();
+		add_action(
+			'clean_post_cache',
+			static function ( $id ) use ( &$cleaned ) {
+				$cleaned[] = (int) $id;
+			}
+		);
+
+		$this->http->respond( 200, '{"title":"First"}' );
+		$this->cache->refresh( self::PATH );
+		sort( $cleaned );
+		$expected = array( $block, $code, $synced );
+		sort( $expected );
+		$this->assertSame( $expected, $cleaned, 'The first fill purges the cold render.' );
+		$this->assertNotContains( $other, $cleaned );
+		$this->assertNotContains( $draft, $cleaned );
+
+		// The same answer again changes nothing, so nothing is purged.
+		$cleaned = array();
+		$this->http->respond( 200, '{"title":"First"}' );
+		wp_clear_scheduled_hook( Cache::REFRESH_HOOK, array( self::PATH ) );
+		$this->cache->refresh( self::PATH );
+		$this->assertSame( array(), $cleaned );
+
+		// A changed answer, and the episode becoming unavailable, both purge.
+		$this->http->respond( 200, '{"title":"Second"}' );
+		$this->cache->refresh( self::PATH );
+		$this->assertCount( 3, $cleaned );
+		$cleaned = array();
+		$this->http->respond( 404, '{"error":{"code":"not_found"}}' );
+		$this->cache->refresh( self::PATH );
+		$this->assertCount( 3, $cleaned );
+	}
+
 	public function test_flush_bumps_the_version_without_flushing_the_object_cache(): void {
 		$this->http->respond( 200, '{"title":"Before"}' );
 		$this->cache->refresh( self::PATH );

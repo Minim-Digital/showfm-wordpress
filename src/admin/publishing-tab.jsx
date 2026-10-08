@@ -512,7 +512,7 @@ export default function PublishingTab() {
 										'showfm'
 									) }
 									help={ __(
-										'Adds the transcript under the player, so search engines and screen readers can use it.',
+										'Adds the transcript under the player, so search engines and screen readers can use it. It starts the way you chose when you approved the connection.',
 										'showfm'
 									) }
 									checked={ settings.transcript }

@@ -241,6 +241,16 @@ records contact and the requested `after` cursor, so a dry run never requests th
 page at a cursor it has not applied. `dry_run_limit` means more rows remain beyond the
 preview. Authentication and rate-limit protection remain active during a dry run.
 
+A synced post's Player and Transcript blocks carry the snapshot the editor saves for a
+published episode: the title from the feed, and the listen page and audio from the cached
+public episode (the listen page otherwise from the show's and episode's slugs), checked by
+`Attributes::snapshot()`. Scheduled episodes save none. Building it reads the cache, which
+schedules the episode's refresh, and the artwork step stores the public answer it fetches
+with `Cache::store()`. When a cache entry changes, `Cache::purge_posts()` calls
+`clean_post_cache()` for the published posts that render it, so page caches drop the cold
+render. The Publishing tab's "Include the transcript" defaults to whether the key has
+`transcripts:read` (from `/v1/me`), until the setting is saved.
+
 A per-blog options lease uses a unique row and conditional updates to prevent
 concurrent claims. It renews before work and expires after five minutes if a worker
 crashes. A MySQL session lock adds immediate crash recovery when supported. Unsupported

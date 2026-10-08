@@ -518,6 +518,9 @@ class Test_Sync extends WP_UnitTestCase {
 		update_post_meta( $id, '_showfm_post_options', array( 'featured_image' => true ) );
 		$this->apply( $this->row( 2 ) );
 		$this->assertSame( $attachment, (int) get_post_thumbnail_id( $id ) );
+		// The artwork step's public answer seeds the players' cache for the episode.
+		$cached = ShowFM\Plugin::cache()->get( '/v1/episodes/' . self::EPISODE );
+		$this->assertSame( 'https://m.cdn.media/cover.png', $cached['data']['artwork']['url'] ?? null );
 		$this->apply( $this->row( 3 ) );
 		$this->assertSame( 2, $this->http->count() );
 	}

@@ -1551,14 +1551,15 @@ class Test_Connect extends WP_UnitTestCase {
 		$this->assertSame( 'https://api.show.fm/v1/me/podcasts?limit=50', $this->http->requests[3]['url'] );
 		$this->assertSame(
 			array(
-				'name'  => 'Maya Lindgren',
-				'shows' => array(
+				'name'        => 'Maya Lindgren',
+				'shows'       => array(
 					array(
 						'id'    => '7c9e6679-7425-40de-944b-e07fc1f90ae7',
 						'title' => 'The Long Table',
 						'slug'  => 'the-long-table',
 					),
 				),
+				'transcripts' => null,
 			),
 			( new ShowFM\Account( $this->connection, new Api_Client( $this->connection ) ) )->details()
 		);

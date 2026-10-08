@@ -79,6 +79,11 @@ final class Embed {
 		if ( ! $public && '' === $fallback['title'] ) {
 			return self::element( $type, $attrs, $input, '', $block );
 		}
+		// In click mode a transcript would reserve its full height behind a "Load transcript"
+		// button, only to say there's none after the click. The cache already knows.
+		if ( 'transcript' === $type && $public && Embed_Settings::enabled( Embed_Settings::LOAD_ON_CLICK ) && array_key_exists( 'transcript', $data['data'] ) && null === $data['data']['transcript'] ) {
+			return '';
+		}
 		$episode = $public ? $data['data'] : $fallback;
 		$json    = '';
 		if ( 'episodes' === $type ) {
@@ -122,6 +127,12 @@ final class Embed {
 			$element .= ' ' . $name . '="' . esc_attr( $value ) . '"';
 		}
 		$style = Theme::block_style( $input );
+		if ( 'transcript' === $type && isset( $attrs['height'] ) ) {
+			// The element is its 55px search row, the text area and a 1px border, 377px at the
+			// default height. The package's click facade and fallback reserve --showfm-height,
+			// so a shorter transcript doesn't sit in 377px before it loads.
+			$style = ltrim( $style . ';--showfm-height:' . ( (int) $attrs['height'] + 57 ) . 'px', ';' );
+		}
 		if ( '' !== $style ) {
 			$element .= ' style="' . esc_attr( $style ) . '"';
 		}

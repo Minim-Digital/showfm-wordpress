@@ -198,12 +198,31 @@ final class Admin_Status {
 	private static function show( array $show ): array {
 		$data    = Plugin::cache()->get( '/v1/podcasts/' . $show['id'] );
 		$artwork = is_array( $data ) && is_array( $data['data']['artwork'] ?? null ) ? ( $data['data']['artwork']['url'] ?? null ) : null;
+		$listen  = is_array( $data ) ? ( $data['data']['links']['listen'] ?? null ) : null;
+		// The API's own listen link, else the one it builds from the slug (on staging too).
+		$address = self::address( is_string( $listen ) ? $listen : null );
+		if ( '' === $address && '' !== $show['slug'] ) {
+			$address = self::address( Attributes::show_listen_url( $show['slug'] ) );
+		}
 		return array(
 			'id'      => $show['id'],
 			'title'   => $show['title'],
-			'address' => '' === $show['slug'] ? '' : $show['slug'] . '.show.fm',
+			'address' => $address,
 			'artwork' => is_string( $artwork ) && 0 === strpos( $artwork, 'https://' ) ? esc_url_raw( $artwork ) : '',
 		);
+	}
+
+	/**
+	 * A show's listen page as the screen shows it, host and path without the scheme, or '' when
+	 * it isn't an https address on a show.fm listen host.
+	 *
+	 * @param string|null $url Listen page.
+	 */
+	private static function address( ?string $url ): string {
+		if ( null === $url || ! isset( Attributes::snapshot( array( 'listenUrl' => $url ) )['listenUrl'] ) ) {
+			return '';
+		}
+		return untrailingslashit( (string) wp_parse_url( $url, PHP_URL_HOST ) . (string) wp_parse_url( $url, PHP_URL_PATH ) );
 	}
 
 	/**
