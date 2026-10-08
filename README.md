@@ -35,7 +35,8 @@ including fixtures, undo behaviour and the current server contract gaps.
 | `includes/`        | One small class per job, in the `ShowFM` namespace, autoloaded from `class-*.php`.                    |
 | `tests/phpunit/`   | PHPUnit tests, run inside `wp-env`.                                                                   |
 | `tests/e2e/`       | Playwright tests, run against `wp-env`.                                                               |
-| `bin/build-zip.sh` | Builds the distribution zip in `dist/`.                                                               |
+| `bin/build-zip.sh` | Builds the distribution zip in `dist/`, checked against `bin/release-files.txt`.                      |
+| `.wordpress-org/`  | WordPress.org banners, icons and screenshots, for the SVN `assets/` folder. Never in the zip.         |
 
 ### Classes
 
@@ -346,8 +347,12 @@ npm run env:start           # WordPress on http://localhost:8888 (user admin, pa
 | `npm run test:js`            | Vitest (jsdom) unit tests: the editor in `src/test/`, the settings screen in `tests/js/`. |
 | `npm run lint:js`            | ESLint through `@wordpress/scripts`.                                                      |
 | `npm run i18n:pot`           | Builds, then regenerates `languages/showfm.pot` with WP-CLI in `wp-env`.                  |
+| `npm run i18n:check`         | Fails if a translatable string is missing from the `.pot`, or if the `.pot` is stale.     |
 | `npm run format`             | Prettier through `@wordpress/scripts`.                                                    |
-| `npm run zip`                | Builds `dist/showfm/` and `dist/showfm-{version}.zip`.                                    |
+| `npm run release`            | Builds `dist/showfm/` and `dist/showfm-{version}.zip` (`npm run zip` does the same).      |
+| `npm run zip:check`          | Checks the zip's files against the allow-list in `bin/release-files.txt`.                 |
+| `npm run wporg:assets`       | Renders the WordPress.org banners and icons into `.wordpress-org/`.                       |
+| `npm run wporg:screenshots`  | Captures the five WordPress.org screenshots from `wp-env` into `.wordpress-org/`.         |
 
 The PHPUnit suite runs the WP-CLI commands against a stand-in for `WP_CLI`
 (`tests/stubs/wp-cli.php`), which PHPStan also reads for the signatures.
@@ -374,13 +379,15 @@ synced posts. It never ships either.
 - No Composer runtime dependencies. Composer and npm are development tooling only.
 - Everything is prefixed `showfm_` or namespaced `ShowFM`.
 - The zip is built from `.distignore`. `bin/build-zip.sh` fails if tests, dependencies, CI
-  files, AI tool directories or Markdown get into it.
+  files, AI tool directories or Markdown get into it, or if its files differ from
+  `bin/release-files.txt`. Releasing to WordPress.org is in [docs-release.md](docs-release.md).
 
 ## CI
 
 `.github/workflows/ci.yml` runs PHPCS, PHPStan, PHPUnit (single site and multisite) on
-`wp-env`, ESLint, the Vitest unit tests, builds the zip, runs Plugin Check (Plugin Repo category) against the
-built zip, and runs the Playwright tests.
+`wp-env`, the `.pot` checks, ESLint, the Vitest unit tests, builds the zip and checks it
+against the allow-list, runs Plugin Check (Plugin Repo category) against the built zip, and
+runs the Playwright tests.
 
 `.github/workflows/security-review.yml` runs the Claude security review when a pull request
 has the `security-review` label. See the comments in that file and
