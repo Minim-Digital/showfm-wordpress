@@ -2,7 +2,8 @@
 # Builds the distribution zip in dist/: dist/showfm/ and dist/showfm-{version}.zip.
 #
 # Files listed in .distignore are left out. The script then fails if anything that must
-# never ship (tests, dependencies, CI, AI tool directories, Markdown) is in the zip.
+# never ship (tests, dependencies, CI, AI tool directories, Markdown) is in the zip, or if
+# the zip's file list differs from bin/release-files.txt.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -28,6 +29,7 @@ rsync -a --exclude-from=.distignore ./ "dist/$slug/"
 forbidden="$(cd dist && find "$slug" \( \
 	-path "$slug/tests" -o -path "$slug/vendor" -o -path "$slug/node_modules" \
 	-o -path "$slug/.github" -o -path "$slug/.claude" -o -path "$slug/.codex" -o -path "$slug/.agents" \
+	-o -path "$slug/.wordpress-org" -o -path "$slug/src" -o -name '*.map' \
 	-o -name '*.md' -o -name 'composer.*' -o -name 'package*.json' -o -name '.wp-env*.json' \
 	-o -name 'phpunit*.xml*' -o -name 'phpcs.xml*' -o -name 'phpstan.neon*' \
 	\) -print)"
@@ -39,5 +41,5 @@ fi
 
 (cd dist && zip -qrX "$slug-$version.zip" "$slug")
 
-echo "Built dist/$slug-$version.zip:"
-(cd dist && unzip -Z1 "$slug-$version.zip")
+# The zip must hold exactly the files in bin/release-files.txt.
+node scripts/check-zip.mjs "dist/$slug-$version.zip"

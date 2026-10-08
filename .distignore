@@ -66,4 +66,10 @@
 # Markdown (readme.txt is the WordPress.org readme)
 *.md
 
+# WordPress.org listing assets (banners, icons, screenshots) go to SVN assets/, not the plugin
+/.wordpress-org
+
+# Source maps
+*.map
+
 /src

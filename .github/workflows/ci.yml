@@ -48,6 +48,8 @@ jobs:
       - run: npm run build
       - run: npm run lint:js
       - run: npm run test:js
+      - name: Every translatable string is in the .pot
+        run: node scripts/check-pot.mjs
       - run: npm run format:check
 
   phpunit:
@@ -70,6 +72,8 @@ jobs:
       - run: npm run build
       - name: Start wp-env
         run: npm run env:start
+      - name: The .pot matches a freshly generated one
+        run: npm run i18n:check
       - name: PHPUnit (single site)
         run: npm run test:php
       - name: PHPUnit (multisite)
@@ -111,7 +115,9 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Build the distribution zip
-        run: npm run zip
+        run: npm run release
+      - name: The zip holds exactly the files on the allow-list
+        run: npm run zip:check
       - uses: actions/upload-artifact@v4
         with:
           name: showfm-zip

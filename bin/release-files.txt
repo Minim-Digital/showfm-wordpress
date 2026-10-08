@@ -1,0 +1,40 @@
+# Every file the release zip may hold, relative to the zip's root. `*` matches within one
+# path segment. scripts/check-zip.mjs fails if the zip holds a file no line allows, or if a
+# line matches no file. Edit this list on purpose when the plugin gains or loses a file.
+
+showfm/showfm.php
+showfm/uninstall.php
+showfm/readme.txt
+showfm/LICENSE
+showfm/languages/showfm.pot
+showfm/includes/class-*.php
+
+showfm/blocks/episodes/block.json
+showfm/blocks/play/block.json
+showfm/blocks/player/block.json
+showfm/blocks/transcript/block.json
+
+# Built from src/ by npm run build.
+showfm/build/admin.asset.php
+showfm/build/admin.css
+showfm/build/admin-rtl.css
+showfm/build/admin.js
+showfm/build/index.asset.php
+showfm/build/index.css
+showfm/build/index-rtl.css
+showfm/build/index.js
+showfm/build/notices.asset.php
+showfm/build/notices.js
+
+showfm/assets/blocks.css
+
+# @showfm/embed's dist/cdn, copied unchanged by scripts/embed-assets.mjs.
+showfm/assets/showfm-embed-LICENSE
+showfm/assets/showfm-embed/v1.js
+showfm/assets/showfm-embed/v1-fallback.css
+showfm/assets/showfm-embed/click-loader.js
+showfm/assets/showfm-embed/locales/de.js
+showfm/assets/showfm-embed/locales/fr.js
+showfm/assets/showfm-embed/chunks/episodes-*.js
+showfm/assets/showfm-embed/chunks/play-*.js
+showfm/assets/showfm-embed/chunks/transcript-*.js
