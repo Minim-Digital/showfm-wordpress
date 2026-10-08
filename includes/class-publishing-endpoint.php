@@ -185,9 +185,10 @@ final class Publishing_Endpoint {
 
 		$approved = Account::details_of( $pinned )['transcripts'];
 		return array(
-			// How the connection was approved: "Include transcripts in posts" on or off, or
-			// unknown until show.fm tells this site (connections made before 1.0.1).
-			'transcriptApproval' => null === $approved ? 'unknown' : ( $approved ? 'on' : 'off' ),
+			// How the connection was approved: "Include transcripts in posts" on or off, unknown
+			// until show.fm tells this site (connections made before 1.0.1), or none when the
+			// site isn't connected.
+			'transcriptApproval' => null === $pinned->site_id() ? 'none' : ( null === $approved ? 'unknown' : ( $approved ? 'on' : 'off' ) ),
 			'settings'           => array(
 				'autoPost'      => $settings['auto_post'],
 				'postType'      => $settings['post_type'],

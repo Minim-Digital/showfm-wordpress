@@ -176,9 +176,16 @@ final class Connection {
 		// never leaves the site with nothing. Throws Connection_Busy when another change holds
 		// the lock for too long.
 		$saved = self::mutate(
-			static function () use ( $stored ): bool {
+			static function ( Connection $fresh ) use ( $stored, $site_id ): bool {
+				$previous = $fresh->site_id();
 				if ( ! self::write( self::OPTION, $stored ) ) {
 					return false;
+				}
+				// Credentials for another site (another account, or a reconnect that registered
+				// a new site) start with no sync history. A key refresh or a reconnect of the same
+				// site keeps it: it is still that site's.
+				if ( null === $previous || strtolower( $previous ) !== strtolower( $site_id ) ) {
+					self::forget_sync_health();
 				}
 				self::remove( self::STATE_OPTION );
 				self::remove( self::REFUSED_AT_OPTION );
@@ -191,6 +198,17 @@ final class Connection {
 			$this->saved_id = $id;
 		}
 		return (bool) $saved;
+	}
+
+	/**
+	 * Removes the sync health that describes one connected site: the last sync time, the sync
+	 * error count and the local sync log. Called when credentials move to another site and
+	 * when a disconnect tears the connection down.
+	 */
+	public static function forget_sync_health(): void {
+		self::remove( Health::LAST_SYNC_OPTION );
+		self::remove( Health::SYNC_ERRORS_OPTION );
+		self::remove( Sync_Log::OPTION );
 	}
 
 	/**

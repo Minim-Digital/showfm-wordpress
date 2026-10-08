@@ -711,9 +711,7 @@ final class Connect {
 		Connection::remove( Ping_Endpoint::LAST_PING_OPTION );
 		Connection::remove( Ping_Endpoint::MISSED_OPTION );
 		// The old connection's sync health: a new connection shows "never" until it syncs.
-		Connection::remove( Health::LAST_SYNC_OPTION );
-		Connection::remove( Health::SYNC_ERRORS_OPTION );
-		Connection::remove( Sync_Log::OPTION );
+		Connection::forget_sync_health();
 		Connection::remove( Account::OPTION );
 		Connection::guarded( array( Ping_Endpoint::class, 'forget_nonces' ) );
 	}

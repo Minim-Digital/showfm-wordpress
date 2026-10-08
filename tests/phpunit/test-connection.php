@@ -47,6 +47,25 @@ class Test_Connection extends WP_UnitTestCase {
 		$this->assertSame( $expires, $fresh->expires_at() );
 	}
 
+	public function test_credentials_for_another_site_start_with_no_sync_history(): void {
+		$history = function (): array {
+			return array( get_option( ShowFM\Health::LAST_SYNC_OPTION ), get_option( ShowFM\Health::SYNC_ERRORS_OPTION ), get_option( ShowFM\Sync_Log::OPTION ) );
+		};
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, 'site-42', 0 ) );
+		update_option( ShowFM\Health::LAST_SYNC_OPTION, 1791363600 );
+		update_option( ShowFM\Health::SYNC_ERRORS_OPTION, 2 );
+		update_option( ShowFM\Sync_Log::OPTION, array( array( 'code' => 'row_author' ) ) );
+		$kept = $history();
+
+		// A key refresh, or a reconnect of the same site: still that site's history.
+		$this->assertTrue( $this->connection->save( self::KEY . 'X', self::SECRET, 'SITE-42', 0 ) );
+		$this->assertSame( $kept, $history() );
+
+		// Another site (a Reconnect to another account, the browser flow or WP-CLI): none.
+		$this->assertTrue( $this->connection->save( self::KEY, self::SECRET, 'site-43', 0 ) );
+		$this->assertSame( array( false, false, false ), $history() );
+	}
+
 	public function test_nothing_is_stored_in_plain_text(): void {
 		$this->connection->save( self::KEY, self::SECRET, 'site-42', 0 );
 

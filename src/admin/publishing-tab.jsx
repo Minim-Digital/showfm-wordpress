@@ -357,6 +357,31 @@ function HowSyncWorks() {
  * The Publishing tab: the auto-posting settings with Save changes, recent activity, and how
  * sync works.
  */
+/**
+ * The help under "Include the transcript", from how the connection was approved.
+ *
+ * @param {string} approval `on`, `off`, `unknown` or `none` (not connected).
+ * @return {string} Help text.
+ */
+export function transcriptHelp( approval ) {
+	if ( approval === 'unknown' ) {
+		return __(
+			'Adds the transcript under the player, so search engines and screen readers can use it. It starts on until show.fm has told this site whether you approved transcripts when you connected.',
+			'showfm'
+		);
+	}
+	if ( approval === 'on' || approval === 'off' ) {
+		return __(
+			'Adds the transcript under the player, so search engines and screen readers can use it. It starts the way you chose when you approved the connection.',
+			'showfm'
+		);
+	}
+	return __(
+		'Adds the transcript under the player, so search engines and screen readers can use it.',
+		'showfm'
+	);
+}
+
 export default function PublishingTab() {
 	const [ data, setData ] = useState( null );
 	const [ settings, setSettings ] = useState( null );
@@ -511,17 +536,9 @@ export default function PublishingTab() {
 										'Include the transcript',
 										'showfm'
 									) }
-									help={
-										data.transcriptApproval === 'unknown'
-											? __(
-													'Adds the transcript under the player, so search engines and screen readers can use it. It starts on until show.fm has told this site whether you approved transcripts when you connected.',
-													'showfm'
-												)
-											: __(
-													'Adds the transcript under the player, so search engines and screen readers can use it. It starts the way you chose when you approved the connection.',
-													'showfm'
-												)
-									}
+									help={ transcriptHelp(
+										data.transcriptApproval
+									) }
 									checked={ settings.transcript }
 									onChange={ ( checked ) =>
 										setSettings( {

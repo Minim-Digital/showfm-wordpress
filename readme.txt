@@ -178,7 +178,7 @@ The plugin's settings, cache, scheduled events and its own post meta. Your posts
 * `wp showfm cache flush` reports the new cache version when the site uses a persistent object cache.
 * With "Load players only after a visitor clicks" on, a Transcript block for an episode without a transcript shows nothing instead of a "Load transcript" box, and a Transcript block with its own height reserves that height before it loads.
 * "Include the transcript" (Settings > show.fm > Publishing) starts the way the connection was approved: on with "Include transcripts in posts", off without it. For a connection made before 1.0.1 it starts on until show.fm tells the site, which the plugin asks soon after you open the Publishing tab.
-* Disconnecting clears the last sync time and the sync errors, so a new connection shows "never" until it first syncs.
+* Disconnecting, or reconnecting to another site, clears the last sync time and the sync errors, so the new connection shows "never" until it first syncs. Reconnecting the same site keeps them.
 
 = 1.0.0 =
 * First public release.

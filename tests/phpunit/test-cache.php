@@ -263,16 +263,48 @@ class Test_Cache extends WP_UnitTestCase {
 		$this->assertStringContainsString( '<showfm-transcript', do_blocks( $block ) );
 	}
 
+	public function test_the_purge_reads_every_shortcode_and_block_form_the_renderer_accepts(): void {
+		$uuid     = '2f1c9a1e-0000-4000-8000-000000000001';
+		$matches  = array(
+			'[showfm episode="' . $uuid . '"]',
+			'[showfm episode = "' . $uuid . '"]',
+			'[showfm episode=' . $uuid . ']',
+			"[showfm type='player' episode='" . $uuid . "']",
+			'[showfm episode="' . strtoupper( $uuid ) . '"]',
+			'<!-- wp:showfm/player {"episode":"' . $uuid . '"} /-->',
+			'<!-- wp:group --><div class="wp-block-group"><!-- wp:showfm/transcript {"episode":"' . $uuid . '"} /--></div><!-- /wp:group -->',
+		);
+		$misses   = array(
+			'A post that only mentions ' . $uuid . '.',
+			'[other episode="' . $uuid . '"]',
+			'<!-- wp:paragraph --><p>{"episode":"' . $uuid . '"}</p><!-- /wp:paragraph -->',
+			'[showfm podcast="' . $uuid . '"]',
+		);
+		$expected = array();
+		foreach ( $matches as $content ) {
+			$expected[] = self::factory()->post->create( array( 'post_content' => $content ) );
+		}
+		foreach ( $misses as $content ) {
+			self::factory()->post->create( array( 'post_content' => $content ) );
+		}
+		$cleaned = Cache::purge_posts( '/v1/episodes/' . $uuid );
+		sort( $cleaned );
+		sort( $expected );
+		$this->assertSame( $expected, $cleaned );
+	}
+
 	public function test_a_short_slug_purges_only_posts_that_name_it(): void {
 		$list    = self::factory()->post->create( array( 'post_content' => '<!-- wp:showfm/episodes {"podcast":"news"} /-->' ) );
 		$code    = self::factory()->post->create( array( 'post_content' => "[showfm type='episodes' podcast='news']" ) );
 		$mention = self::factory()->post->create( array( 'post_content' => '<!-- wp:showfm/player {"podcast":"newsroom"} /--> The news.' ) );
+		$room    = self::factory()->post->create( array( 'post_content' => '[showfm type="episodes" podcast=newsroom] [showfm podcast = "news-room"]' ) );
 		$cleaned = Cache::purge_posts( '/v1/podcasts/news/episodes?limit=10' );
 		sort( $cleaned );
 		$expected = array( $list, $code );
 		sort( $expected );
 		$this->assertSame( $expected, $cleaned );
 		$this->assertNotContains( $mention, $cleaned );
+		$this->assertNotContains( $room, $cleaned );
 	}
 
 	/**

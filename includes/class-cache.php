@@ -252,20 +252,24 @@ final class Cache {
 		if ( ! preg_match( '~\A/v1/(episodes|podcasts)/([a-z0-9-]+)~i', $path, $match ) ) {
 			return array();
 		}
-		$token = $match[2];
+		$token = strtolower( $match[2] );
 		$name  = 'episodes' === strtolower( $match[1] ) ? 'episode' : 'podcast';
-		// The attribute itself, as a block (JSON) or a shortcode writes it, so a short slug
-		// like "news" doesn't match every post that mentions the word.
-		$forms = array( '"' . $name . '":"' . $token . '"', $name . '="' . $token . '"', $name . "='" . $token . "'" );
+		// A cheap prefilter on the value alone. Each candidate is then confirmed with
+		// WordPress's own block and shortcode parsers, so every form the renderer accepts
+		// matches and a short slug ("news") never matches a longer one ("newsroom").
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- A bounded lookup, run only when a cached entry changes.
-		$ids    = $wpdb->get_col(
+		$candidates = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT ID FROM {$wpdb->posts} WHERE post_status IN ('publish','future','private') AND ( post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s ) LIMIT 200",
-				'%' . $wpdb->esc_like( $forms[0] ) . '%',
-				'%' . $wpdb->esc_like( $forms[1] ) . '%',
-				'%' . $wpdb->esc_like( $forms[2] ) . '%'
+				"SELECT ID, post_content FROM {$wpdb->posts} WHERE post_status IN ('publish','future','private') AND post_content LIKE %s LIMIT 200",
+				'%' . $wpdb->esc_like( $token ) . '%'
 			)
 		);
+		$ids        = array();
+		foreach ( $candidates as $candidate ) {
+			if ( self::renders( (string) $candidate->post_content, $name, $token ) ) {
+				$ids[] = (int) $candidate->ID;
+			}
+		}
 		$synced = $wpdb->get_col(
 			$wpdb->prepare(
 				"SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_showfm_episode_id' AND meta_value = %s LIMIT 200",
@@ -278,6 +282,36 @@ final class Cache {
 			clean_post_cache( $id );
 		}
 		return $ids;
+	}
+
+	/**
+	 * Whether the content has a show.fm block or [showfm] shortcode whose attribute is the
+	 * value, read by WordPress's block parser and shortcode regex, as the renderer reads it.
+	 *
+	 * @param string $content Post content.
+	 * @param string $name    Attribute: episode or podcast.
+	 * @param string $value   The value, lower case.
+	 */
+	private static function renders( string $content, string $name, string $value ): bool {
+		$blocks = parse_blocks( $content );
+		while ( $blocks ) {
+			$block = array_shift( $blocks );
+			if ( 0 === strpos( (string) $block['blockName'], 'showfm/' ) && is_string( $block['attrs'][ $name ] ?? null ) && strtolower( $block['attrs'][ $name ] ) === $value ) {
+				return true;
+			}
+			$blocks = array_merge( $blocks, $block['innerBlocks'] );
+		}
+		if ( false === strpos( $content, '[showfm' ) || ! preg_match_all( '/' . get_shortcode_regex( array( 'showfm' ) ) . '/', $content, $found, PREG_SET_ORDER ) ) {
+			return false;
+		}
+		foreach ( $found as $shortcode ) {
+			// An empty attribute string comes back as '', not an array.
+			$attrs = (array) shortcode_parse_atts( $shortcode[3] );
+			if ( is_string( $attrs[ $name ] ?? null ) && strtolower( $attrs[ $name ] ) === $value ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
