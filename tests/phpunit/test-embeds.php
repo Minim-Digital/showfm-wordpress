@@ -243,7 +243,7 @@ class Test_Embeds extends WP_UnitTestCase {
 		);
 		$this->assertTrue( wp_script_is( Assets::HANDLE, 'enqueued' ) );
 		$script = wp_scripts()->registered[ Assets::HANDLE ];
-		$this->assertSame( '1.5.0', $script->ver );
+		$this->assertSame( '1.6.0', $script->ver );
 		$this->assertStringEndsWith( '/assets/showfm-embed/v1.js', $script->src );
 		$this->assertNotContains( 'module', $script->extra );
 		$this->block( 'play', array( 'episode' => self::ID ) );
@@ -270,8 +270,8 @@ class Test_Embeds extends WP_UnitTestCase {
 		$tag       = get_echo( array( wp_scripts(), 'do_item' ), array( Assets::CLICK_HANDLE ) );
 		$processor = new WP_HTML_Tag_Processor( $tag );
 		$this->assertTrue( $processor->next_tag( array( 'tag_name' => 'script' ) ) );
-		$this->assertStringEndsWith( '/assets/showfm-embed/click-loader.js?ver=1.5.0', (string) $processor->get_attribute( 'src' ) );
-		$this->assertSame( plugins_url( 'assets/showfm-embed/v1.js', SHOWFM_FILE ) . '?ver=1.5.0', $processor->get_attribute( 'data-src' ) );
+		$this->assertStringEndsWith( '/assets/showfm-embed/click-loader.js?ver=1.6.0', (string) $processor->get_attribute( 'src' ) );
+		$this->assertSame( plugins_url( 'assets/showfm-embed/v1.js', SHOWFM_FILE ) . '?ver=1.6.0', $processor->get_attribute( 'data-src' ) );
 		$this->assertStringNotContainsString( 'embed.cdn.media', $tag );
 		// Other scripts are left alone.
 		$other = '<script src="x"></script>'; // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- A tag string for the filter, never printed.
@@ -326,6 +326,11 @@ class Test_Embeds extends WP_UnitTestCase {
 		$manifest = json_decode( file_get_contents( SHOWFM_DIR . '/node_modules/@showfm/embed/custom-elements.json' ), true );
 		$block    = WP_Block_Type_Registry::get_instance()->get_registered( 'showfm/player' );
 		foreach ( $manifest['modules'][0]['declarations'][0]['attributes'] as $attr ) {
+			if ( 'platform' === $attr['name'] ) {
+				// Set by the plugin on every element, never by a block or shortcode.
+				$this->assertNotContains( 'platform', Attributes::names( 'player' ) );
+				continue;
+			}
 			$this->assertArrayHasKey( $attr['name'], $block->attributes );
 			$this->assertContains( $attr['name'], Attributes::names( 'player' ) );
 		}
@@ -359,6 +364,33 @@ class Test_Embeds extends WP_UnitTestCase {
 		$this->assertFalse( sanitize_option( 'showfm_show_credit', 'false' ) );
 		update_option( 'showfm_show_credit', true );
 		$this->assertStringContainsString( 'credit="on"', $this->block( 'player', array( 'episode' => self::ID ) ) );
+	}
+
+	public function test_every_element_carries_platform_wordpress_and_credit_off_by_default(): void {
+		$episode = array(
+			'episode'  => self::ID,
+			'snapshot' => $this->snapshot(),
+		);
+		$blocks  = array(
+			'player'     => $episode,
+			'episodes'   => array(
+				'podcast'  => self::SHOW,
+				'snapshot' => $this->snapshot(),
+			),
+			'play'       => $episode,
+			'transcript' => $episode,
+		);
+		foreach ( array( false, true ) as $credit ) {
+			update_option( 'showfm_show_credit', $credit );
+			foreach ( $blocks as $type => $attrs ) {
+				$html = $this->block( $type, $attrs );
+				$this->assertMatchesRegularExpression( '~<showfm-' . $type . '\\b[^>]* platform="wordpress"~', $html, $type );
+				$this->assertStringContainsString( $credit ? 'credit="on"' : 'credit="off"', $html, $type );
+			}
+			// Shortcodes and local oEmbed players go through the same attributes.
+			$this->assertStringContainsString( 'platform="wordpress"', do_shortcode( '[showfm episode="' . self::ID . '" platform="other"]' ) );
+			$this->assertStringNotContainsString( 'platform="other"', do_shortcode( '[showfm episode="' . self::ID . '" platform="other"]' ) );
+		}
 	}
 
 	public function test_display_settings_are_registered_for_rest_with_their_defaults(): void {

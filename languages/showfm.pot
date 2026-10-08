@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-08T01:34:05+00:00\n"
+"POT-Creation-Date: 2026-10-08T02:32:28+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: showfm\n"
@@ -837,7 +837,7 @@ msgid "This site uses the show.fm plugin to show podcast episodes. show.fm is a 
 msgstr ""
 
 #: includes/class-privacy.php:36
-msgid "This site's show.fm blocks ask the visitor's browser to request files from show.fm. The Player loads the episode's details from api.show.fm and its artwork as soon as it appears, the audio when the visitor plays it, and the transcript file when the visitor opens the transcript (or as soon as it appears, if the transcript is set to open). The Episode list loads the show's episode details from api.show.fm and each episode's artwork as soon as it appears, and the audio when the visitor plays an episode. The Play button loads the episode's details from api.show.fm as soon as it appears, and the audio and artwork when the visitor plays it. The Transcript loads the episode's details from api.show.fm and the transcript file as soon as it appears. Artwork, audio and transcript files come from m.cdn.media, or media.podcasterplus.com for some older episodes. With \"Load players only after a visitor clicks\" turned on, each block first shows a button (\"Play podcast episode\", \"Load episodes\" or \"Load transcript\"), and nothing is requested from show.fm until the visitor presses it. The block then makes the requests above. show.fm then sees the visitor's IP address and browser details, as with any file on the web. This site's server sends no visitor data to show.fm."
+msgid "This site's show.fm blocks ask the visitor's browser to request files from show.fm. The Player loads the episode's details from api.show.fm and its artwork as soon as it appears, the audio when the visitor plays it, and the transcript file when the visitor opens the transcript (or as soon as it appears, if the transcript is set to open). The Episode list loads the show's episode details from api.show.fm and each episode's artwork as soon as it appears, the audio when the visitor plays an episode, and that episode's transcript file when the visitor opens its transcript. The Play button loads the episode's details from api.show.fm as soon as it appears, and the audio and artwork when the visitor plays it. The Transcript loads the episode's details from api.show.fm and the transcript file as soon as it appears. Artwork, audio and transcript files come from m.cdn.media, or media.podcasterplus.com for some older episodes. With \"Load players only after a visitor clicks\" turned on, each block first shows a button (\"Play podcast episode\", \"Load episodes\" or \"Load transcript\"), and nothing is requested from show.fm until the visitor presses it. The block then makes the requests above. show.fm then sees the visitor's IP address and browser details, as with any file on the web. This site's server sends no visitor data to show.fm."
 msgstr ""
 
 #: includes/class-privacy.php:37

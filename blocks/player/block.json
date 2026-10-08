@@ -52,6 +52,9 @@
 		"mini-player": {
 			"type": "string"
 		},
+		"mini-player-position": {
+			"type": "string"
+		},
 		"snapshot": {
 			"type": "object",
 			"default": {}

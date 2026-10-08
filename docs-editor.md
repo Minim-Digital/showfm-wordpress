@@ -120,8 +120,9 @@ post" writes `_showfm_episode_id`, which the bindings source reads.
 ## Gaps between the design and what ships
 
 - The heading level menu offers H2 to H6: the elements accept `heading-level` 2 to 6, not 1.
-- The Player has no Mini-player toggle: `<showfm-player>` in @showfm/embed 1.5.0 has no
-  `mini-player` attribute. The list and play button have theirs.
+- The Player has no Mini-player toggle yet. `<showfm-player>` has `mini-player` from
+  @showfm/embed 1.6.0, and the block and the shortcode pass it through, but the inspector
+  doesn't offer it. The list and play button have theirs.
 - The connected show picker shows each show's title and address, with a plain tile for the
   artwork and no episode count: the keyed show list has neither, and the picker makes one
   request rather than one per show.

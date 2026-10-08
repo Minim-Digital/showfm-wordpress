@@ -22,9 +22,9 @@ final class Attributes {
 	public static function names( string $type ): array {
 		$common = array( 'theme', 'accent', 'api', 'credit', 'load', 'lang' );
 		$types  = array(
-			'player'     => array( 'id', 'episode', 'podcast', 'size', 'wave', 'heading-level', 'transcript', 'mini-player', 'strings' ),
-			'episodes'   => array( 'id', 'podcast', 'variant', 'layout', 'count', 'season', 'hide', 'descriptions', 'mini-player', 'heading-level' ),
-			'play'       => array( 'episode', 'podcast', 'variant', 'size', 'mini-player' ),
+			'player'     => array( 'id', 'episode', 'podcast', 'size', 'wave', 'heading-level', 'transcript', 'mini-player', 'mini-player-position', 'strings' ),
+			'episodes'   => array( 'id', 'podcast', 'variant', 'layout', 'count', 'season', 'hide', 'descriptions', 'mini-player', 'mini-player-position', 'heading-level' ),
+			'play'       => array( 'episode', 'podcast', 'variant', 'size', 'mini-player', 'mini-player-position' ),
 			'transcript' => array( 'episode', 'for', 'height' ),
 		);
 		return isset( $types[ $type ] ) ? array_merge( $common, $types[ $type ] ) : array();
@@ -145,17 +145,18 @@ final class Attributes {
 	 */
 	public static function clean( string $type, array $input, bool $block = false ): array {
 		$enums  = array(
-			'theme'         => array( 'auto', 'light', 'dark' ),
-			'wave'          => array( 'true', 'false' ),
-			'heading-level' => array( '2', '3', '4', '5', '6' ),
-			'credit'        => array( 'auto', 'on', 'off' ),
-			'load'          => array( 'click' ),
-			'variant'       => 'episodes' === $type ? array( 'card', 'minimal' ) : array( 'icon', 'label', 'link' ),
-			'layout'        => array( 'list', 'grid', 'auto', 'compact' ),
-			'descriptions'  => array( 'on', 'off' ),
-			'mini-player'   => array( 'on', 'off' ),
-			'transcript'    => array( 'on', 'off', 'open' ),
-			'size'          => 'play' === $type ? array( 'sm', 'lg' ) : array( 'standard', 'compact' ),
+			'theme'                => array( 'auto', 'light', 'dark' ),
+			'wave'                 => array( 'true', 'false' ),
+			'heading-level'        => array( '2', '3', '4', '5', '6' ),
+			'credit'               => array( 'auto', 'on', 'off' ),
+			'load'                 => array( 'click' ),
+			'variant'              => 'episodes' === $type ? array( 'card', 'minimal' ) : array( 'icon', 'label', 'link' ),
+			'layout'               => array( 'list', 'grid', 'auto', 'compact' ),
+			'descriptions'         => array( 'on', 'off' ),
+			'mini-player'          => array( 'on', 'off' ),
+			'mini-player-position' => array( 'left', 'right' ),
+			'transcript'           => array( 'on', 'off', 'open' ),
+			'size'                 => 'play' === $type ? array( 'sm', 'lg' ) : array( 'standard', 'compact' ),
 		);
 		$output = array();
 		foreach ( self::names( $type ) as $name ) {
@@ -202,6 +203,9 @@ final class Attributes {
 			}
 		}
 		$output['credit'] = Embed_Settings::enabled( Embed_Settings::CREDIT ) ? ( $output['credit'] ?? 'on' ) : 'off';
+		// The show.fm WordPress plugin: with it, credit="off" hides "Powered by show.fm" for
+		// any show, because WordPress.org needs a credit in plugin code to be opt-in.
+		$output['platform'] = 'wordpress'; // phpcs:ignore WordPress.WP.CapitalPDangit.MisspelledInText -- The package's attribute value is lowercase.
 		// Consent mode is the site owner's choice: it applies to every embed when on.
 		if ( Embed_Settings::enabled( Embed_Settings::LOAD_ON_CLICK ) ) {
 			$output['load'] = 'click';

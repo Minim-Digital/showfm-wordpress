@@ -17,7 +17,7 @@ show.fm hosts podcasts. This plugin brings a show.fm show into WordPress.
 **Blocks for any public show, with no account**
 
 * **Player:** one episode, or always the latest, in standard or compact size, with a waveform and an optional transcript.
-* **Episode list:** a show's episodes as cards or a minimal list, filtered by season, with or without trailers and bonus episodes.
+* **Episode list:** a show's episodes as cards or a minimal list, filtered by season, with or without trailers and bonus episodes. The playing episode has a Transcript button when its transcript is on show.fm.
 * **Play button:** a button or a link in a sentence that plays an episode in a mini-player along the bottom of the page.
 * **Transcript:** a follow-along transcript that highlights the words as they are spoken.
 
@@ -35,13 +35,13 @@ The Migrate tab finds players from Buzzsprout, Libsyn, Captivate, Transistor, Sp
 
 * Players render on the server from a local cache, so pages never wait for show.fm.
 * The player scripts ship with the plugin. Nothing loads from a CDN.
-* The "Powered by show.fm" credit is off unless you turn it on.
+* The "Powered by show.fm" credit is off for every show unless you turn it on.
 * WP-CLI: `wp showfm connect`, `status`, `disconnect`, `sync`, `cache flush` and `migrate-embeds`.
 * Multisite: each site connects separately.
 
 **Source code**
 
-The plugin's source and build instructions are on GitHub at [Minim-Digital/showfm-wordpress](https://github.com/Minim-Digital/showfm-wordpress). The block editor scripts in `build/` are compiled from `src/` there with @wordpress/scripts. The player scripts in `assets/showfm-embed/` are copied unchanged from the MIT-licensed [@showfm/embed 1.5.0](https://github.com/Minim-Digital/showfm-embed/tree/v1.5.0) package, and a test checks every file byte for byte. With "Load players only after a visitor clicks" on, the plugin loads the package's click loader instead of the player script, with its `data-src` set to the bundled `v1.js`, so the player script comes from the plugin, and only after a visitor presses a block.
+The plugin's source and build instructions are on GitHub at [Minim-Digital/showfm-wordpress](https://github.com/Minim-Digital/showfm-wordpress). The block editor scripts in `build/` are compiled from `src/` there with @wordpress/scripts. The player scripts in `assets/showfm-embed/` are copied unchanged from the MIT-licensed [@showfm/embed 1.6.0](https://github.com/Minim-Digital/showfm-embed/tree/v1.6.0) package, and a test checks every file byte for byte. With "Load players only after a visitor clicks" on, the plugin loads the package's click loader instead of the player script, with its `data-src` set to the bundled `v1.js`, so the player script comes from the plugin, and only after a visitor presses a block.
 
 == External services ==
 
@@ -83,7 +83,7 @@ Serves the artwork, audio and transcript files of show.fm shows and episodes. me
 
 = What visitors' browsers request =
 
-The Player loads the episode's details from api.show.fm and its artwork as soon as it appears, the audio when the visitor plays it, and the transcript file when the visitor opens the transcript (or as soon as it appears, if the transcript is set to open). The Episode list loads the show's episode details from api.show.fm and each episode's artwork as soon as it appears, and the audio when the visitor plays an episode. The Play button loads the episode's details from api.show.fm as soon as it appears, and the audio and artwork when the visitor plays it. The Transcript loads the episode's details from api.show.fm and the transcript file as soon as it appears. Artwork, audio and transcript files come from m.cdn.media, or media.podcasterplus.com for some older episodes. With "Load players only after a visitor clicks" turned on, each block first shows a button ("Play podcast episode", "Load episodes" or "Load transcript"), and nothing is requested from show.fm until the visitor presses it. The block then makes the requests above. Each request shows show.fm the visitor's IP address and browser details, as with any web request.
+The Player loads the episode's details from api.show.fm and its artwork as soon as it appears, the audio when the visitor plays it, and the transcript file when the visitor opens the transcript (or as soon as it appears, if the transcript is set to open). The Episode list loads the show's episode details from api.show.fm and each episode's artwork as soon as it appears, the audio when the visitor plays an episode, and that episode's transcript file when the visitor opens its transcript. The Play button loads the episode's details from api.show.fm as soon as it appears, and the audio and artwork when the visitor plays it. The Transcript loads the episode's details from api.show.fm and the transcript file as soon as it appears. Artwork, audio and transcript files come from m.cdn.media, or media.podcasterplus.com for some older episodes. With "Load players only after a visitor clicks" turned on, each block first shows a button ("Play podcast episode", "Load episodes" or "Load transcript"), and nothing is requested from show.fm until the visitor presses it. The block then makes the requests above. Each request shows show.fm the visitor's IP address and browser details, as with any web request.
 
 = show.fm embed CDN (embed.cdn.media) =
 
@@ -176,7 +176,7 @@ The plugin's settings, cache, scheduled events and its own post meta. Your posts
 * Connect a site to show.fm in the browser or with WP-CLI. The site key is stored encrypted.
 * Publish to WordPress: new episodes become posts that follow the episode when it is rescheduled, unpublished or deleted, and keep any edits made in WordPress.
 * Embed migration from eight podcast hosts, with a dry run, episode picks and revisions to undo.
-* Bundles @showfm/embed 1.5.0.
+* Bundles @showfm/embed 1.6.0. Every element carries `platform="wordpress"`, so with the credit setting off, no show displays "Powered by show.fm".
 
 == Upgrade Notice ==
 

@@ -72,6 +72,8 @@ export function elementAttributes( type, attributes ) {
 	}
 	out.api = settings.api;
 	out.credit = 'off';
+	// The WordPress plugin: with credit="off", no show's preview shows "Powered by".
+	out.platform = 'wordpress';
 	return out;
 }
 

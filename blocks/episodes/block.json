@@ -55,6 +55,9 @@
 		"mini-player": {
 			"type": "string"
 		},
+		"mini-player-position": {
+			"type": "string"
+		},
 		"heading-level": {
 			"type": "string"
 		},
