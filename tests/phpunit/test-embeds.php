@@ -721,6 +721,8 @@ class Test_Embeds extends WP_UnitTestCase {
 			'soft hyphen entity' => $host( 'em&shy;bed.cdn.media' ),
 			'zero-width space'   => $host( "embed\u{200B}.cdn.media" ),
 			'word joiner'        => $host( "embed.cdn\u{2060}.media" ),
+			'shorthand format'   => $host( "emb\u{1BCA0}ed.cdn.media" ),
+			'shorthand at end'   => $host( "embed.cdn.media\u{1BCA3}" ),
 			'variation selector' => $host( "embed.cdn.media\u{FE0F}" ),
 			'fullwidth letters'  => $host( "\u{FF45}\u{FF4D}\u{FF42}\u{FF45}\u{FF44}.cdn.media" ),
 		);

@@ -37,7 +37,7 @@ final class Oembed {
 	const CDN_PATTERN = '~(?<![a-z0-9-])embed\.(?:cdn\.media|showfm\.dev)\.*+(?![a-z0-9-])~';
 
 	/** Code points browsers ignore in hostnames: UTS 46 "ignored", bidi and format controls. */
-	const IGNORED = '/[\x{00AD}\x{034F}\x{180B}-\x{180F}\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}-\x{206F}\x{FE00}-\x{FE0F}\x{FEFF}\x{E0000}-\x{E0FFF}]/u';
+	const IGNORED = '/[\x{00AD}\x{034F}\x{180B}-\x{180F}\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}-\x{206F}\x{FE00}-\x{FE0F}\x{FEFF}\x{1BCA0}-\x{1BCA3}\x{E0000}-\x{E0FFF}]/u';
 
 	/**
 	 * Replaces any show.fm embed in cached oEmbed markup, never passing markup that names a
