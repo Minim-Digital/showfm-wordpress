@@ -7,6 +7,7 @@ import PublishingTab, {
 	PUBLISHING_PATH,
 	autoPostHelp,
 	forPostType,
+	transcriptHelp,
 } from '../../src/admin/publishing-tab';
 import { activity, publishing } from './fixtures';
 
@@ -23,12 +24,45 @@ async function open( data = publishing() ) {
 	await screen.findByRole( 'heading', { name: 'Auto-posting' } );
 }
 
+describe( 'transcriptHelp', () => {
+	it( 'says how the switch starts, and nothing about connecting when not connected', () => {
+		expect( transcriptHelp( 'on' ) ).toMatch( /the way you chose/ );
+		expect( transcriptHelp( 'off' ) ).toMatch( /the way you chose/ );
+		expect( transcriptHelp( 'unknown' ) ).toMatch(
+			/starts on until show\.fm/
+		);
+		expect( transcriptHelp( 'none' ) ).toBe(
+			'Adds the transcript under the player, so search engines and screen readers can use it.'
+		);
+		expect( transcriptHelp( undefined ) ).not.toMatch( /connect/ );
+	} );
+} );
+
 describe( 'Publishing tab', () => {
 	it( 'loads from the Publishing route', async () => {
 		await open();
 
 		expect( apiFetch ).toHaveBeenCalledWith( { path: PUBLISHING_PATH } );
 		expect( PUBLISHING_PATH ).toBe( '/showfm/v1/admin/publishing' );
+	} );
+
+	it( 'says how "Include the transcript" starts, from the connection approval', async () => {
+		await open( publishing( { transcriptApproval: 'off' } ) );
+		expect(
+			screen.getByText(
+				/It starts the way you chose when you approved the connection\./
+			)
+		).toBeInTheDocument();
+	} );
+
+	it( 'says it starts on while show.fm hasn’t told this site', async () => {
+		await open( publishing( { transcriptApproval: 'unknown' } ) );
+		expect(
+			screen.getByText( /It starts on until show\.fm has told this site/ )
+		).toBeInTheDocument();
+		expect(
+			screen.queryByText( /the way you chose/ )
+		).not.toBeInTheDocument();
 	} );
 
 	it( 'shows every setting with its saved value (2a)', async () => {

@@ -138,6 +138,57 @@ class Test_Sync extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( '<script>', get_post( $id )->post_content );
 	}
 
+	public function test_a_pull_that_ends_after_a_connection_to_another_site_writes_no_sync_health(): void {
+		$other   = '44444444-4444-4444-8444-444444444444';
+		$empty   = wp_json_encode(
+			array(
+				'data'   => array(),
+				'cursor' => array(
+					'after'    => 0,
+					'next'     => 0,
+					'latest'   => 0,
+					'has_more' => false,
+				),
+			)
+		);
+		$connect = static function ( string $site ): void {
+			( new Connection() )->save( 'showfm_live_TEST_SYNC_' . substr( $site, 0, 8 ) . 'abc', str_repeat( 'b', 64 ), $site, 0 );
+		};
+
+		// The same site's pull records its sync.
+		$this->page( array() );
+		$this->sync->pull();
+		$this->assertGreaterThan( 0, (int) get_option( ShowFM\Health::LAST_SYNC_OPTION ) );
+
+		// Another site is connected while the pull waits on show.fm: its success isn't recorded.
+		$this->http->respond_with(
+			static function () use ( $connect, $other, $empty ) {
+				$connect( $other );
+				return array( 200, $empty );
+			}
+		);
+		$this->sync->pull();
+		$this->assertFalse( get_option( ShowFM\Health::LAST_SYNC_OPTION ) );
+
+		// Nor is its failure.
+		$this->clear_backoff();
+		$this->http->respond_with(
+			static function () use ( $connect ) {
+				$connect( self::SITE );
+				return array( 500, '{}' );
+			}
+		);
+		$this->sync->pull();
+		$this->assertFalse( get_option( ShowFM\Health::SYNC_ERRORS_OPTION ) );
+		$this->assertFalse( get_option( ShowFM\Sync_Log::OPTION ) );
+
+		// With the connection unchanged, a failure is counted again.
+		$this->clear_backoff();
+		$this->http->respond( 500, '{}' );
+		$this->sync->pull();
+		$this->assertSame( 1, (int) get_option( ShowFM\Health::SYNC_ERRORS_OPTION ) );
+	}
+
 	public function test_failed_row_is_logged_and_later_rows_are_applied(): void {
 		$row2                  = $this->row( 2 );
 		$row2['episode_id']    = '44444444-4444-4444-8444-444444444444';
@@ -518,6 +569,9 @@ class Test_Sync extends WP_UnitTestCase {
 		update_post_meta( $id, '_showfm_post_options', array( 'featured_image' => true ) );
 		$this->apply( $this->row( 2 ) );
 		$this->assertSame( $attachment, (int) get_post_thumbnail_id( $id ) );
+		// The artwork step's public answer seeds the players' cache for the episode.
+		$cached = ShowFM\Plugin::cache()->get( '/v1/episodes/' . self::EPISODE );
+		$this->assertSame( 'https://m.cdn.media/cover.png', $cached['data']['artwork']['url'] ?? null );
 		$this->apply( $this->row( 3 ) );
 		$this->assertSame( 2, $this->http->count() );
 	}

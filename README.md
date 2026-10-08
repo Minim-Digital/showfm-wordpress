@@ -241,6 +241,27 @@ records contact and the requested `after` cursor, so a dry run never requests th
 page at a cursor it has not applied. `dry_run_limit` means more rows remain beyond the
 preview. Authentication and rate-limit protection remain active during a dry run.
 
+A synced post's Player and Transcript blocks carry the snapshot the editor saves for a
+published episode: the title from the feed, and the listen page and audio from the cached
+public episode (the listen page otherwise from the show's and episode's slugs), checked by
+`Attributes::snapshot()`. Scheduled episodes save none. Building it reads the cache, which
+schedules the episode's refresh, and the artwork step stores the public answer it fetches
+with `Cache::store()`. When a cache entry changes, `Cache::purge_posts()` calls
+`clean_post_cache()` for the published posts that render it, so page caches drop the cold
+render. SQL prefilters on a show.fm block or shortcode and the ID or slug, reading candidates
+in pages in ID order. `parse_blocks()` and the `[showfm]` shortcode regex with
+`shortcode_parse_atts()` confirm each one, until 200 are confirmed or 2,000 candidates are
+read. A confirmed synced pattern (`wp_block`) also purges the posts that reference it, within
+the same limits. The Publishing tab's "Include the transcript" defaults to whether the key has
+`transcripts:read` (from `/v1/me`), until the setting is saved. While that is unknown (a
+connection made before 1.0.1), opening the tab schedules one `showfm_account_refresh` at
+most hourly (`Account::ask_if_unknown()`), and the help text says it starts on.
+`Connection::forget_sync_health()` clears the last sync time, the sync error count and the
+sync log on disconnect, and in `Connection::save()` whenever credentials move to another
+site id. A key refresh or a reconnect of the same site keeps them. A pull remembers the site
+it started with, and `Sync::owns_health()` skips its health writes once the stored site
+differs.
+
 A per-blog options lease uses a unique row and conditional updates to prevent
 concurrent claims. It renews before work and expires after five minutes if a worker
 crashes. A MySQL session lock adds immediate crash recovery when supported. Unsupported

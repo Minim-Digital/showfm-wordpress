@@ -193,6 +193,29 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( self::SECRET, $json, 'Nor the ping secret.' );
 	}
 
+	public function test_the_show_address_comes_from_the_apis_listen_link(): void {
+		$this->connect();
+		$this->http->respond( 200, '{"data":{"id":"' . self::SHOW_ID . '","links":{"listen":"https://show.fm/the-long-table/"}}}' );
+		Plugin::cache()->refresh( '/v1/podcasts/' . self::SHOW_ID );
+		$this->assertSame( 'show.fm/the-long-table', $this->view()['shows'][0]['address'] );
+
+		// A listen link off show.fm's listen hosts is ignored: the slug gives the address.
+		Plugin::cache()->flush();
+		$this->http->respond( 200, '{"data":{"id":"' . self::SHOW_ID . '","links":{"listen":"https://evil.test/the-long-table"}}}' );
+		Plugin::cache()->refresh( '/v1/podcasts/' . self::SHOW_ID );
+		$this->assertSame( 'the-long-table.show.fm', $this->view()['shows'][0]['address'] );
+	}
+
+	/**
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_the_show_address_uses_the_staging_host_on_staging(): void {
+		define( 'SHOWFM_API_URL', 'https://api.showfm.dev' );
+		$this->connect();
+		$this->assertSame( 'the-long-table.showfm.dev', $this->view()['shows'][0]['address'] );
+	}
+
 	public function test_artwork_comes_from_the_public_cache_and_reading_makes_no_request(): void {
 		$this->connect();
 		$this->http->respond( 200, '{"data":{"id":"' . self::SHOW_ID . '","artwork":{"url":"https://m.cdn.media/art.jpg"}}}' );

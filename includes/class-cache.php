@@ -39,6 +39,15 @@ final class Cache {
 	/** Stale data is served for up to 7 days, then the transient expires. */
 	const STALE_FOR = 604800;
 
+	/** A change cleans at most this many posts by content, and as many synced posts. */
+	const PURGE_LIMIT = 200;
+
+	/** A change reads at most this many candidate posts. */
+	const PURGE_SCAN_LIMIT = 2000;
+
+	/** Candidates are read this many at a time. */
+	const PURGE_PAGE = 100;
+
 	/** Largest random delay added to a scheduled refresh, in seconds. */
 	const MAX_JITTER = 120;
 
@@ -158,6 +167,10 @@ final class Cache {
 		}
 
 		$entry = $this->read( $path );
+		if ( null !== $entry && self::STATE_PENDING !== $entry['state'] && ! $this->is_stale( $entry ) ) {
+			// Still fresh, for example just stored by the sync: nothing to ask.
+			return;
+		}
 		if ( null !== $entry && $entry['next_attempt'] > time() ) {
 			$this->schedule_refresh( $path, $entry['next_attempt'] );
 			return;
@@ -169,17 +182,7 @@ final class Cache {
 
 		switch ( $result->type() ) {
 			case Api_Result::SUCCESS:
-				$this->write(
-					$path,
-					array(
-						'state'        => self::STATE_OK,
-						'data'         => $result->data(),
-						'etag'         => $result->etag(),
-						'fetched_at'   => $now,
-						'backoff'      => 0,
-						'next_attempt' => 0,
-					)
-				);
+				$this->store( $path, $result, $entry );
 				return;
 
 			case Api_Result::NOT_MODIFIED:
@@ -205,10 +208,233 @@ final class Cache {
 						'next_attempt' => 0,
 					)
 				);
+				if ( null === $entry || self::STATE_UNAVAILABLE !== $entry['state'] ) {
+					self::purge_posts( $path );
+				}
 				return;
 		}
 
 		$this->back_off( $path, $entry, $result );
+	}
+
+	/**
+	 * Stores a successful public API answer the sync already fetched (the artwork step reads
+	 * the same `/v1/episodes/{id}` the players render from), so the first render after a post
+	 * is created can use it. Also the refresh's own success path.
+	 *
+	 * @param string                   $path     Public API path.
+	 * @param Api_Result               $result   A successful result.
+	 * @param array<string,mixed>|null $previous The entry it replaces, if already read.
+	 */
+	public function store( string $path, Api_Result $result, ?array $previous = null ): void {
+		if ( ! $result->is( Api_Result::SUCCESS ) ) {
+			return;
+		}
+		$previous = $previous ?? $this->read( $path );
+		$this->write(
+			$path,
+			array(
+				'state'        => self::STATE_OK,
+				'data'         => $result->data(),
+				'etag'         => $result->etag(),
+				'fetched_at'   => time(),
+				'backoff'      => 0,
+				'next_attempt' => 0,
+			)
+		);
+		if ( null === $previous || self::STATE_OK !== $previous['state'] || $previous['data'] !== $result->data() ) {
+			self::purge_posts( $path );
+		}
+	}
+
+	/**
+	 * Cleans the post cache of every post that renders this path, so page-cache plugins that
+	 * hook clean_post_cache purge the pages showing the old render (or the cold one, with no
+	 * data). Matches synced posts by their episode, other posts by the ID or slug in a show.fm
+	 * block or shortcode, and posts that show such a post as a synced pattern. Runs only when
+	 * an entry changed, from WP-Cron or the sync.
+	 *
+	 * @param string $path Public API path.
+	 * @return int[] The posts cleaned.
+	 */
+	public static function purge_posts( string $path ): array {
+		global $wpdb;
+		if ( ! preg_match( '~\A/v1/(episodes|podcasts)/([a-z0-9-]+)~i', $path, $match ) ) {
+			return array();
+		}
+		$token = strtolower( $match[2] );
+		$name  = 'episodes' === strtolower( $match[1] ) ? 'episode' : 'podcast';
+		// SQL only prefilters: a show.fm block or shortcode, and the ID or slug anywhere. Each
+		// candidate is confirmed with WordPress's own block and shortcode parsers, so every
+		// form the renderer accepts matches and "news" never matches "newsroom". Candidates
+		// are read in ID order until PURGE_LIMIT are confirmed or they run out, so posts that
+		// only mention the value can't use up the limit, and at most PURGE_SCAN_LIMIT are read.
+		$budget = self::PURGE_SCAN_LIMIT;
+		$found  = self::scan(
+			false,
+			$token,
+			static function ( string $content ) use ( $name, $token ): bool {
+				return self::renders( $content, $name, $token );
+			},
+			self::PURGE_LIMIT,
+			$budget
+		);
+		// A synced pattern (wp_block) is shown wherever a post references it, and a pattern
+		// can reference another, so follow the references within the same limits.
+		$patterns = array_keys( $found, 'wp_block', true );
+		$room     = self::PURGE_LIMIT - count( $found );
+		while ( $patterns && $room > 0 && $budget > 0 ) {
+			$ref  = (int) array_shift( $patterns );
+			$refs = self::scan(
+				true,
+				(string) $ref,
+				static function ( string $content ) use ( $ref ): bool {
+					return self::references( $content, $ref );
+				},
+				$room,
+				$budget
+			);
+			foreach ( $refs as $id => $type ) {
+				if ( ! isset( $found[ $id ] ) ) {
+					$found[ $id ] = $type;
+					--$room;
+					if ( 'wp_block' === $type ) {
+						$patterns[] = $id;
+					}
+				}
+			}
+		}
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- A bounded lookup, run only when a cached entry changes.
+		$synced = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_showfm_episode_id' AND meta_value = %s LIMIT 200",
+				$token
+			)
+		);
+		$ids    = array_values( array_unique( array_map( 'intval', array_merge( array_keys( $found ), $synced ) ) ) );
+		foreach ( $ids as $id ) {
+			clean_post_cache( $id );
+		}
+		return $ids;
+	}
+
+	/**
+	 * Reads the published posts that match a prefilter a page at a time, in ID order, and
+	 * keeps the ones the check confirms. The prefilter is a show.fm block or shortcode with the
+	 * value anywhere in the content, or a block comment with a "ref" key followed somewhere by
+	 * the value, so JSON whitespace like {"ref" : 12} still passes.
+	 *
+	 * @param bool                   $patterns Whether to look for synced pattern blocks.
+	 * @param string                 $value    The ID or slug, or for patterns the pattern's ID.
+	 * @param callable(string): bool $confirm  Confirms a post from its content.
+	 * @param int                    $want     Stops once this many are confirmed.
+	 * @param int                    $budget   How many candidates may still be read, reduced by each one read.
+	 * @return array<int,string> The confirmed posts' IDs and post types.
+	 */
+	private static function scan( bool $patterns, string $value, callable $confirm, int $want, int &$budget ): array {
+		global $wpdb;
+		$like  = '%' . ( $patterns ? $wpdb->esc_like( '"ref"' ) . '%' : '' ) . $wpdb->esc_like( $value ) . '%';
+		$found = array();
+		$after = 0;
+		while ( $budget > 0 && $want > 0 ) {
+			$page = min( self::PURGE_PAGE, $budget );
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- A bounded lookup, run only when a cached entry changes.
+			$rows = (array) ( $patterns
+				? $wpdb->get_results(
+					$wpdb->prepare(
+						"SELECT ID, post_type, post_content FROM {$wpdb->posts} WHERE post_status IN ('publish','future','private') AND ID > %d AND post_content LIKE %s AND post_content LIKE %s ORDER BY ID LIMIT %d",
+						$after,
+						'%' . $wpdb->esc_like( 'wp:block' ) . '%',
+						$like,
+						$page
+					)
+				)
+				: $wpdb->get_results(
+					$wpdb->prepare(
+						"SELECT ID, post_type, post_content FROM {$wpdb->posts} WHERE post_status IN ('publish','future','private') AND ID > %d AND ( post_content LIKE %s OR post_content LIKE %s ) AND post_content LIKE %s ORDER BY ID LIMIT %d",
+						$after,
+						'%' . $wpdb->esc_like( '<!-- wp:showfm/' ) . '%',
+						'%' . $wpdb->esc_like( '[showfm' ) . '%',
+						$like,
+						$page
+					)
+				) );
+			// phpcs:enable
+			$budget -= count( $rows );
+			foreach ( $rows as $row ) {
+				$after = (int) $row->ID;
+				if ( $want > 0 && $confirm( (string) $row->post_content ) ) {
+					$found[ $after ] = (string) $row->post_type;
+					--$want;
+				}
+			}
+			if ( count( $rows ) < $page ) {
+				break;
+			}
+		}
+		return $found;
+	}
+
+	/**
+	 * Whether the content has a show.fm block or [showfm] shortcode whose attribute is the
+	 * value, read by WordPress's block parser and shortcode regex, as the renderer reads it.
+	 *
+	 * @param string $content Post content.
+	 * @param string $name    Attribute: episode or podcast.
+	 * @param string $value   The value, lower case.
+	 */
+	private static function renders( string $content, string $name, string $value ): bool {
+		$block = static function ( array $block ) use ( $name, $value ): bool {
+			return 0 === strpos( (string) $block['blockName'], 'showfm/' ) && is_string( $block['attrs'][ $name ] ?? null ) && strtolower( $block['attrs'][ $name ] ) === $value;
+		};
+		if ( self::has_block( parse_blocks( $content ), $block ) ) {
+			return true;
+		}
+		if ( false === strpos( $content, '[showfm' ) || ! preg_match_all( '/' . get_shortcode_regex( array( 'showfm' ) ) . '/', $content, $found, PREG_SET_ORDER ) ) {
+			return false;
+		}
+		foreach ( $found as $shortcode ) {
+			// An empty attribute string comes back as '', not an array.
+			$attrs = (array) shortcode_parse_atts( $shortcode[3] );
+			if ( is_string( $attrs[ $name ] ?? null ) && strtolower( $attrs[ $name ] ) === $value ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Whether the content shows a synced pattern, as a core/block with its ref.
+	 *
+	 * @param string $content Post content.
+	 * @param int    $ref     The pattern's post ID.
+	 */
+	private static function references( string $content, int $ref ): bool {
+		return self::has_block(
+			parse_blocks( $content ),
+			static function ( array $block ) use ( $ref ): bool {
+				return 'core/block' === $block['blockName'] && is_numeric( $block['attrs']['ref'] ?? null ) && (int) $block['attrs']['ref'] === $ref;
+			}
+		);
+	}
+
+	/**
+	 * Whether any block, nested ones included, matches.
+	 *
+	 * @param array<int,array<string,mixed>> $blocks Parsed blocks.
+	 * @param callable                       $test   Checks one block.
+	 */
+	private static function has_block( array $blocks, callable $test ): bool {
+		while ( $blocks ) {
+			$block = array_pop( $blocks );
+			if ( $test( $block ) ) {
+				return true;
+			}
+			foreach ( (array) $block['innerBlocks'] as $inner ) {
+				$blocks[] = $inner;
+			}
+		}
+		return false;
 	}
 
 	/**

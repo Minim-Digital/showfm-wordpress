@@ -710,6 +710,8 @@ final class Connect {
 		Connection::remove( Api_Client::RATE_LIMIT_OPTION );
 		Connection::remove( Ping_Endpoint::LAST_PING_OPTION );
 		Connection::remove( Ping_Endpoint::MISSED_OPTION );
+		// The old connection's sync health: a new connection shows "never" until it syncs.
+		Connection::forget_sync_health();
 		Connection::remove( Account::OPTION );
 		Connection::guarded( array( Ping_Endpoint::class, 'forget_nonces' ) );
 	}

@@ -433,6 +433,37 @@ class Test_Cli extends WP_UnitTestCase {
 		$this->assertStringEndsWith( '/v1/me/sites/' . self::SITE_ID . '/disconnect', $this->http->last()['url'] );
 	}
 
+	public function test_a_reconnect_after_disconnect_shows_no_sync_health_from_the_old_connection(): void {
+		$this->connection->save( self::KEY, self::SECRET, self::SITE_ID, 0 );
+		update_option( Health::LAST_SYNC_OPTION, 1791363600 );
+		update_option( Health::SYNC_ERRORS_OPTION, 3 );
+		update_option(
+			ShowFM\Sync_Log::OPTION,
+			array(
+				array(
+					'code' => 'row_author',
+					'seq'  => 4,
+					'at'   => 1791363600,
+				),
+			)
+		);
+
+		$this->http->respond( 200, '{"data":{"disconnected":true}}' );
+		$this->cli->disconnect( array(), array( 'yes' => true ) );
+
+		$this->assertFalse( get_option( Health::LAST_SYNC_OPTION ) );
+		$this->assertFalse( get_option( Health::SYNC_ERRORS_OPTION ) );
+		$this->assertFalse( get_option( ShowFM\Sync_Log::OPTION ) );
+
+		// Another account's site: nothing from the old connection until it syncs.
+		$this->connection->save( self::KEY, self::SECRET, '0b5d6f0e-1c2d-4e3f-8a9b-0c1d2e3f4a5b', 0 );
+		WP_CLI::$output = array();
+		$this->cli->status();
+		$this->assertContains( 'Last sync: never', array_column( WP_CLI::$output, 1 ) );
+		$this->assertSame( 0, ShowFM\Health::payload()['sync_error_count'] );
+		$this->assertNull( ShowFM\Health::payload()['last_sync_at'] );
+	}
+
 	public function test_disconnect_after_a_401_clears_locally_and_says_nothing_was_left_to_revoke(): void {
 		$this->connection->save( self::KEY, self::SECRET, self::SITE_ID, 0 );
 		$this->http->respond( 401 );
@@ -624,6 +655,18 @@ class Test_Cli extends WP_UnitTestCase {
 				),
 			)
 		);
+	}
+
+	public function test_cache_flush_reports_the_version_with_a_persistent_object_cache(): void {
+		set_transient( Cache::key( '/v1/episodes/11111111-2222-4333-8444-555555555555' ), array( 'state' => 'ok' ), HOUR_IN_SECONDS );
+		$previous = wp_using_ext_object_cache( true );
+		try {
+			$this->cli->cache( array( 'flush' ), array() );
+		} finally {
+			// The global can start null, and passing null back changes nothing.
+			wp_using_ext_object_cache( (bool) $previous );
+		}
+		$this->assertSame( array( 'success', 'Flushed the show.fm cache (cache version now ' . Cache::version() . ').' ), end( WP_CLI::$output ) );
 	}
 
 	public function test_cache_flush_removes_the_stored_entries_and_says_how_many(): void {

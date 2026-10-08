@@ -6,6 +6,7 @@
  */
 
 use ShowFM\Account;
+use ShowFM\Api_Result;
 use ShowFM\Connection;
 use ShowFM\Ping_Endpoint;
 use ShowFM\Plugin;
@@ -374,6 +375,132 @@ class Test_Publishing extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( self::KEY, wp_json_encode( $data ) );
 	}
 
+	public function test_a_synced_published_post_saves_the_snapshot_the_editor_would(): void {
+		$this->connect();
+		$this->save( array( 'featured_image' => false ) );
+		$row                     = $this->row();
+		$row['episode']['slug']  = 'sourdough';
+		$row['episode']['title'] = 'Sourdough <b>and</b> salt';
+		$id                      = $this->apply( $row );
+		$content                 = get_post( $id )->post_content;
+		$blocks                  = parse_blocks( $content );
+		$expected                = array(
+			'title'     => 'Sourdough and salt',
+			'listenUrl' => 'https://the-long-table.show.fm/e/sourdough',
+		);
+		$this->assertSame( $expected, $blocks[0]['attrs']['snapshot'], 'From the feed and the show\'s slug, while the cache is cold.' );
+		$this->assertSame( 0, $this->http->count(), 'Building the snapshot makes no request.' );
+		$this->assertNotFalse( wp_next_scheduled( ShowFM\Cache::REFRESH_HOOK, array( '/v1/episodes/' . self::EPISODE ) ), 'The cache is filled in the background.' );
+
+		// The first render, before the cache has the episode, is a readable fallback.
+		$html = do_blocks( $content );
+		$this->assertStringContainsString( '<a href="https://the-long-table.show.fm/e/sourdough">Sourdough and salt</a>', $html );
+
+		// With the public episode cached, the listen page and audio come from it.
+		Plugin::cache()->store(
+			'/v1/episodes/' . self::EPISODE,
+			new Api_Result(
+				Api_Result::SUCCESS,
+				200,
+				array(
+					'data' => array(
+						'id'    => self::EPISODE,
+						'title' => 'Sourdough and salt',
+						'links' => array( 'listen' => 'https://the-long-table.show.fm/e/sourdough-and-salt' ),
+						'audio' => array( 'url' => 'https://m.cdn.media/a/sourdough.mp3' ),
+					),
+				)
+			)
+		);
+		$update                            = $row;
+		$update['seq']                     = 2;
+		$update['episode']['content_hash'] = 'sha256:row2';
+		$snapshot                          = parse_blocks( get_post( $this->apply( $update ) )->post_content )[0]['attrs']['snapshot'];
+		$this->assertSame( 'https://the-long-table.show.fm/e/sourdough-and-salt', $snapshot['listenUrl'] );
+		$this->assertSame( 'https://m.cdn.media/a/sourdough.mp3', $snapshot['audioUrl'] );
+	}
+
+	public function test_a_snapshot_keeps_the_editors_host_rules(): void {
+		$this->connect();
+		$this->save( array( 'featured_image' => false ) );
+		Plugin::cache()->store(
+			'/v1/episodes/' . self::EPISODE,
+			new Api_Result(
+				Api_Result::SUCCESS,
+				200,
+				array(
+					'data' => array(
+						'links' => array( 'listen' => 'https://evil.test/e/sourdough' ),
+						'audio' => array( 'url' => 'http://m.cdn.media/a.mp3' ),
+					),
+				)
+			)
+		);
+		$row = $this->row();
+		$id  = $this->apply( $row );
+		$this->assertSame( array( 'title' => "Episode 'one'" ), parse_blocks( get_post( $id )->post_content )[0]['attrs']['snapshot'], 'Off-host and non-https links are dropped.' );
+	}
+
+	public function test_a_scheduled_episode_saves_no_snapshot(): void {
+		$this->connect();
+		$this->save( array( 'featured_image' => false ) );
+		$content = get_post( $this->apply( $this->row( 1, 'scheduled' ) ) )->post_content;
+		$this->assertStringNotContainsString( 'snapshot', $content, 'As in the editor.' );
+	}
+
+	public function test_include_the_transcript_follows_the_approval_until_saved(): void {
+		$this->connect();
+		$account = get_option( Account::OPTION );
+		$this->assertTrue( Publishing::settings()['transcript'], 'Unknown: on, as before 1.0.1.' );
+		update_option( Account::OPTION, array_merge( $account, array( 'transcripts' => false ) ) );
+		$this->assertFalse( Publishing::settings()['transcript'], 'Approved without transcripts.' );
+		update_option( Account::OPTION, array_merge( $account, array( 'transcripts' => true ) ) );
+		$this->assertTrue( Publishing::settings()['transcript'], 'Approved with transcripts.' );
+		update_option( Account::OPTION, array_merge( $account, array( 'transcripts' => false ) ) );
+		update_option( Publishing::OPTION, array( 'transcript' => true ) );
+		$this->assertTrue( Publishing::settings()['transcript'], 'A saved choice wins.' );
+	}
+
+	public function test_the_tab_says_how_the_connection_was_approved_and_asks_early_when_unknown(): void {
+		$this->connect();
+		$account = get_option( Account::OPTION );
+
+		$this->assertSame( 'unknown', $this->dispatch( 'GET' )->get_data()['transcriptApproval'] );
+		$this->assertNotFalse( wp_next_scheduled( Account::REFRESH_HOOK ), 'One background refresh, not a request from the screen.' );
+		$this->assertSame( 0, $this->http->count() );
+
+		// Throttled: an hour passes before it asks again.
+		wp_clear_scheduled_hook( Account::REFRESH_HOOK );
+		$this->dispatch( 'GET' );
+		$this->assertFalse( wp_next_scheduled( Account::REFRESH_HOOK ) );
+
+		// The refresh records the approval from the key's scopes.
+		$this->http->respond( 200, '{"data":{"user":{"name":"Maya Lindgren"},"key":{"scopes":["episodes:read","sites:write"]}}}' );
+		$this->http->respond( 200, '{"data":[]}' );
+		do_action( Account::REFRESH_HOOK );
+		$this->assertFalse( Account::details_of( Plugin::connection()->pinned() )['transcripts'] );
+		$this->assertSame( 'off', $this->dispatch( 'GET' )->get_data()['transcriptApproval'] );
+
+		// Known: no refresh is asked for.
+		delete_transient( Account::ASKED_TRANSIENT );
+		update_option( Account::OPTION, array_merge( $account, array( 'transcripts' => true ) ) );
+		$this->assertSame( 'on', $this->dispatch( 'GET' )->get_data()['transcriptApproval'] );
+		$this->assertFalse( wp_next_scheduled( Account::REFRESH_HOOK ) );
+	}
+
+	public function test_a_snapshot_falls_back_to_the_slug_built_listen_page(): void {
+		$this->connect();
+		$this->save( array( 'featured_image' => false ) );
+		Plugin::cache()->store(
+			'/v1/episodes/' . self::EPISODE,
+			new Api_Result( Api_Result::SUCCESS, 200, array( 'data' => array( 'links' => array( 'listen' => 'https://custom.example/e/sourdough' ) ) ) )
+		);
+		$row                    = $this->row();
+		$row['episode']['slug'] = 'sourdough';
+		$snapshot               = parse_blocks( get_post( $this->apply( $row ) )->post_content )[0]['attrs']['snapshot'];
+		$this->assertSame( 'https://the-long-table.show.fm/e/sourdough', $snapshot['listenUrl'] );
+	}
+
 	public function test_a_new_post_uses_the_settings(): void {
 		$category = self::factory()->category->create( array( 'name' => 'Podcast' ) );
 		$author   = self::factory()->user->create( array( 'role' => 'editor' ) );
@@ -395,7 +522,7 @@ class Test_Publishing extends WP_UnitTestCase {
 		$this->assertSame( $author, (int) $post->post_author );
 		$this->assertSame( array( $category ), wp_get_post_categories( $post->ID ) );
 		$this->assertSame( 'single-episode.php', get_post_meta( $post->ID, '_wp_page_template', true ) );
-		$this->assertStringContainsString( '<!-- wp:showfm/transcript {"episode":"' . self::EPISODE . '"} /-->', $post->post_content );
+		$this->assertStringContainsString( '<!-- wp:showfm/transcript {"episode":"' . self::EPISODE . '","snapshot":{"title":"Episode \'one\'"}} /-->', $post->post_content );
 		$this->assertLessThan( strpos( $post->post_content, 'wp:showfm/transcript' ), strpos( $post->post_content, 'wp:showfm/player' ), 'The transcript goes under the player.' );
 		$this->assertSame(
 			array(

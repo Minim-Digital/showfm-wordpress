@@ -322,13 +322,32 @@ final class Sync_Posts {
 		if ( $before->post_title !== $after->post_title ) {
 			$changes[] = 'title';
 		}
-		if ( $before->post_content !== $after->post_content || $before->post_excerpt !== $after->post_excerpt ) {
+		if ( self::without_snapshots( $before->post_content ) !== self::without_snapshots( $after->post_content ) || $before->post_excerpt !== $after->post_excerpt ) {
 			$changes[] = 'description';
 		}
 		if ( $before->post_date_gmt !== $after->post_date_gmt ) {
 			$changes[] = 'date';
 		}
 		Sync_Activity::record( Sync_Activity::UPDATED, $row, $id, array( 'changes' => $changes ) );
+	}
+
+	/**
+	 * Post content with the show.fm blocks' snapshots left out, so a renamed episode is a
+	 * title change, not also a description change.
+	 *
+	 * @param string $content Post content.
+	 */
+	private static function without_snapshots( string $content ): string {
+		$strip = static function ( array $blocks ) use ( &$strip ): array {
+			foreach ( $blocks as $i => $block ) {
+				if ( 0 === strpos( (string) $block['blockName'], 'showfm/' ) ) {
+					unset( $blocks[ $i ]['attrs']['snapshot'] );
+				}
+				$blocks[ $i ]['innerBlocks'] = $strip( $block['innerBlocks'] );
+			}
+			return $blocks;
+		};
+		return serialize_blocks( $strip( parse_blocks( $content ) ) );
 	}
 
 	/**
@@ -399,6 +418,65 @@ final class Sync_Posts {
 	}
 
 	/**
+	 * The snapshot the editor saves in a block, for a published episode: its title, listen
+	 * page and audio, so the first render has a readable fallback before the plugin's cache
+	 * has the episode (and full-page caches don't keep an empty render). The title comes from
+	 * the feed. The listen page and audio come from the cached public episode when the cache
+	 * has it, and the listen page otherwise from the show's and episode's slugs. Reading the
+	 * cache also schedules its refresh when it's missing. A scheduled episode saves nothing,
+	 * as in the editor. Attributes::snapshot() applies the editor's host rules.
+	 *
+	 * @param array<string,mixed> $episode Episode content.
+	 * @return array<string,string>
+	 */
+	private static function snapshot( array $episode ): array {
+		if ( 'published' !== ( $episode['status'] ?? '' ) ) {
+			return array();
+		}
+		$cached = Plugin::cache()->get( '/v1/episodes/' . strtolower( (string) $episode['id'] ) );
+		$public = is_array( $cached ) && is_array( $cached['data'] ?? null ) ? $cached['data'] : array();
+		$listen = $public['links']['listen'] ?? null;
+		// The cached link when it passes the editor's host rules, else the slug-built one.
+		if ( ! is_string( $listen ) || ! isset( Attributes::snapshot( array( 'listenUrl' => $listen ) )['listenUrl'] ) ) {
+			$listen = self::listen_url( $episode );
+		}
+		$snapshot = Attributes::snapshot(
+			array(
+				'title'     => wp_strip_all_tags( $episode['title'] ),
+				'listenUrl' => $listen,
+				'audioUrl'  => $public['audio']['url'] ?? null,
+			)
+		);
+		return array_filter(
+			$snapshot,
+			static function ( $value ): bool {
+				return is_string( $value ) && '' !== $value;
+			}
+		);
+	}
+
+	/**
+	 * The episode's listen page from its show's slug (from the connected account's shows)
+	 * and its own slug, as show.fm builds it, or null when either is unknown.
+	 *
+	 * @param array<string,mixed> $episode Episode content.
+	 */
+	private static function listen_url( array $episode ): ?string {
+		$slug = $episode['slug'] ?? null;
+		if ( ! is_string( $slug ) || ! preg_match( '/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/', $slug ) ) {
+			return null;
+		}
+		$podcast = strtolower( (string) ( $episode['podcast_id'] ?? '' ) );
+		foreach ( Account::details_of( Plugin::connection()->pinned() )['shows'] as $show ) {
+			if ( $podcast === $show['id'] ) {
+				$root = Attributes::show_listen_url( $show['slug'] );
+				return null === $root ? null : $root . '/e/' . $slug;
+			}
+		}
+		return null;
+	}
+
+	/**
 	 * Player, then the Transcript block when the post was created with it, then a saved
 	 * description. Static text honours one-way edits; live bindings
 	 * would overwrite the reader's view after WordPress editing.
@@ -407,7 +485,12 @@ final class Sync_Posts {
 	 * @param bool                $transcript Whether to add the Transcript block under the player.
 	 */
 	private static function content( array $episode, bool $transcript ): string {
-		$player      = get_comment_delimited_block_content( 'showfm/player', array( 'episode' => $episode['id'] ), '' );
+		$block = array( 'episode' => $episode['id'] );
+		$saved = self::snapshot( $episode );
+		if ( array() !== $saved ) {
+			$block['snapshot'] = $saved;
+		}
+		$player      = get_comment_delimited_block_content( 'showfm/player', $block, '' );
 		$description = $episode['show_notes_html'] ?? '';
 		do {
 			$previous    = $description;
@@ -418,7 +501,7 @@ final class Sync_Posts {
 			$description = wpautop( esc_html( $episode['description'] ?? '' ) );
 		}
 		if ( $transcript ) {
-			$player .= "\n\n" . get_comment_delimited_block_content( 'showfm/transcript', array( 'episode' => $episode['id'] ), '' );
+			$player .= "\n\n" . get_comment_delimited_block_content( 'showfm/transcript', $block, '' );
 		}
 		return $player . "\n\n" . get_comment_delimited_block_content( 'core/html', array(), $description );
 	}

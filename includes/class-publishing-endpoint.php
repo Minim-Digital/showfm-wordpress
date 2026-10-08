@@ -108,6 +108,7 @@ final class Publishing_Endpoint {
 	 * The Publishing tab's data.
 	 */
 	public function read(): \WP_REST_Response {
+		Account::ask_if_unknown( $this->connection->pinned() );
 		return self::response( $this->view() );
 	}
 
@@ -182,8 +183,13 @@ final class Publishing_Endpoint {
 			}
 		}
 
+		$approved = Account::details_of( $pinned )['transcripts'];
 		return array(
-			'settings'   => array(
+			// How the connection was approved: "Include transcripts in posts" on or off, unknown
+			// until show.fm tells this site (connections made before 1.0.1), or none when the
+			// site isn't connected.
+			'transcriptApproval' => null === $pinned->site_id() ? 'none' : ( null === $approved ? 'unknown' : ( $approved ? 'on' : 'off' ) ),
+			'settings'           => array(
 				'autoPost'      => $settings['auto_post'],
 				'postType'      => $settings['post_type'],
 				'category'      => $settings['category'],
@@ -192,11 +198,11 @@ final class Publishing_Endpoint {
 				'transcript'    => $settings['transcript'],
 				'featuredImage' => $settings['featured_image'],
 			),
-			'postTypes'  => $types,
-			'categories' => Publishing::categories(),
-			'authors'    => $authors,
-			'templates'  => $choices,
-			'shows'      => array_values(
+			'postTypes'          => $types,
+			'categories'         => Publishing::categories(),
+			'authors'            => $authors,
+			'templates'          => $choices,
+			'shows'              => array_values(
 				array_filter(
 					$shows,
 					static function ( string $title ): bool {
@@ -204,8 +210,8 @@ final class Publishing_Endpoint {
 					}
 				)
 			),
-			'problem'    => self::problem( Health::sync_problem( $pinned ) ),
-			'activity'   => Sync_Activity::view( $shows ),
+			'problem'            => self::problem( Health::sync_problem( $pinned ) ),
+			'activity'           => Sync_Activity::view( $shows ),
 		);
 	}
 

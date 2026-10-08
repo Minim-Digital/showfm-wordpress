@@ -187,6 +187,213 @@ class Test_Cache extends WP_UnitTestCase {
 		$this->assertSame( array( 'title' => 'Back' ), $this->cache->get( self::PATH ) );
 	}
 
+	public function test_a_changed_entry_cleans_the_post_cache_of_the_posts_that_render_it(): void {
+		$episode = '2f1c9a1e-0000-4000-8000-000000000001';
+		$block   = self::factory()->post->create( array( 'post_content' => '<!-- wp:showfm/player {"episode":"' . $episode . '"} /-->' ) );
+		$code    = self::factory()->post->create( array( 'post_content' => '[showfm episode="' . $episode . '"]' ) );
+		$synced  = self::factory()->post->create( array( 'post_content' => 'Synced.' ) );
+		update_post_meta( $synced, '_showfm_episode_id', $episode );
+		$other   = self::factory()->post->create( array( 'post_content' => 'Mentions ' . $episode . ' without a block.' ) );
+		$draft   = self::factory()->post->create(
+			array(
+				'post_status'  => 'draft',
+				'post_content' => '<!-- wp:showfm/player {"episode":"' . $episode . '"} /-->',
+			)
+		);
+		$cleaned = array();
+		add_action(
+			'clean_post_cache',
+			static function ( $id ) use ( &$cleaned ) {
+				$cleaned[] = (int) $id;
+			}
+		);
+
+		$this->http->respond( 200, '{"title":"First"}' );
+		$this->cache->refresh( self::PATH );
+		sort( $cleaned );
+		$expected = array( $block, $code, $synced );
+		sort( $expected );
+		$this->assertSame( $expected, $cleaned, 'The first fill purges the cold render.' );
+		$this->assertNotContains( $other, $cleaned );
+		$this->assertNotContains( $draft, $cleaned );
+
+		// A fresh entry isn't asked about again at all.
+		$cleaned = array();
+		$this->cache->refresh( self::PATH );
+		$this->assertSame( 1, $this->http->count() );
+
+		// Once stale, the same answer again changes nothing, so nothing is purged.
+		$this->age( self::PATH );
+		$this->http->respond( 200, '{"title":"First"}' );
+		$this->cache->refresh( self::PATH );
+		$this->assertSame( 2, $this->http->count() );
+		$this->assertSame( array(), $cleaned );
+
+		// A changed answer, and the episode becoming unavailable, both purge.
+		$this->age( self::PATH );
+		$this->http->respond( 200, '{"title":"Second"}' );
+		$this->cache->refresh( self::PATH );
+		$this->assertCount( 3, $cleaned );
+		$cleaned = array();
+		$this->age( self::PATH );
+		$this->http->respond( 404, '{"error":{"code":"not_found"}}' );
+		$this->cache->refresh( self::PATH );
+		$this->assertCount( 3, $cleaned );
+	}
+
+	public function test_a_stale_no_transcript_answer_cannot_hide_a_transcript_for_good(): void {
+		update_option( 'showfm_load_on_click', true );
+		$block = '<!-- wp:showfm/transcript {"episode":"2f1c9a1e-0000-4000-8000-000000000001","snapshot":{"title":"T"}} /-->';
+		$post  = self::factory()->post->create( array( 'post_content' => $block ) );
+		$this->http->respond( 200, '{"data":{"id":"2f1c9a1e-0000-4000-8000-000000000001","title":"T","transcript":null}}' );
+		$this->cache->refresh( self::PATH );
+		$this->assertSame( '', do_blocks( $block ), 'No transcript: nothing in click mode.' );
+
+		$cleaned = array();
+		add_action(
+			'clean_post_cache',
+			static function ( $id ) use ( &$cleaned ) {
+				$cleaned[] = (int) $id;
+			}
+		);
+		$this->age( self::PATH );
+		$this->http->respond( 200, '{"data":{"id":"2f1c9a1e-0000-4000-8000-000000000001","title":"T","transcript":{"url":"https://m.cdn.media/t.vtt"}}}' );
+		$this->cache->refresh( self::PATH );
+		$this->assertContains( $post, $cleaned, 'The changed answer purges the post.' );
+		$this->assertStringContainsString( '<showfm-transcript', do_blocks( $block ) );
+	}
+
+	public function test_the_purge_reads_every_shortcode_and_block_form_the_renderer_accepts(): void {
+		$uuid     = '2f1c9a1e-0000-4000-8000-000000000001';
+		$matches  = array(
+			'[showfm episode="' . $uuid . '"]',
+			'[showfm episode = "' . $uuid . '"]',
+			'[showfm episode=' . $uuid . ']',
+			"[showfm type='player' episode='" . $uuid . "']",
+			'[showfm episode="' . strtoupper( $uuid ) . '"]',
+			'<!-- wp:showfm/player {"episode":"' . $uuid . '"} /-->',
+			'<!-- wp:group --><div class="wp-block-group"><!-- wp:showfm/transcript {"episode":"' . $uuid . '"} /--></div><!-- /wp:group -->',
+		);
+		$misses   = array(
+			'A post that only mentions ' . $uuid . '.',
+			'[other episode="' . $uuid . '"]',
+			'<!-- wp:paragraph --><p>{"episode":"' . $uuid . '"}</p><!-- /wp:paragraph -->',
+			'[showfm podcast="' . $uuid . '"]',
+		);
+		$expected = array();
+		foreach ( $matches as $content ) {
+			$expected[] = self::factory()->post->create( array( 'post_content' => $content ) );
+		}
+		foreach ( $misses as $content ) {
+			self::factory()->post->create( array( 'post_content' => $content ) );
+		}
+		$cleaned = Cache::purge_posts( '/v1/episodes/' . $uuid );
+		sort( $cleaned );
+		sort( $expected );
+		$this->assertSame( $expected, $cleaned );
+	}
+
+	public function test_posts_that_only_mention_the_value_cannot_use_up_the_purge_limit(): void {
+		$uuid  = '2f1c9a1e-0000-4000-8000-000000000002';
+		$decoy = '<!-- wp:showfm/player {"episode":"2f1c9a1e-0000-4000-8000-0000000000ff"} /--><!-- wp:paragraph --><p>Next week: ' . $uuid . '</p><!-- /wp:paragraph -->';
+		for ( $i = 0; $i < Cache::PURGE_LIMIT + 10; $i++ ) {
+			self::factory()->post->create( array( 'post_content' => $decoy ) );
+		}
+		$real = self::factory()->post->create( array( 'post_content' => '[showfm episode="' . $uuid . '"]' ) );
+
+		$this->assertSame( array( $real ), Cache::purge_posts( '/v1/episodes/' . $uuid ) );
+	}
+
+	public function test_a_synced_pattern_purges_the_posts_that_show_it(): void {
+		global $wpdb;
+		$uuid    = '2f1c9a1e-0000-4000-8000-000000000003';
+		$pattern = self::factory()->post->create(
+			array(
+				'post_type'    => 'wp_block',
+				'post_content' => '<!-- wp:showfm/player {"episode":"' . $uuid . '"} /-->',
+			)
+		);
+		$outer   = self::factory()->post->create(
+			array(
+				'post_type'    => 'wp_block',
+				'post_content' => '<!-- wp:block {"ref":' . $pattern . '} /-->',
+			)
+		);
+		$shows   = self::factory()->post->create( array( 'post_content' => '<!-- wp:block {"ref":' . $pattern . '} /-->' ) );
+		// Written straight to the table: saving through kses would reserialise the block JSON.
+		$spaced = array();
+		foreach ( array( '<!-- wp:block {"ref": ' . $pattern . '} /-->', '<!-- wp:block {"ref" :' . $pattern . '} /-->', "<!-- wp:block {\n\t\"ref\":\n\t" . $pattern . "\n} /-->" ) as $content ) {
+			$id = self::factory()->post->create();
+			$wpdb->update( $wpdb->posts, array( 'post_content' => $content ), array( 'ID' => $id ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Test setup.
+			$spaced[] = $id;
+		}
+		$nested = self::factory()->post->create( array( 'post_content' => '<!-- wp:group --><div class="wp-block-group"><!-- wp:block {"ref":' . $outer . '} /--></div><!-- /wp:group -->' ) );
+		$longer = self::factory()->post->create( array( 'post_content' => '<!-- wp:block {"ref":' . $pattern . '1} /-->' ) );
+		$text   = self::factory()->post->create( array( 'post_content' => '<!-- wp:block {"ref":1} /--><!-- wp:paragraph --><p>"ref":' . $pattern . '</p><!-- /wp:paragraph -->' ) );
+
+		$cleaned  = Cache::purge_posts( '/v1/episodes/' . $uuid );
+		$expected = array_merge( array( $pattern, $outer, $shows, $nested ), $spaced );
+		sort( $cleaned );
+		sort( $expected );
+		$this->assertSame( $expected, $cleaned );
+		$this->assertNotContains( $longer, $cleaned );
+		$this->assertNotContains( $text, $cleaned );
+	}
+
+	public function test_patterns_that_reference_each_other_are_purged_once(): void {
+		$uuid   = '2f1c9a1e-0000-4000-8000-000000000004';
+		$first  = self::factory()->post->create(
+			array(
+				'post_type'    => 'wp_block',
+				'post_content' => '<!-- wp:showfm/player {"episode":"' . $uuid . '"} /-->',
+			)
+		);
+		$second = self::factory()->post->create(
+			array(
+				'post_type'    => 'wp_block',
+				'post_content' => '<!-- wp:block {"ref":' . $first . '} /-->',
+			)
+		);
+		wp_update_post(
+			array(
+				'ID'           => $first,
+				'post_content' => '<!-- wp:showfm/player {"episode":"' . $uuid . '"} /--><!-- wp:block {"ref":' . $second . '} /-->',
+			)
+		);
+		$post = self::factory()->post->create( array( 'post_content' => '<!-- wp:block {"ref":' . $second . '} /-->' ) );
+
+		$cleaned  = Cache::purge_posts( '/v1/episodes/' . $uuid );
+		$expected = array( $first, $second, $post );
+		sort( $cleaned );
+		sort( $expected );
+		$this->assertSame( $expected, $cleaned );
+	}
+
+	public function test_a_short_slug_purges_only_posts_that_name_it(): void {
+		$list    = self::factory()->post->create( array( 'post_content' => '<!-- wp:showfm/episodes {"podcast":"news"} /-->' ) );
+		$code    = self::factory()->post->create( array( 'post_content' => "[showfm type='episodes' podcast='news']" ) );
+		$mention = self::factory()->post->create( array( 'post_content' => '<!-- wp:showfm/player {"podcast":"newsroom"} /--> The news.' ) );
+		$room    = self::factory()->post->create( array( 'post_content' => '[showfm type="episodes" podcast=newsroom] [showfm podcast = "news-room"]' ) );
+		$cleaned = Cache::purge_posts( '/v1/podcasts/news/episodes?limit=10' );
+		sort( $cleaned );
+		$expected = array( $list, $code );
+		sort( $expected );
+		$this->assertSame( $expected, $cleaned );
+		$this->assertNotContains( $mention, $cleaned );
+		$this->assertNotContains( $room, $cleaned );
+	}
+
+	/**
+	 * Makes an entry stale, as if it was fetched longer ago than FRESH_FOR.
+	 *
+	 * @param string $path Path.
+	 */
+	private function age( string $path ): void {
+		$entry               = get_transient( Cache::key( $path ) );
+		$entry['fetched_at'] = time() - Cache::FRESH_FOR - 1;
+		set_transient( Cache::key( $path ), $entry, HOUR_IN_SECONDS );
+	}
+
 	public function test_flush_bumps_the_version_without_flushing_the_object_cache(): void {
 		$this->http->respond( 200, '{"title":"Before"}' );
 		$this->cache->refresh( self::PATH );

@@ -1,6 +1,6 @@
 {
 	"name": "showfm-wordpress",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"private": true,
 	"description": "show.fm WordPress plugin. Development tooling only.",
 	"license": "GPL-2.0-or-later",

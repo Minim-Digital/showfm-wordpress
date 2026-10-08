@@ -58,9 +58,19 @@ final class Publishing {
 			'category'       => absint( $stored['category'] ?? 0 ),
 			'author'         => absint( $stored['author'] ?? 0 ),
 			'template'       => is_string( $stored['template'] ?? null ) ? $stored['template'] : '',
-			'transcript'     => (bool) ( $stored['transcript'] ?? self::DEFAULTS['transcript'] ),
+			'transcript'     => (bool) ( $stored['transcript'] ?? self::transcript_default() ),
 			'featured_image' => (bool) ( $stored['featured_image'] ?? self::DEFAULTS['featured_image'] ),
 		);
+	}
+
+	/**
+	 * Until the setting is saved, "Include the transcript" follows the connection's approval:
+	 * on when it was approved with "Include transcripts in posts", off when it wasn't, and on
+	 * when show.fm hasn't said (a connection from before 1.0.1, until its next account refresh).
+	 */
+	private static function transcript_default(): bool {
+		$approved = Account::details_of( Plugin::connection()->pinned() )['transcripts'];
+		return null === $approved ? self::DEFAULTS['transcript'] : $approved;
 	}
 
 	/**

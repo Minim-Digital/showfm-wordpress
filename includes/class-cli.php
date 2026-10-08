@@ -323,8 +323,16 @@ final class Cli {
 			\WP_CLI::error( __( 'Use wp showfm cache flush.', 'showfm' ) );
 			return;
 		}
+		// With a persistent object cache the entries live there, not in the options table, so
+		// the count of deleted rows says nothing: the version bump is what invalidates them.
+		$external = wp_using_ext_object_cache();
 		if ( ! isset( $assoc_args['network'] ) ) {
 			$removed = Plugin::cache()->flush();
+			if ( $external ) {
+				/* translators: %d: the cache version. */
+				\WP_CLI::success( sprintf( __( 'Flushed the show.fm cache (cache version now %d).', 'showfm' ), Cache::version() ) );
+				return;
+			}
 			\WP_CLI::success(
 				sprintf(
 					/* translators: %d: number of stored entries. */
@@ -350,11 +358,21 @@ final class Cli {
 			try {
 				$removed = Plugin::cache()->flush();
 				$total  += $removed;
-				/* translators: 1: site URL, 2: number of stored entries. */
-				\WP_CLI::line( sprintf( __( '%1$s: removed %2$d stored entries.', 'showfm' ), home_url(), $removed ) );
+				if ( $external ) {
+					/* translators: 1: site URL, 2: the cache version. */
+					\WP_CLI::line( sprintf( __( '%1$s: cache version now %2$d.', 'showfm' ), home_url(), Cache::version() ) );
+				} else {
+					/* translators: 1: site URL, 2: number of stored entries. */
+					\WP_CLI::line( sprintf( __( '%1$s: removed %2$d stored entries.', 'showfm' ), home_url(), $removed ) );
+				}
 			} finally {
 				restore_current_blog();
 			}
+		}
+		if ( $external ) {
+			/* translators: %d: number of sites. */
+			\WP_CLI::success( sprintf( __( 'Flushed the show.fm cache on %d sites.', 'showfm' ), count( $sites ) ) );
+			return;
 		}
 		\WP_CLI::success(
 			sprintf(
