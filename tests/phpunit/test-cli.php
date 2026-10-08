@@ -651,6 +651,17 @@ class Test_Cli extends WP_UnitTestCase {
 		$this->assertSame( array( 'success', 'Flushed the show.fm cache: removed 0 stored entries.' ), end( WP_CLI::$output ) );
 	}
 
+	public function test_cache_flush_leaves_a_site_that_never_cached_anything_untouched(): void {
+		delete_option( Cache::NAMESPACE_OPTION );
+		delete_option( Cache::VERSION_OPTION );
+
+		$this->cli->cache( array( 'flush' ), array() );
+
+		$this->assertSame( array( 'success', 'Flushed the show.fm cache: removed 0 stored entries.' ), end( WP_CLI::$output ) );
+		$this->assertFalse( get_option( Cache::NAMESPACE_OPTION ) );
+		$this->assertFalse( get_option( Cache::VERSION_OPTION ) );
+	}
+
 	public function test_cache_needs_the_flush_action(): void {
 		foreach ( array( array(), array( 'clear' ), array( 'flush', 'now' ) ) as $args ) {
 			$this->assert_halts(
@@ -672,6 +683,7 @@ class Test_Cli extends WP_UnitTestCase {
 			return;
 		}
 		$second = self::factory()->blog->create();
+		$unused = self::factory()->blog->create();
 		$keys   = array();
 		foreach ( array( get_current_blog_id(), $second ) as $blog ) {
 			switch_to_blog( $blog );
@@ -687,6 +699,11 @@ class Test_Cli extends WP_UnitTestCase {
 			$this->assertFalse( get_transient( $key ), "Site $blog" );
 			restore_current_blog();
 		}
+		// A site where the plugin never cached anything gets no option written.
+		switch_to_blog( $unused );
+		$this->assertFalse( get_option( Cache::VERSION_OPTION ) );
+		$this->assertFalse( get_option( Cache::NAMESPACE_OPTION ) );
+		restore_current_blog();
 		$sites = count(
 			get_sites(
 				array(

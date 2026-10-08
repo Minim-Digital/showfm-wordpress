@@ -295,10 +295,12 @@ final class Cli {
 	}
 
 	/**
-	 * Clears the plugin's cache of show.fm data: the show and episode details players and
-	 * lists render from, and the block editor's lookups. Pages show the blocks' saved copies
-	 * until the background refresh fetches the data again. The rest of the object cache is
-	 * untouched.
+	 * Clears the plugin's cache of show.fm data.
+	 *
+	 * That is the show and episode details players and lists render from, and the block
+	 * editor's lookups. Pages show the blocks' saved copies until the background refresh
+	 * fetches the data again. The rest of the object cache is untouched. Sites that never
+	 * cached anything are left as they are.
 	 *
 	 * ## OPTIONS
 	 *

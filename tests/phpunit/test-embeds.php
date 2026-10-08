@@ -12,6 +12,7 @@ use ShowFM\Cache;
 use ShowFM\Embed;
 use ShowFM\Embed_Settings;
 use ShowFM\Fallback;
+use ShowFM\Oembed;
 use ShowFM\Theme;
 
 /** Real WordPress rendering, on single site and multisite. */
@@ -594,6 +595,65 @@ class Test_Embeds extends WP_UnitTestCase {
 		$other = '<iframe src="https://www.youtube.com/embed/abc?feature=oembed" title="Video"></iframe>';
 		$this->assertSame( $other, apply_filters( 'embed_oembed_html', $other, 'https://www.youtube.com/watch?v=abc' ) );
 		$this->assertSame( '<blockquote>No iframe</blockquote>', apply_filters( 'embed_oembed_html', '<blockquote>No iframe</blockquote>', $url ) );
+	}
+
+	public function test_oembed_catches_every_spelling_of_a_show_fm_embed_host(): void {
+		$url = 'https://test.show.fm/e/first';
+		$ep  = '/ep/' . self::ID;
+		$tab = "\t";
+		$nl  = "\n";
+		// phpcs:disable WordPress.WP.EnqueuedResources.NonEnqueuedScript, WordPress.WP.EnqueuedResources.NonEnqueuedStylesheet -- Cached oEmbed markup under test, never printed.
+		$disguised = array(
+			'trailing dot'      => '<iframe src="https://embed.cdn.media.' . $ep . '"></iframe>',
+			'two trailing dots' => '<iframe src="https://embed.cdn.media..' . $ep . '"></iframe>',
+			'backslashes'       => '<iframe src="https:\\\\embed.cdn.media\\ep\\' . self::ID . '"></iframe>',
+			'percent dot'       => '<iframe src="https://embed%2Ecdn.media' . $ep . '"></iframe>',
+			'double percent'    => '<iframe src="https://embed%252Ecdn%252Emedia' . $ep . '"></iframe>',
+			'entity dot'        => '<iframe src="https://embed&#46;cdn&period;media' . $ep . '"></iframe>',
+			'double entity'     => '<iframe src="https://embed&amp;#46;cdn.media' . $ep . '"></iframe>',
+			'upper case'        => '<iframe src="HTTPS://EMBED.CDN.MEDIA' . strtoupper( $ep ) . '"></iframe>',
+			'tab in host'       => '<iframe src="https://embed.cdn' . $tab . '.media' . $ep . '"></iframe>',
+			'newline in host'   => '<iframe src="https://embed.' . $nl . 'cdn.media' . $ep . '"></iframe>',
+			'entity tab'        => '<iframe src="https://embed&#9;.cdn.media' . $ep . '"></iframe>',
+			'ideographic dot'   => '<iframe src="https://embed' . "\u{3002}" . 'cdn.media' . $ep . '"></iframe>',
+			'fullwidth dot'     => '<iframe src="https://embed' . "\u{FF0E}" . 'cdn.media' . $ep . '"></iframe>',
+			'halfwidth dot'     => '<iframe src="https://embed' . "\u{FF61}" . 'cdn.media' . $ep . '"></iframe>',
+			'staging host'      => '<iframe src="https://embed.showfm.dev.' . $ep . '"></iframe>',
+			'srcdoc'            => '<iframe srcdoc="&lt;script src=&quot;https://embed.cdn.media/player/v1.js&quot;&gt;&lt;/script&gt;"></iframe>',
+			'inline import'     => '<script>import("https://embed.cdn.media/player/v1.js")</script>',
+			'object data'       => '<object data="https://embed.cdn.media' . $ep . '"></object>',
+			'link preload'      => '<link rel="preload" as="script" href="https://embed.cdn.media/player/v1.js">',
+			'svg script href'   => '<svg><script href="https://embed.cdn.media/player/v1.js"></script></svg>',
+			'img srcset'        => '<img srcset="https://embed.cdn.media/art.png 1x, https://embed.cdn.media/art2.png 2x" alt="">',
+			'meta refresh'      => '<meta http-equiv="refresh" content="0;url=https://embed.cdn.media' . $ep . '">',
+			'subdomain'         => '<iframe src="https://a.embed.cdn.media' . $ep . '"></iframe>',
+			'with a port'       => '<iframe src="https://embed.cdn.media:443' . $ep . '"></iframe>',
+		);
+		// phpcs:enable
+		foreach ( $disguised as $form => $html ) {
+			$this->assertTrue( Oembed::names_show_fm( $html ), $form );
+			$out = apply_filters( 'embed_oembed_html', $html, $url );
+			$this->assertFalse( Oembed::names_show_fm( $out ), "$form: a show.fm host survived in $out" );
+			$this->assertStringNotContainsString( '<iframe', $out, $form );
+		}
+		// A trailing dot is the same host: the canonical player still comes out.
+		$this->assertStringContainsString( '<showfm-player', apply_filters( 'embed_oembed_html', $disguised['trailing dot'], $url ) );
+		$this->assertStringContainsString( '<showfm-player', apply_filters( 'embed_oembed_html', $disguised['backslashes'], $url ) );
+		// A show.fm embed host as the pasted URL is never linked to.
+		$this->assertSame( '', apply_filters( 'embed_oembed_html', $disguised['srcdoc'], 'https://embed.cdn.media/ep/' . self::ID ) );
+
+		// Look-alikes and other sites are left exactly as they are.
+		$untouched = array(
+			'<iframe src="https://embed.cdn.media.evil.test' . $ep . '"></iframe>',
+			'<iframe src="https://notembed.cdn.media' . $ep . '"></iframe>',
+			'<iframe src="https://embed-cdn.media' . $ep . '"></iframe>',
+			'<iframe src="https://embed.cdn.mediaplayer.test' . $ep . '"></iframe>',
+			'<iframe src="https://www.youtube.com/embed/abc?feature=oembed" title="Video"></iframe>',
+		);
+		foreach ( $untouched as $html ) {
+			$this->assertFalse( Oembed::names_show_fm( $html ), $html );
+			$this->assertSame( $html, apply_filters( 'embed_oembed_html', $html, $url ) );
+		}
 	}
 
 	public function test_theme_global_defaults_and_block_overrides(): void {
