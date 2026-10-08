@@ -2,14 +2,14 @@
 # This file is distributed under the GPLv2 or later.
 msgid ""
 msgstr ""
-"Project-Id-Version: show.fm 0.1.0\n"
+"Project-Id-Version: show.fm 1.0.0\n"
 "Report-Msgid-Bugs-To: https://github.com/Minim-Digital/showfm-wordpress/issues\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-07T23:51:05+00:00\n"
+"POT-Creation-Date: 2026-10-08T09:07:09+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: showfm\n"
@@ -247,11 +247,39 @@ msgstr ""
 msgid "Sync: %1$s; rows: %2$d; cursor: %3$d."
 msgstr ""
 
-#: includes/class-cli.php:308
+#: includes/class-cli.php:323
+msgid "Use wp showfm cache flush."
+msgstr ""
+
+#. translators: %d: number of stored entries.
+#: includes/class-cli.php:331
+#, php-format
+msgid "Flushed the show.fm cache: removed %d stored entry."
+msgid_plural "Flushed the show.fm cache: removed %d stored entries."
+msgstr[0] ""
+msgstr[1] ""
+
+#: includes/class-cli.php:338
+msgid "This is not a multisite network. Run wp showfm cache flush without --network."
+msgstr ""
+
+#. translators: 1: site URL, 2: number of stored entries.
+#: includes/class-cli.php:354
+#, php-format
+msgid "%1$s: removed %2$d stored entries."
+msgstr ""
+
+#. translators: 1: number of sites, 2: number of stored entries.
+#: includes/class-cli.php:362
+#, php-format
+msgid "Flushed the show.fm cache on %1$d sites: removed %2$d stored entries."
+msgstr ""
+
+#: includes/class-cli.php:380
 msgid "A key given as --key=VALUE stays in your shell history and shows in the process list. Use SHOWFM_KEY or --key=- next time."
 msgstr ""
 
-#: includes/class-cli.php:318
+#: includes/class-cli.php:390
 msgid "Site key from show.fm (input hidden)"
 msgstr ""
 
@@ -828,7 +856,7 @@ msgid_plural "Your show.fm connection expires in %d days."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/class-oembed.php:66
+#: includes/class-oembed.php:238
 msgid "Listen on show.fm"
 msgstr ""
 
@@ -837,7 +865,7 @@ msgid "This site uses the show.fm plugin to show podcast episodes. show.fm is a 
 msgstr ""
 
 #: includes/class-privacy.php:36
-msgid "When a podcast player loads, the visitor's browser requests public episode details from api.show.fm and may load artwork from its image host. It loads audio and transcript files from show.fm (m.cdn.media) only when the visitor plays an episode or opens a transcript. show.fm then sees the visitor's IP address and browser details, as with any audio file on the web. This site's server sends no visitor data to show.fm. When the site owner turns on \"Load players only after a visitor clicks\", the visitor's browser requests nothing from show.fm until the visitor presses play."
+msgid "This site's show.fm blocks ask the visitor's browser to request files from show.fm. The Player loads the episode's details from api.show.fm and its artwork as soon as it appears, the audio when the visitor plays it, and the transcript file when the visitor opens the transcript (or as soon as it appears, if the transcript is set to open). The Episode list loads the show's episode details from api.show.fm and each episode's artwork as soon as it appears, the audio when the visitor plays an episode, and that episode's transcript file when the visitor opens its transcript. The Play button loads the episode's details from api.show.fm as soon as it appears, and the audio and artwork when the visitor plays it. The Transcript loads the episode's details from api.show.fm and the transcript file as soon as it appears. Artwork, audio and transcript files come from m.cdn.media, or media.podcasterplus.com for some older episodes. With \"Load players only after a visitor clicks\" turned on, each block first shows a button (\"Play podcast episode\", \"Load episodes\" or \"Load transcript\"), and nothing is requested from show.fm until the visitor presses it. The block then makes the requests above. show.fm then sees the visitor's IP address and browser details, as with any file on the web. This site's server sends no visitor data to show.fm."
 msgstr ""
 
 #: includes/class-privacy.php:37
@@ -2237,6 +2265,22 @@ msgid "Change show"
 msgstr ""
 
 #: build/index.js:15
+msgid "Mini-player corner"
+msgstr ""
+
+#: build/index.js:15
+msgid "Where the mini-player sits when a visitor collapses it."
+msgstr ""
+
+#: build/index.js:15
+msgid "Left"
+msgstr ""
+
+#: build/index.js:15
+msgid "Right"
+msgstr ""
+
+#: build/index.js:15
 msgid "Accent colour"
 msgstr ""
 
@@ -2355,6 +2399,10 @@ msgstr ""
 
 #: build/index.js:16
 msgid "Adds a Transcript button. It opens under the player."
+msgstr ""
+
+#: build/index.js:16
+msgid "When a visitor scrolls past the player while it plays, a bar at the bottom of the page keeps it playing."
 msgstr ""
 
 #: build/index.js:16

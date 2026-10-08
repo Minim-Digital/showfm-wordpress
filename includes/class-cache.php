@@ -212,10 +212,40 @@ final class Cache {
 	}
 
 	/**
-	 * Invalidates every entry by bumping the key version. Old transients expire on their own.
+	 * Invalidates every entry, the players' and lists' and the block editor's, by bumping the
+	 * key version, then deletes the stored entries it can find. Never calls
+	 * wp_cache_flush(), so the rest of the object cache is untouched.
+	 *
+	 * A site that never cached anything has no namespace yet, and is left untouched.
+	 *
+	 * @return int Stored entries actually deleted from the options table. With a persistent
+	 *             object cache, transients live there instead and simply become unreachable.
 	 */
-	public function flush(): void {
+	public function flush(): int {
+		global $wpdb;
+		$namespace = (string) get_option( self::NAMESPACE_OPTION, '' );
+		if ( '' === $namespace ) {
+			return 0;
+		}
 		update_option( self::VERSION_OPTION, self::version() + 1 );
+		// Transient names are hashed, so only a query finds them.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Cache flush.
+		$names   = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s",
+				$wpdb->esc_like( '_transient_showfm_c' . $namespace . '_' ) . '%'
+			)
+		);
+		$deleted = 0;
+		foreach ( $names as $name ) {
+			// The rows themselves, so the count is what this removed, with or without a
+			// persistent object cache in front of them.
+			if ( delete_option( $name ) ) {
+				++$deleted;
+			}
+			delete_option( '_transient_timeout_' . substr( $name, strlen( '_transient_' ) ) );
+		}
+		return $deleted;
 	}
 
 	/**

@@ -295,6 +295,78 @@ final class Cli {
 	}
 
 	/**
+	 * Clears the plugin's cache of show.fm data.
+	 *
+	 * That is the show and episode details players and lists render from, and the block
+	 * editor's lookups. Pages show the blocks' saved copies until the background refresh
+	 * fetches the data again. The rest of the object cache is untouched. Sites that never
+	 * cached anything are left as they are.
+	 *
+	 * ## OPTIONS
+	 *
+	 * <action>
+	 * : flush
+	 *
+	 * [--network]
+	 * : On a multisite network, flush every site.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp showfm cache flush
+	 *     wp showfm cache flush --network
+	 *
+	 * @param string[]            $args       Positional arguments.
+	 * @param array<string,mixed> $assoc_args Flags.
+	 */
+	public function cache( array $args, array $assoc_args ): void {
+		if ( array( 'flush' ) !== $args ) {
+			\WP_CLI::error( __( 'Use wp showfm cache flush.', 'showfm' ) );
+			return;
+		}
+		if ( ! isset( $assoc_args['network'] ) ) {
+			$removed = Plugin::cache()->flush();
+			\WP_CLI::success(
+				sprintf(
+					/* translators: %d: number of stored entries. */
+					_n( 'Flushed the show.fm cache: removed %d stored entry.', 'Flushed the show.fm cache: removed %d stored entries.', $removed, 'showfm' ),
+					$removed
+				)
+			);
+			return;
+		}
+		if ( ! is_multisite() ) {
+			\WP_CLI::error( __( 'This is not a multisite network. Run wp showfm cache flush without --network.', 'showfm' ) );
+			return;
+		}
+		$total = 0;
+		$sites = get_sites(
+			array(
+				'fields' => 'ids',
+				'number' => 0,
+			)
+		);
+		foreach ( $sites as $site ) {
+			switch_to_blog( (int) $site );
+			try {
+				$removed = Plugin::cache()->flush();
+				$total  += $removed;
+				/* translators: 1: site URL, 2: number of stored entries. */
+				\WP_CLI::line( sprintf( __( '%1$s: removed %2$d stored entries.', 'showfm' ), home_url(), $removed ) );
+			} finally {
+				restore_current_blog();
+			}
+		}
+		\WP_CLI::success(
+			sprintf(
+				/* translators: 1: number of sites, 2: number of stored entries. */
+				__( 'Flushed the show.fm cache on %1$d sites: removed %2$d stored entries.', 'showfm' ),
+				count( $sites ),
+				$total
+			)
+		);
+	}
+
+	/**
 	 * The key from --key=-, --key=VALUE, SHOWFM_KEY or a hidden prompt, in that order.
 	 *
 	 * @param array<string,string|bool> $assoc_args Named arguments; a bare --key is true.

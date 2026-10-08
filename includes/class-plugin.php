@@ -89,6 +89,7 @@ final class Plugin {
 		add_action( 'init', array( Oembed::class, 'register' ) );
 		add_action( 'init', array( Embed_Settings::class, 'register' ) );
 		add_action( 'init', array( Assets::class, 'register' ) );
+		add_filter( 'script_loader_tag', array( Assets::class, 'loader_tag' ), 10, 2 );
 		add_action( 'enqueue_block_assets', array( Assets::class, 'editor_assets' ) );
 		add_action( 'wp_footer', array( Assets::class, 'late_styles' ) );
 		add_filter( 'embed_oembed_html', array( Oembed::class, 'output' ), 10, 2 );

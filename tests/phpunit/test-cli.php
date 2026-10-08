@@ -6,6 +6,7 @@
  */
 
 use ShowFM\Api_Client;
+use ShowFM\Cache;
 use ShowFM\Cli;
 use ShowFM\Connect;
 use ShowFM\Connection;
@@ -623,6 +624,96 @@ class Test_Cli extends WP_UnitTestCase {
 				),
 			)
 		);
+	}
+
+	public function test_cache_flush_removes_the_stored_entries_and_says_how_many(): void {
+		$episode = Cache::key( '/v1/episodes/11111111-2222-4333-8444-555555555555' );
+		$editor  = Cache::key( 'editor:public:/v1/podcasts/my-show' );
+		set_transient( $episode, array( 'state' => 'ok' ), HOUR_IN_SECONDS );
+		set_transient( $editor, array( 'type' => 'success' ), HOUR_IN_SECONDS );
+		set_transient( 'showfm_editor_hold', 123, HOUR_IN_SECONDS );
+		wp_cache_set( 'unrelated', 'kept', 'showfm-test' );
+		$version = Cache::version();
+
+		$this->cli->cache( array( 'flush' ), array() );
+
+		$this->assertSame( array( 'success', 'Flushed the show.fm cache: removed 2 stored entries.' ), end( WP_CLI::$output ) );
+		$this->assertSame( $version + 1, Cache::version() );
+		$this->assertFalse( get_transient( $episode ) );
+		$this->assertFalse( get_transient( $editor ) );
+		// Only the cache: the editor's rate-limit hold and the object cache stay.
+		$this->assertSame( 123, get_transient( 'showfm_editor_hold' ) );
+		$this->assertSame( 'kept', wp_cache_get( 'unrelated', 'showfm-test' ) );
+		$this->assertSame( 0, $this->http->count() );
+
+		WP_CLI::$output = array();
+		$this->cli->cache( array( 'flush' ), array() );
+		$this->assertSame( array( 'success', 'Flushed the show.fm cache: removed 0 stored entries.' ), end( WP_CLI::$output ) );
+	}
+
+	public function test_cache_flush_leaves_a_site_that_never_cached_anything_untouched(): void {
+		delete_option( Cache::NAMESPACE_OPTION );
+		delete_option( Cache::VERSION_OPTION );
+
+		$this->cli->cache( array( 'flush' ), array() );
+
+		$this->assertSame( array( 'success', 'Flushed the show.fm cache: removed 0 stored entries.' ), end( WP_CLI::$output ) );
+		$this->assertFalse( get_option( Cache::NAMESPACE_OPTION ) );
+		$this->assertFalse( get_option( Cache::VERSION_OPTION ) );
+	}
+
+	public function test_cache_needs_the_flush_action(): void {
+		foreach ( array( array(), array( 'clear' ), array( 'flush', 'now' ) ) as $args ) {
+			$this->assert_halts(
+				function () use ( $args ) {
+					$this->cli->cache( $args, array() );
+				}
+			);
+		}
+	}
+
+	public function test_cache_flush_network_flushes_every_site(): void {
+		if ( ! is_multisite() ) {
+			$this->assert_halts(
+				function () {
+					$this->cli->cache( array( 'flush' ), array( 'network' => true ) );
+				}
+			);
+			$this->assertStringContainsString( 'not a multisite network', end( WP_CLI::$output )[1] );
+			return;
+		}
+		$second = self::factory()->blog->create();
+		$unused = self::factory()->blog->create();
+		$keys   = array();
+		foreach ( array( get_current_blog_id(), $second ) as $blog ) {
+			switch_to_blog( $blog );
+			$keys[ $blog ] = Cache::key( '/v1/episodes/11111111-2222-4333-8444-555555555555' );
+			set_transient( $keys[ $blog ], array( 'state' => 'ok' ), HOUR_IN_SECONDS );
+			restore_current_blog();
+		}
+
+		$this->cli->cache( array( 'flush' ), array( 'network' => true ) );
+
+		foreach ( $keys as $blog => $key ) {
+			switch_to_blog( $blog );
+			$this->assertFalse( get_transient( $key ), "Site $blog" );
+			restore_current_blog();
+		}
+		// A site where the plugin never cached anything gets no option written.
+		switch_to_blog( $unused );
+		$this->assertFalse( get_option( Cache::VERSION_OPTION ) );
+		$this->assertFalse( get_option( Cache::NAMESPACE_OPTION ) );
+		restore_current_blog();
+		$sites = count(
+			get_sites(
+				array(
+					'fields' => 'ids',
+					'number' => 0,
+				)
+			)
+		);
+		$this->assertSame( array( 'success', "Flushed the show.fm cache on $sites sites: removed 2 stored entries." ), end( WP_CLI::$output ) );
+		$this->assertSame( 0, $this->http->count() );
 	}
 
 	/**

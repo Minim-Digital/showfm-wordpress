@@ -310,9 +310,9 @@ describe( 'block flow', () => {
 } );
 
 describe( 'inspectors', () => {
-	it( 'Player: size, theme, accent, waveform, transcript and heading', () => {
+	it( 'Player: size, theme, accent, waveform, transcript, mini-player and heading', () => {
 		const set = vi.fn();
-		render(
+		const { rerender } = render(
 			<PlayerInspector
 				attributes={ {} }
 				setAttributes={ set }
@@ -347,9 +347,48 @@ describe( 'inspectors', () => {
 		expect( set ).toHaveBeenCalledWith( { 'heading-level': '3' } );
 		fireEvent.click( screen.getByRole( 'option', { name: /Theme/ } ) );
 		expect( set ).toHaveBeenCalledWith( { accent: '#123456' } );
+		// The mini-player is off by default, and its corner shows only when it is on.
+		expect( screen.getByLabelText( 'Mini-player' ) ).not.toBeChecked();
 		expect(
-			screen.queryByLabelText( 'Mini-player' )
+			screen.queryByRole( 'radio', { name: 'Left' } )
 		).not.toBeInTheDocument();
+		fireEvent.click( screen.getByLabelText( 'Mini-player' ) );
+		expect( set ).toHaveBeenCalledWith( { 'mini-player': 'on' } );
+		rerender(
+			<PlayerInspector
+				attributes={ { 'mini-player': 'on' } }
+				setAttributes={ set }
+				data={ { episode: EPISODE } }
+				startPicking={ vi.fn() }
+				blocks={ [] }
+				clientId="me"
+			/>
+		);
+		expect( screen.getByLabelText( 'Mini-player' ) ).toBeChecked();
+		expect( screen.getByRole( 'radio', { name: 'Right' } ) ).toBeChecked();
+		fireEvent.click( screen.getByRole( 'radio', { name: 'Left' } ) );
+		expect( set ).toHaveBeenCalledWith( {
+			'mini-player-position': 'left',
+		} );
+		rerender(
+			<PlayerInspector
+				attributes={ {
+					'mini-player': 'on',
+					'mini-player-position': 'left',
+				} }
+				setAttributes={ set }
+				data={ { episode: EPISODE } }
+				startPicking={ vi.fn() }
+				blocks={ [] }
+				clientId="me"
+			/>
+		);
+		fireEvent.click( screen.getByRole( 'radio', { name: 'Right' } ) );
+		expect( set ).toHaveBeenLastCalledWith( {
+			'mini-player-position': undefined,
+		} );
+		fireEvent.click( screen.getByLabelText( 'Mini-player' ) );
+		expect( set ).toHaveBeenLastCalledWith( { 'mini-player': undefined } );
 	} );
 
 	it( 'Play button: variant, size and the mini-player warning', () => {
@@ -366,6 +405,10 @@ describe( 'inspectors', () => {
 		expect(
 			screen.queryByText( 'Visitors can only play and pause.' )
 		).toBeNull();
+		fireEvent.click( screen.getByRole( 'radio', { name: 'Left' } ) );
+		expect( set ).toHaveBeenCalledWith( {
+			'mini-player-position': 'left',
+		} );
 		fireEvent.click( screen.getByRole( 'radio', { name: 'Text link' } ) );
 		expect( set ).toHaveBeenCalledWith( { variant: 'link' } );
 		fireEvent.click( screen.getByRole( 'radio', { name: 'Large' } ) );
@@ -383,6 +426,9 @@ describe( 'inspectors', () => {
 		expect(
 			screen.getAllByText( 'Visitors can only play and pause.' ).length
 		).toBeGreaterThan( 0 );
+		expect(
+			screen.queryByRole( 'radio', { name: 'Left' } )
+		).not.toBeInTheDocument();
 	} );
 
 	it( 'Episode list: count, season, hidden types, style, layout, descriptions and mini-player', () => {
@@ -417,6 +463,9 @@ describe( 'inspectors', () => {
 		expect( set ).toHaveBeenCalledWith( { layout: 'grid' } );
 		fireEvent.click( screen.getByLabelText( 'Show descriptions' ) );
 		expect( set ).toHaveBeenCalledWith( { descriptions: 'off' } );
+		expect(
+			screen.queryByRole( 'radio', { name: 'Left' } )
+		).not.toBeInTheDocument();
 		fireEvent.click( screen.getByLabelText( 'Mini-player' ) );
 		expect( set ).toHaveBeenCalledWith( { 'mini-player': 'on' } );
 	} );

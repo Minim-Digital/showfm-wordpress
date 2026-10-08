@@ -358,6 +358,7 @@ describe( 'control helpers', () => {
 			size: 'lg',
 			api: 'https://api.showfm.dev',
 			credit: 'off',
+			platform: 'wordpress',
 		} );
 		delete window.showfmEditor;
 	} );

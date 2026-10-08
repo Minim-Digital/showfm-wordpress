@@ -66,4 +66,14 @@
 # Markdown (readme.txt is the WordPress.org readme)
 *.md
 
+# WordPress.org listing assets (banners, icons, screenshots) go to SVN assets/, not the plugin
+/.wordpress-org
+
+# Source maps
+*.map
+
+# The package's CDN click loader defaults to loading v1.js from embed.cdn.media. The plugin
+# uses click-loader-local.js, which names no host, so this one never ships.
+/assets/showfm-embed/click-loader.js
+
 /src

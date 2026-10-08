@@ -7,13 +7,12 @@ This file is for developers. The WordPress.org readme is `readme.txt`.
 
 ## Status
 
-Version 0.1.0 has the foundation (the API client, the cache, encrypted connection storage
-and uninstall) and the plugin side of connecting a site to show.fm: the browser flow, the
-code exchange, WP-CLI registration, the ownership challenge, the signed ping endpoint and
-the daily health report. Settings > show.fm has the Connection and Display tabs and the
-admin notices. Blocks and the shortcode are available, together with the background sync engine.
-The blocks have their editor UI (pickers, inspector controls, in-block states and the post
-panel); see [docs-editor.md](docs-editor.md).
+Version 1.0.0 is the first release for WordPress.org. It has the four blocks, the shortcode
+and oEmbed, Settings > show.fm with the Connection, Publishing, Display and Migrate tabs, the
+admin notices, connecting a site to show.fm (in the browser and with WP-CLI), the background
+sync engine and the embed migrator. The editor UI is described in
+[docs-editor.md](docs-editor.md). How the release is built, checked and submitted is in
+[docs-release.md](docs-release.md).
 
 ## Embed migration
 
@@ -36,7 +35,8 @@ including fixtures, undo behaviour and the current server contract gaps.
 | `includes/`        | One small class per job, in the `ShowFM` namespace, autoloaded from `class-*.php`.                    |
 | `tests/phpunit/`   | PHPUnit tests, run inside `wp-env`.                                                                   |
 | `tests/e2e/`       | Playwright tests, run against `wp-env`.                                                               |
-| `bin/build-zip.sh` | Builds the distribution zip in `dist/`.                                                               |
+| `bin/build-zip.sh` | Builds the distribution zip in `dist/`, checked against `bin/release-files.txt`.                      |
+| `.wordpress-org/`  | WordPress.org banners, icons and screenshots, for the SVN `assets/` folder. Never in the zip.         |
 
 ### Classes
 
@@ -170,7 +170,9 @@ change that arrived through the 15-minute check with no ping after a 10-minute g
 `showfm_return={token}`, a random token kept with the flow. With the flow's own token and no
 `code` or `state`, it means the admin cancelled; any other value changes nothing.
 
-- `Cli` is `wp showfm connect`, `status` and `disconnect` (which revokes the key first, as above).
+- `Cli` is `wp showfm connect`, `status` and `disconnect` (which revokes the key first, as above),
+  and `wp showfm cache flush [--network]`, which bumps the cache key version, deletes the stored
+  entries it can find and says how many.
 - `Privacy` adds the suggested privacy policy text.
 - `Editor_Api` is the block editor's read-only REST proxy (`showfm/v1/editor/*`), and
   `Editor` prints the editor's settings and the post panel's `showfm_sync` field. See
@@ -226,8 +228,8 @@ Plan sections 5.2.2, 5.2.6 and 5.3.5 (show.fm issue #731). Every admin action ne
    connection "reconnect needed" and stops keyed calls. A 429 holds every keyed call until
    its Retry-After has passed (`showfm_rate_limited_until`).
 
-A WordPress install in a subdirectory sends a `site_url` with a path. show.fm accepts that
-once podcaster-plus-app PR #741 is merged.
+A WordPress install in a subdirectory sends a `site_url` with a path, and show.fm accepts it
+(podcaster-plus-app PR #741, merged and live).
 
 ### Publishing engine
 
@@ -347,8 +349,12 @@ npm run env:start           # WordPress on http://localhost:8888 (user admin, pa
 | `npm run test:js`            | Vitest (jsdom) unit tests: the editor in `src/test/`, the settings screen in `tests/js/`. |
 | `npm run lint:js`            | ESLint through `@wordpress/scripts`.                                                      |
 | `npm run i18n:pot`           | Builds, then regenerates `languages/showfm.pot` with WP-CLI in `wp-env`.                  |
+| `npm run i18n:check`         | Fails if a translatable string is missing from the `.pot`, or if the `.pot` is stale.     |
 | `npm run format`             | Prettier through `@wordpress/scripts`.                                                    |
-| `npm run zip`                | Builds `dist/showfm/` and `dist/showfm-{version}.zip`.                                    |
+| `npm run release`            | Builds `dist/showfm/` and `dist/showfm-{version}.zip` (`npm run zip` does the same).      |
+| `npm run zip:check`          | Checks the zip's files against the allow-list in `bin/release-files.txt`.                 |
+| `npm run wporg:assets`       | Renders the WordPress.org banners and icons into `.wordpress-org/`.                       |
+| `npm run wporg:screenshots`  | Captures the five WordPress.org screenshots from `wp-env` into `.wordpress-org/`.         |
 
 The PHPUnit suite runs the WP-CLI commands against a stand-in for `WP_CLI`
 (`tests/stubs/wp-cli.php`), which PHPStan also reads for the signatures.
@@ -375,13 +381,15 @@ synced posts. It never ships either.
 - No Composer runtime dependencies. Composer and npm are development tooling only.
 - Everything is prefixed `showfm_` or namespaced `ShowFM`.
 - The zip is built from `.distignore`. `bin/build-zip.sh` fails if tests, dependencies, CI
-  files, AI tool directories or Markdown get into it.
+  files, AI tool directories or Markdown get into it, or if its files differ from
+  `bin/release-files.txt`. Releasing to WordPress.org is in [docs-release.md](docs-release.md).
 
 ## CI
 
 `.github/workflows/ci.yml` runs PHPCS, PHPStan, PHPUnit (single site and multisite) on
-`wp-env`, ESLint, the Vitest unit tests, builds the zip, runs Plugin Check (Plugin Repo category) against the
-built zip, and runs the Playwright tests.
+`wp-env`, the `.pot` checks, ESLint, the Vitest unit tests, builds the zip and checks it
+against the allow-list, runs Plugin Check (Plugin Repo category) against the built zip, and
+runs the Playwright tests.
 
 `.github/workflows/security-review.yml` runs the Claude security review when a pull request
 has the `security-review` label. See the comments in that file and

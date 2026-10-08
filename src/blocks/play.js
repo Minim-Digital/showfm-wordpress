@@ -4,7 +4,7 @@
 import { Notice, PanelBody, ToggleControl } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
 import ShowfmBlockEdit from '../components/block-edit';
-import { Segmented } from '../components/controls';
+import { MiniPlayerCorner, Segmented } from '../components/controls';
 import EpisodeSummary from '../components/episode-summary';
 import { playIcon } from '../icons';
 import { summaryOf } from './player';
@@ -79,6 +79,12 @@ export function PlayInspector( {
 						} )
 					}
 				/>
+				{ miniPlayer && (
+					<MiniPlayerCorner
+						attributes={ attributes }
+						setAttributes={ setAttributes }
+					/>
+				) }
 				{ ! miniPlayer && (
 					<Notice status="warning" isDismissible={ false }>
 						{ __( 'Visitors can only play and pause.', 'showfm' ) }

@@ -52,4 +52,19 @@ class Test_Privacy extends WP_UnitTestCase {
 			$this->assertStringContainsString( $phrase, $text );
 		}
 	}
+
+	public function test_browser_requests_match_the_readme_word_for_word(): void {
+		$text = Privacy::text();
+		$from = strpos( $text, 'The Player loads' );
+		$to   = strpos( $text, ' show.fm then sees' );
+		$this->assertNotFalse( $from );
+		$this->assertNotFalse( $to );
+		$timing = substr( $text, $from, $to - $from );
+
+		foreach ( array( 'The Player', 'The Episode list', 'The Play button', 'The Transcript' ) as $block ) {
+			$this->assertStringContainsString( $block, $timing );
+		}
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Reads the plugin's own readme.
+		$this->assertStringContainsString( $timing, (string) file_get_contents( SHOWFM_DIR . '/readme.txt' ) );
+	}
 }

@@ -76,10 +76,32 @@ add_filter(
 );
 
 /**
+ * Shows the `site` address a test set in the Connection tab's data, preloaded or fetched.
+ */
+add_filter(
+	'rest_request_after_callbacks',
+	static function ( $response, $handler, WP_REST_Request $request ) {
+		$site = get_option( 'showfm_e2e_site', '' );
+		if ( '' === $site || '/showfm/v1/admin/connection' !== $request->get_route() || ! $response instanceof WP_REST_Response ) {
+			return $response;
+		}
+		$data = $response->get_data();
+		if ( is_array( $data ) && isset( $data['site'] ) ) {
+			$data['site'] = $site;
+			$response->set_data( $data );
+		}
+		return $response;
+	},
+	10,
+	3
+);
+
+/**
  * Sets a state: `not_connected`, `connected`, `expiring30`, `expiring7`, `expired`,
  * `refused`, `paused`, `scheduled`, `unreadable`, `sync_problem`, plus an optional connect
- * `result` (an error code, or `success`), and how Disconnect's revoke request is answered
- * (`revoke`: `revoked`, `refused` or `unreachable`).
+ * `result` (an error code, or `success`), how Disconnect's revoke request is answered
+ * (`revoke`: `revoked`, `refused` or `unreachable`), and an optional `site` address for the
+ * Connection tab to show in place of the wp-env one (for the WordPress.org screenshots).
  *
  * @param WP_REST_Request $request Request.
  */
@@ -87,6 +109,7 @@ function showfm_e2e_set_state( WP_REST_Request $request ) {
 	$state  = (string) $request->get_param( 'state' );
 	$result = (string) $request->get_param( 'result' );
 	update_option( 'showfm_e2e_revoke', (string) ( $request->get_param( 'revoke' ) ?? 'unreachable' ), false );
+	update_option( 'showfm_e2e_site', esc_url_raw( (string) $request->get_param( 'site' ) ), false );
 	$user_id = get_current_user_id();
 	$day     = DAY_IN_SECONDS;
 

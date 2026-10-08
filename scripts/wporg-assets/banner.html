@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>show.fm banner</title>
+		<!-- The WordPress.org banner, from Claude Design D-W9 (8a). build.mjs serves this page
+		     and renders it at 1544 × 500 and 772 × 250. The player is the real <showfm-player>
+		     from assets/showfm-embed, answered from fixtures. -->
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link
+			rel="stylesheet"
+			href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=block"
+		/>
+		<style>
+			html,
+			body {
+				margin: 0;
+				width: 1544px;
+				height: 500px;
+				overflow: hidden;
+			}
+			body {
+				position: relative;
+				background: #f5edfb;
+				font-family: 'Geist', system-ui, sans-serif;
+				--showfm-font: 'Geist', system-ui, sans-serif;
+			}
+			.intro {
+				position: absolute;
+				left: 104px;
+				top: 0;
+				bottom: 0;
+				width: 640px;
+				display: flex;
+				flex-direction: column;
+				justify-content: center;
+				gap: 22px;
+			}
+			.intro img {
+				display: block;
+				width: 560px;
+				height: auto;
+			}
+			.intro p {
+				margin: 0;
+				font-size: 34px;
+				line-height: 1.3;
+				color: #404040;
+				letter-spacing: -0.01em;
+				text-wrap: pretty;
+			}
+			.player {
+				position: absolute;
+				right: 104px;
+				top: 84px;
+				width: 620px;
+			}
+			.chip {
+				position: absolute;
+				right: 540px;
+				top: 356px;
+				display: flex;
+				align-items: center;
+				gap: 14px;
+				padding: 14px 22px 14px 14px;
+				background: #fff;
+				border: 1px solid #e7e5ec;
+				border-radius: 14px;
+				box-shadow:
+					0 1px 2px rgba( 16, 16, 20, 0.05 ),
+					0 8px 26px rgba( 16, 16, 20, 0.06 );
+			}
+			.chip .play {
+				width: 44px;
+				height: 44px;
+				border-radius: 9999px;
+				background: #7e22ce;
+				color: #fff;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				box-shadow: 0 5px 14px rgba( 126, 34, 206, 0.3 );
+			}
+			.chip .text {
+				display: flex;
+				flex-direction: column;
+			}
+			.chip strong {
+				font-size: 15px;
+				font-weight: 700;
+				color: #101014;
+			}
+			.chip span span {
+				font-size: 13px;
+				color: #6b6976;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="intro">
+			<img src="showfm-logo.svg" alt="show.fm" />
+			<p>Your podcast, playing on your WordPress site.</p>
+		</div>
+		<div class="player">
+			<showfm-player
+				episode="22222222-2222-4222-8222-222222222222"
+				accent="#7E22CE"
+				theme="light"
+				credit="off"
+			></showfm-player>
+		</div>
+		<div class="chip" aria-hidden="true">
+			<span class="play">
+				<svg
+					width="18"
+					height="18"
+					viewBox="0 0 24 24"
+					style="margin-left: 2px"
+				>
+					<path d="M8 5.5v13l11-6.5z" fill="currentColor"></path>
+				</svg>
+			</span>
+			<span class="text">
+				<strong>Knives</strong>
+				<span>S2 · E2 · 39 min</span>
+			</span>
+		</div>
+		<script src="embed/v1.js"></script>
+	</body>
+</html>

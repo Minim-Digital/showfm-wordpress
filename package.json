@@ -1,6 +1,6 @@
 {
 	"name": "showfm-wordpress",
-	"version": "0.1.0",
+	"version": "1.0.0",
 	"private": true,
 	"description": "show.fm WordPress plugin. Development tooling only.",
 	"license": "GPL-2.0-or-later",
@@ -20,15 +20,20 @@
 		"test:e2e": "wp-scripts test-playwright",
 		"test:js": "wp-scripts test-unit-js",
 		"zip": "bash bin/build-zip.sh",
+		"release": "bash bin/build-zip.sh",
+		"zip:check": "node scripts/check-zip.mjs dist/showfm-$npm_package_version.zip",
+		"wporg:assets": "node scripts/wporg-assets/build.mjs",
+		"wporg:screenshots": "SHOWFM_SCREENSHOTS=1 wp-scripts test-playwright tests/e2e/screenshots.spec.js",
 		"test:php:multisite": "wp-env run tests-cli --env-cwd=wp-content/plugins/showfm vendor/bin/phpunit -c phpunit-multisite.xml.dist",
 		"format:check": "prettier --check .",
 		"test:assets": "node scripts/embed-assets.mjs --check",
 		"fixtures": "node scripts/generate-parity.mjs",
-		"i18n:pot": "npm run build && wp-env run cli --env-cwd=wp-content/plugins/showfm wp i18n make-pot . languages/showfm.pot --slug=showfm --domain=showfm --exclude=node_modules,vendor,tests,dist,src,artifacts,assets/showfm-embed,scripts,bin,.playwright-mcp --headers='{\"Report-Msgid-Bugs-To\":\"https://github.com/Minim-Digital/showfm-wordpress/issues\"}'"
+		"i18n:pot": "bash bin/make-pot.sh languages/showfm.pot",
+		"i18n:check": "bash bin/make-pot.sh artifacts/showfm.pot && node scripts/check-pot.mjs --fresh artifacts/showfm.pot"
 	},
 	"devDependencies": {
 		"@playwright/test": "1.63.0",
-		"@showfm/embed": "1.4.0",
+		"@showfm/embed": "1.6.1",
 		"@testing-library/dom": "10.4.1",
 		"@testing-library/jest-dom": "7.0.1",
 		"@testing-library/react": "16.3.3",

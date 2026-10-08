@@ -6,7 +6,11 @@ import { PanelBody, ToggleControl } from '@wordpress/components';
 import { useSelect } from '@wordpress/data';
 import { __ } from '@wordpress/i18n';
 import ShowfmBlockEdit from '../components/block-edit';
-import { AccentControl, Segmented } from '../components/controls';
+import {
+	AccentControl,
+	MiniPlayerCorner,
+	Segmented,
+} from '../components/controls';
 import EpisodeSummary from '../components/episode-summary';
 import { defaultLevel } from '../components/heading-level';
 import { episodeMeta } from '../format';
@@ -141,6 +145,26 @@ export function PlayerInspector( {
 						} )
 					}
 				/>
+				<ToggleControl
+					__nextHasNoMarginBottom
+					label={ __( 'Mini-player', 'showfm' ) }
+					help={ __(
+						'When a visitor scrolls past the player while it plays, a bar at the bottom of the page keeps it playing.',
+						'showfm'
+					) }
+					checked={ attributes[ 'mini-player' ] === 'on' }
+					onChange={ ( on ) =>
+						setAttributes( {
+							'mini-player': on ? 'on' : undefined,
+						} )
+					}
+				/>
+				{ attributes[ 'mini-player' ] === 'on' && (
+					<MiniPlayerCorner
+						attributes={ attributes }
+						setAttributes={ setAttributes }
+					/>
+				) }
 				<ToggleControl
 					__nextHasNoMarginBottom
 					label={ __( 'Show the title as a heading', 'showfm' ) }
