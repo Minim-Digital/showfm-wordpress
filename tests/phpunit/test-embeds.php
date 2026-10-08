@@ -243,7 +243,7 @@ class Test_Embeds extends WP_UnitTestCase {
 		);
 		$this->assertTrue( wp_script_is( Assets::HANDLE, 'enqueued' ) );
 		$script = wp_scripts()->registered[ Assets::HANDLE ];
-		$this->assertSame( '1.6.0', $script->ver );
+		$this->assertSame( '1.6.1', $script->ver );
 		$this->assertStringEndsWith( '/assets/showfm-embed/v1.js', $script->src );
 		$this->assertNotContains( 'module', $script->extra );
 		$this->block( 'play', array( 'episode' => self::ID ) );
@@ -264,15 +264,39 @@ class Test_Embeds extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'load="click"', $html );
 		$this->assertTrue( wp_script_is( Assets::CLICK_HANDLE, 'enqueued' ) );
 		$this->assertFalse( wp_script_is( Assets::HANDLE, 'enqueued' ) );
-		$this->assertStringEndsWith( '/assets/showfm-embed/click-loader.js', wp_scripts()->registered[ Assets::CLICK_HANDLE ]->src );
+		$this->assertStringEndsWith( '/assets/showfm-embed/click-loader-local.js', wp_scripts()->registered[ Assets::CLICK_HANDLE ]->src );
+		$v1 = plugins_url( 'assets/showfm-embed/v1.js', SHOWFM_FILE ) . '?ver=1.6.1';
+		$this->assertSame( $v1, Assets::versioned_script_url() );
 
-		// The loader is always printed with data-src set to the bundled v1.js.
+		// Registering again adds no second global.
+		Assets::register();
+		// WordPress keeps a leading false in the list; count the scripts.
+		$this->assertCount( 1, array_filter( (array) wp_scripts()->get_data( Assets::CLICK_HANDLE, 'before' ) ) );
+
+		// First the inline script that sets the loader's first source, then the loader with
+		// data-src, its second. Only the loader's own tag gets data-src.
 		$tag       = get_echo( array( wp_scripts(), 'do_item' ), array( Assets::CLICK_HANDLE ) );
 		$processor = new WP_HTML_Tag_Processor( $tag );
 		$this->assertTrue( $processor->next_tag( array( 'tag_name' => 'script' ) ) );
-		$this->assertStringEndsWith( '/assets/showfm-embed/click-loader.js?ver=1.6.0', (string) $processor->get_attribute( 'src' ) );
-		$this->assertSame( plugins_url( 'assets/showfm-embed/v1.js', SHOWFM_FILE ) . '?ver=1.6.0', $processor->get_attribute( 'data-src' ) );
+		$this->assertSame( Assets::CLICK_HANDLE . '-js-before', $processor->get_attribute( 'id' ) );
+		$this->assertNull( $processor->get_attribute( 'data-src' ) );
+		$this->assertStringContainsString( 'window.showfmEmbedSrc = ' . wp_json_encode( $v1 ) . ';', $tag );
+		$this->assertTrue( $processor->next_tag( array( 'tag_name' => 'script' ) ) );
+		$this->assertSame( Assets::CLICK_HANDLE . '-js', $processor->get_attribute( 'id' ) );
+		$this->assertStringEndsWith( '/assets/showfm-embed/click-loader-local.js?ver=1.6.1', (string) $processor->get_attribute( 'src' ) );
+		$this->assertSame( $v1, $processor->get_attribute( 'data-src' ) );
+		$this->assertFalse( $processor->next_tag( array( 'tag_name' => 'script' ) ) );
 		$this->assertStringNotContainsString( 'embed.cdn.media', $tag );
+
+		// A tag string without the loader's tag (an optimiser's rewrite) is left as it is:
+		// the global still points the loader at v1.js.
+		$rewritten = '<script id="other-js" src="bundle.js"></script>'; // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- A tag string for the filter, never printed.
+		$this->assertSame( $rewritten, Assets::loader_tag( $rewritten, Assets::CLICK_HANDLE ) );
+
+		// The loader the plugin ships names no host.
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Reads a bundled file.
+		$loader = (string) file_get_contents( SHOWFM_DIR . '/assets/showfm-embed/click-loader-local.js' );
+		$this->assertDoesNotMatchRegularExpression( '~https?://~', $loader );
 		// Other scripts are left alone.
 		$other = '<script src="x"></script>'; // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- A tag string for the filter, never printed.
 		$this->assertSame( $other, Assets::loader_tag( $other, Assets::HANDLE ) );

@@ -6,13 +6,14 @@
 const { randomUUID } = require( 'node:crypto' );
 const { test, expect } = require( '@wordpress/e2e-test-utils-playwright' );
 
-// Fresh IDs for each run: the server's background refresh marks unknown IDs unavailable.
-const EPISODE = randomUUID();
-const PODCAST = randomUUID();
+// Fresh IDs for each run and each test: the server's background refresh marks unknown IDs
+// unavailable.
+const EPISODE = { false: randomUUID(), true: randomUUID() };
+const PODCAST = { false: randomUUID(), true: randomUUID() };
 
 // A free show: its branding payload doesn't allow hiding the credit.
 const podcast = {
-	id: PODCAST,
+	id: null,
 	slug: 'free-show',
 	title: 'A Free Show',
 	artwork: { url: null },
@@ -20,7 +21,7 @@ const podcast = {
 	branding: { show_powered_by: true },
 };
 const episode = {
-	id: EPISODE,
+	id: null,
 	slug: 'first',
 	title: 'The first episode',
 	season_number: 1,
@@ -57,7 +58,7 @@ async function setCredit( requestUtils, on ) {
 }
 
 test.describe( '"Powered by show.fm" on a free show', () => {
-	let post;
+	const posts = {};
 
 	test.beforeAll( async ( { requestUtils } ) => {
 		await requestUtils.rest( {
@@ -65,33 +66,41 @@ test.describe( '"Powered by show.fm" on a free show', () => {
 			path: '/wp/v2/plugins/showfm/showfm',
 			data: { status: 'active' },
 		} );
-		post = await requestUtils.rest( {
-			method: 'POST',
-			path: '/wp/v2/pages',
-			data: {
-				title: 'Credit on a free show',
-				status: 'publish',
-				content: [
-					`<!-- wp:showfm/player ${ JSON.stringify( {
-						episode: EPISODE,
-						snapshot,
-					} ) } /-->`,
-					`<!-- wp:showfm/episodes ${ JSON.stringify( {
-						podcast: PODCAST,
-						snapshot,
-					} ) } /-->`,
-				].join( '\n' ),
-			},
-		} );
+		// A page per test, each viewed once: the server's background refresh marks these
+		// made-up IDs unavailable after a first view. _fields keeps the REST response from
+		// rendering the page (and scheduling that refresh).
+		for ( const on of [ false, true ] ) {
+			posts[ on ] = await requestUtils.rest( {
+				method: 'POST',
+				path: '/wp/v2/pages',
+				params: { _fields: 'id,link' },
+				data: {
+					title: `Credit on a free show (${ on ? 'on' : 'off' })`,
+					status: 'publish',
+					content: [
+						`<!-- wp:showfm/player ${ JSON.stringify( {
+							episode: EPISODE[ on ],
+							snapshot,
+						} ) } /-->`,
+						`<!-- wp:showfm/episodes ${ JSON.stringify( {
+							podcast: PODCAST[ on ],
+							snapshot,
+						} ) } /-->`,
+					].join( '\n' ),
+				},
+			} );
+		}
 	} );
 
 	test.afterAll( async ( { requestUtils } ) => {
 		await setCredit( requestUtils, false );
-		await requestUtils.rest( {
-			method: 'DELETE',
-			path: `/wp/v2/pages/${ post.id }`,
-			params: { force: true },
-		} );
+		for ( const post of Object.values( posts ) ) {
+			await requestUtils.rest( {
+				method: 'DELETE',
+				path: `/wp/v2/pages/${ post.id }`,
+				params: { force: true },
+			} );
+		}
 	} );
 
 	for ( const [ label, on ] of [
@@ -107,12 +116,14 @@ test.describe( '"Powered by show.fm" on a free show', () => {
 			const cors = { 'access-control-allow-origin': '*' };
 			await page.route( 'https://api.show.fm/**', ( route ) => {
 				const { pathname } = new URL( route.request().url() );
+				const show = { ...podcast, id: PODCAST[ on ] };
+				const item = { ...episode, id: EPISODE[ on ], podcast: show };
 				const body = {
-					[ `/v1/episodes/${ EPISODE }` ]: { data: episode },
-					[ `/v1/podcasts/${ PODCAST }` ]: { data: podcast },
-					[ `/v1/podcasts/${ PODCAST }/episodes` ]: {
-						data: [ episode ],
-						podcast,
+					[ `/v1/episodes/${ EPISODE[ on ] }` ]: { data: item },
+					[ `/v1/podcasts/${ PODCAST[ on ] }` ]: { data: show },
+					[ `/v1/podcasts/${ PODCAST[ on ] }/episodes` ]: {
+						data: [ item ],
+						podcast: show,
 						pagination: {},
 					},
 				}[ pathname ];
@@ -128,7 +139,7 @@ test.describe( '"Powered by show.fm" on a free show', () => {
 			await page.route( 'https://m.cdn.media/**', ( route ) =>
 				route.fulfill( { status: 404, headers: cors } )
 			);
-			await page.goto( post.link );
+			await page.goto( posts[ on ].link );
 
 			const player = page.locator( 'showfm-player' );
 			const list = page.locator( 'showfm-episodes' );

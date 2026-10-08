@@ -120,6 +120,9 @@ test.describe( 'Player block mini-player', () => {
 			pages[ on ] = await requestUtils.rest( {
 				method: 'POST',
 				path: '/wp/v2/pages',
+				// Keeps the REST response from rendering the page, which would schedule the
+				// background refresh that marks this made-up ID unavailable.
+				params: { _fields: 'id,link' },
 				data: {
 					title: `Mini-player ${ on ? 'on' : 'off' }`,
 					status: 'publish',

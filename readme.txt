@@ -41,7 +41,7 @@ The Migrate tab finds players from Buzzsprout, Libsyn, Captivate, Transistor, Sp
 
 **Source code**
 
-The plugin's source and build instructions are on GitHub at [Minim-Digital/showfm-wordpress](https://github.com/Minim-Digital/showfm-wordpress). The block editor scripts in `build/` are compiled from `src/` there with @wordpress/scripts. The player scripts in `assets/showfm-embed/` are copied unchanged from the MIT-licensed [@showfm/embed 1.6.0](https://github.com/Minim-Digital/showfm-embed/tree/v1.6.0) package, and a test checks every file byte for byte. With "Load players only after a visitor clicks" on, the plugin loads the package's click loader instead of the player script, with its `data-src` set to the bundled `v1.js`, so the player script comes from the plugin, and only after a visitor presses a block.
+The plugin's source and build instructions are on GitHub at [Minim-Digital/showfm-wordpress](https://github.com/Minim-Digital/showfm-wordpress). The block editor scripts in `build/` are compiled from `src/` there with @wordpress/scripts. The player scripts in `assets/showfm-embed/` are copied unchanged from the MIT-licensed [@showfm/embed 1.6.1](https://github.com/Minim-Digital/showfm-embed/tree/v1.6.1) package, and a test checks every file byte for byte. With "Load players only after a visitor clicks" on, the plugin loads the package's self-hosting click loader (`click-loader-local.js`) instead of the player script. It names no host: it loads only the bundled `v1.js` the plugin gives it, after a visitor presses a block, and without that it does nothing. The package's CDN click loader is not in the plugin, and a release check fails if any script in the plugin names embed.cdn.media.
 
 == External services ==
 
@@ -87,7 +87,7 @@ The Player loads the episode's details from api.show.fm and its artwork as soon 
 
 = show.fm embed CDN (embed.cdn.media) =
 
-Not used. The player scripts ship inside the plugin, and the click loader is always pointed at the bundled copy. A pasted show.fm link that WordPress resolves to an embed.cdn.media iframe is shown as a local player instead.
+Not used. No script in the plugin names it or can load from it: the player scripts ship inside the plugin, and the click loader loads only the bundled copy. A pasted show.fm link that WordPress resolves to an embed.cdn.media iframe is shown as a local player instead.
 
 = show.fm's test service =
 
@@ -177,7 +177,7 @@ The plugin's settings, cache, scheduled events and its own post meta. Your posts
 * Publish to WordPress: new episodes become posts that follow the episode when it is rescheduled, unpublished or deleted, and keep any edits made in WordPress.
 * Embed migration from eight podcast hosts, with a dry run, episode picks and revisions to undo.
 * The Player, Episode list and Play button can open a mini-player, with a choice of corner. The Player's is off by default and takes over when a visitor scrolls past it while it plays.
-* Bundles @showfm/embed 1.6.0. Every element carries `platform="wordpress"`, so with the credit setting off, no show displays "Powered by show.fm".
+* Bundles @showfm/embed 1.6.1. Every element carries `platform="wordpress"`, so with the credit setting off, no show displays "Powered by show.fm".
 
 == Upgrade Notice ==
 

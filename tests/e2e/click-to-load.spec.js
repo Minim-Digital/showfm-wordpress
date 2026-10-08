@@ -1,9 +1,13 @@
 /**
  * "Load players only after a visitor clicks": each block shows the package's facade, nothing
  * is requested before the click (not even the bundled v1.js), and the block upgrades after
- * it. Nothing ever comes from embed.cdn.media.
+ * it. Nothing ever comes from embed.cdn.media. The self-hosting loader takes v1.js from
+ * window.showfmEmbedSrc, then data-src; the optimiser tests take either away, or both, or
+ * run the loader without document.currentScript.
  */
 const { randomUUID } = require( 'node:crypto' );
+const { readFileSync } = require( 'node:fs' );
+const { join } = require( 'node:path' );
 const { test, expect } = require( '@wordpress/e2e-test-utils-playwright' );
 
 // Fresh IDs for each run and each block. The server's background cache refresh asks the
@@ -41,6 +45,9 @@ const episode = {
 	podcast,
 };
 
+// The pages the optimiser tests rewrite, each an Episode list of its own.
+const OPTIMISED = [ 'stripped', 'no-global', 'both', 'module', 'module-only' ];
+
 const blocks = [
 	[ 'player', 'Play podcast episode', { episode: id() } ],
 	[ 'episodes', 'Load episodes', { podcast: PODCAST } ],
@@ -73,9 +80,11 @@ async function watch( page ) {
 		const match = /^\/v1\/episodes\/([0-9a-f-]{36})$/.exec( pathname );
 		if ( match ) {
 			body = { data: { ...episode, id: match[ 1 ] } };
-		} else if ( pathname === `/v1/podcasts/${ PODCAST }` ) {
+		} else if ( /^\/v1\/podcasts\/[0-9a-f-]{36}$/.test( pathname ) ) {
 			body = { data: podcast };
-		} else if ( pathname === `/v1/podcasts/${ PODCAST }/episodes` ) {
+		} else if (
+			/^\/v1\/podcasts\/[0-9a-f-]{36}\/episodes$/.test( pathname )
+		) {
 			body = {
 				data: [ { ...episode, id: id() } ],
 				podcast,
@@ -118,7 +127,11 @@ test.describe( 'Load players only after a visitor clicks', () => {
 			path: '/wp/v2/settings',
 			data: { showfm_load_on_click: true },
 		} );
-		for ( const [ type, , attributes ] of blocks ) {
+		// One page per test, each visited once. The server's background cache refresh asks
+		// the real API about these made-up IDs and stores "unavailable", so a page viewed a
+		// second time would render nothing. _fields keeps WordPress from rendering the page
+		// (and scheduling that refresh) in the REST response.
+		const create = async ( key, type, attributes ) => {
 			const block = {
 				...attributes,
 				snapshot: {
@@ -127,17 +140,27 @@ test.describe( 'Load players only after a visitor clicks', () => {
 					audioUrl: 'https://m.cdn.media/e2e/sourdough.mp3',
 				},
 			};
-			pages[ type ] = await requestUtils.rest( {
-				method: 'POST',
-				path: '/wp/v2/pages',
-				data: {
-					title: `Click to load: ${ type }`,
-					status: 'publish',
-					content: `<!-- wp:showfm/${ type } ${ JSON.stringify(
-						block
-					) } /-->`,
-				},
-			} );
+			pages[ key ] = {
+				type,
+				...( await requestUtils.rest( {
+					method: 'POST',
+					path: '/wp/v2/pages',
+					params: { _fields: 'id,link' },
+					data: {
+						title: `Click to load: ${ key }`,
+						status: 'publish',
+						content: `<!-- wp:showfm/${ type } ${ JSON.stringify(
+							block
+						) } /-->`,
+					},
+				} ) ),
+			};
+		};
+		for ( const [ type, , attributes ] of blocks ) {
+			await create( type, type, attributes );
+		}
+		for ( const key of OPTIMISED ) {
+			await create( key, 'episodes', { podcast: id() } );
 		}
 	} );
 
@@ -156,61 +179,199 @@ test.describe( 'Load players only after a visitor clicks', () => {
 		}
 	} );
 
+	/**
+	 * Opens a block's page as a logged-out visitor, optionally rewriting the HTML first as
+	 * a script optimiser might.
+	 *
+	 * @param {Object}                   browser   Browser.
+	 * @param {string}                   key       The page: a block type or an optimiser test.
+	 * @param {(html: string) => string} [rewrite] Changes the page's HTML.
+	 * @return {Promise<Object>} The context, page, element and recorded requests.
+	 */
+	async function visit( browser, key, rewrite ) {
+		const { type, link } = pages[ key ];
+		// A visitor: logged out, so the admin bar's avatar is not on the page either.
+		const context = await browser.newContext( {
+			storageState: { cookies: [], origins: [] },
+		} );
+		const page = await context.newPage();
+		const seen = await watch( page );
+		if ( rewrite ) {
+			await page.route( link, async ( route ) => {
+				const response = await route.fetch();
+				await route.fulfill( {
+					response,
+					body: rewrite( await response.text() ),
+				} );
+			} );
+		}
+		await page.goto( link );
+		const element = page.locator( `showfm-${ type }` );
+		await expect( element ).toHaveAttribute( 'load', 'click' );
+		return { context, page, element, seen };
+	}
+
+	/**
+	 * The facade shows and nothing loads before the click; after it the element upgrades,
+	 * with v1.js once from the plugin and nothing from the CDN.
+	 *
+	 * @param {Object}                          visited         Result of visit().
+	 * @param {import('@playwright/test').Page} visited.page    Page.
+	 * @param {Object}                          visited.element The element.
+	 * @param {string[]}                        visited.seen    Recorded requests.
+	 * @param {string}                          label           The facade button's name.
+	 */
+	async function expectClickToLoad( { page, element, seen }, label ) {
+		const button = element.locator( '[data-showfm-facade-ui] button' );
+		await expect( button ).toBeVisible();
+		await expect( button ).toHaveAttribute( 'aria-label', label );
+		await expect(
+			page.locator( 'script[src*="showfm-embed/v1.js"]' )
+		).toHaveCount( 0 );
+		await page.waitForTimeout( 500 );
+		expect( seen ).toEqual( [] );
+
+		await button.click();
+		// Upgraded: the element draws itself, and the facade is gone from view.
+		await expect
+			.poll( () =>
+				element.evaluate(
+					( node ) => node.shadowRoot?.childElementCount ?? 0
+				)
+			)
+			.toBeGreaterThan( 0 );
+		await expect( button ).toBeHidden();
+		await expect
+			.poll( () =>
+				seen.some( ( url ) => url.startsWith( 'https://api.show.fm/' ) )
+			)
+			.toBe( true );
+		const scripts = seen.filter( ( url ) => url.includes( '/v1.js' ) );
+		expect( scripts ).toHaveLength( 1 );
+		expect( new URL( scripts[ 0 ] ).pathname ).toBe( LOCAL_V1 );
+		expect(
+			seen.filter( ( url ) => url.includes( 'embed.cdn.media' ) )
+		).toEqual( [] );
+	}
+
+	/**
+	 * Nothing happens: no facade, the server fallback stays, and nothing is requested.
+	 *
+	 * @param {Object}                          visited         Result of visit().
+	 * @param {import('@playwright/test').Page} visited.page    Page.
+	 * @param {Object}                          visited.element The element.
+	 * @param {string[]}                        visited.seen    Recorded requests.
+	 */
+	async function expectNothing( { page, element, seen } ) {
+		await page.waitForTimeout( 1000 );
+		await expect(
+			element.locator( '[data-showfm-facade-ui]' )
+		).toHaveCount( 0 );
+		await expect( element.locator( 'a' ).first() ).toBeVisible();
+		await expect(
+			page.locator( 'script[src*="showfm-embed/v1.js"]' )
+		).toHaveCount( 0 );
+		expect( seen ).toEqual( [] );
+	}
+
 	for ( const [ type, label ] of blocks ) {
 		test( `${ type }: facade, no request before the click, then it upgrades`, async ( {
 			browser,
 		} ) => {
-			// A visitor: logged out, so the admin bar's avatar is not on the page either.
-			const context = await browser.newContext( {
-				storageState: { cookies: [], origins: [] },
-			} );
-			const page = await context.newPage();
-			const seen = await watch( page );
-			await page.goto( pages[ type ].link );
-			const element = page.locator( `showfm-${ type }` );
-			await expect( element ).toHaveAttribute( 'load', 'click' );
-
-			// The facade, drawn by the bundled click loader.
-			const button = element.locator( '[data-showfm-facade-ui] button' );
-			await expect( button ).toBeVisible();
-			await expect( button ).toHaveAttribute( 'aria-label', label );
+			const visited = await visit( browser, type );
+			// The plugin gives the loader both sources: the global, then data-src.
+			expect(
+				await visited.page.evaluate( () => window.showfmEmbedSrc )
+			).toMatch( /\/assets\/showfm-embed\/v1\.js\?ver=/ );
 			await expect(
-				page.locator( 'script[src*="showfm-embed/click-loader.js"]' )
+				visited.page.locator(
+					'script[src*="showfm-embed/click-loader-local.js"]'
+				)
 			).toHaveAttribute(
 				'data-src',
 				/\/assets\/showfm-embed\/v1\.js\?ver=/
 			);
 			await expect(
-				page.locator( 'script[src*="showfm-embed/v1.js"]' )
+				visited.page.locator( 'script[src*="click-loader.js"]' )
 			).toHaveCount( 0 );
-			await page.waitForTimeout( 500 );
-			expect( seen ).toEqual( [] );
-
-			await button.click();
-			// Upgraded: the element draws itself, and the facade is gone from view.
-			await expect
-				.poll( () =>
-					element.evaluate(
-						( node ) => node.shadowRoot?.childElementCount ?? 0
-					)
-				)
-				.toBeGreaterThan( 0 );
-			await expect( button ).toBeHidden();
-			await expect
-				.poll( () =>
-					seen.some( ( url ) =>
-						url.startsWith( 'https://api.show.fm/' )
-					)
-				)
-				.toBe( true );
-			// v1.js came from the plugin, once, and nothing from the CDN.
-			const scripts = seen.filter( ( url ) => url.includes( '/v1.js' ) );
-			expect( scripts ).toHaveLength( 1 );
-			expect( new URL( scripts[ 0 ] ).pathname ).toBe( LOCAL_V1 );
-			expect(
-				seen.filter( ( url ) => url.includes( 'embed.cdn.media' ) )
-			).toEqual( [] );
-			await context.close();
+			await expectClickToLoad( visited, label );
+			await visited.context.close();
 		} );
 	}
+
+	// What a script optimiser can do to the page. The loader is the tag with the
+	// showfm-embed-click-loader-js id; the global is set by the "-before" inline script.
+	const LOADER =
+		/<script\b[^>]*\bid="showfm-embed-click-loader-js"[^>]*><\/script>/;
+	const GLOBAL =
+		/<script\b[^>]*\bid="showfm-embed-click-loader-js-before"[^>]*>[\s\S]*?<\/script>/;
+	const stripDataSrc = ( html ) =>
+		html.replace( LOADER, ( tag ) =>
+			tag.replace( /\sdata-src="[^"]*"/, '' )
+		);
+	const dropGlobal = ( html ) => html.replace( GLOBAL, '' );
+	// Inside a module script, document.currentScript is null, as when the loader runs from
+	// a combined or delayed bundle.
+	const loaderSource = readFileSync(
+		join( __dirname, '../../assets/showfm-embed/click-loader-local.js' ),
+		'utf8'
+	);
+	const withoutCurrentScript = ( html ) =>
+		html.replace(
+			LOADER,
+			() => `<script type="module">${ loaderSource }</script>`
+		);
+
+	test( 'data-src stripped, the global still set: it loads from the plugin', async ( {
+		browser,
+	} ) => {
+		const visited = await visit( browser, 'stripped', stripDataSrc );
+		await expect(
+			visited.page.locator( 'script[src*="click-loader-local.js"]' )
+		).not.toHaveAttribute( 'data-src' );
+		await expectClickToLoad( visited, 'Load episodes' );
+		await visited.context.close();
+	} );
+
+	test( 'the global missing, data-src still set: it loads from the plugin', async ( {
+		browser,
+	} ) => {
+		const visited = await visit( browser, 'no-global', dropGlobal );
+		expect(
+			await visited.page.evaluate( () => window.showfmEmbedSrc )
+		).toBeUndefined();
+		await expectClickToLoad( visited, 'Load episodes' );
+		await visited.context.close();
+	} );
+
+	test( 'both missing: nothing loads and the fallback stays', async ( {
+		browser,
+	} ) => {
+		const visited = await visit( browser, 'both', ( html ) =>
+			dropGlobal( stripDataSrc( html ) )
+		);
+		await expectNothing( visited );
+		await visited.context.close();
+	} );
+
+	test( 'no currentScript, the global set: it loads from the plugin', async ( {
+		browser,
+	} ) => {
+		const visited = await visit( browser, 'module', withoutCurrentScript );
+		await expect(
+			visited.page.locator( 'script[src*="click-loader-local.js"]' )
+		).toHaveCount( 0 );
+		await expectClickToLoad( visited, 'Load episodes' );
+		await visited.context.close();
+	} );
+
+	test( 'no currentScript and no global: nothing loads and the fallback stays', async ( {
+		browser,
+	} ) => {
+		const visited = await visit( browser, 'module-only', ( html ) =>
+			dropGlobal( withoutCurrentScript( html ) )
+		);
+		await expectNothing( visited );
+		await visited.context.close();
+	} );
 } );

@@ -2,7 +2,7 @@
 
 Run `npm ci`, `npm run build` and `composer install` before starting WordPress.
 `npm run zip` builds the editor entry point and copies every file from the exact
-`@showfm/embed@1.6.0` CDN distribution. `npm run test:assets` compares file lists
+`@showfm/embed@1.6.1` CDN distribution. `npm run test:assets` compares file lists
 and SHA-256 hashes, including locales and future chunks. The package's MIT
 licence is in `assets/showfm-embed-LICENSE`. WordPress supplies the editor's React
 and block libraries through the generated dependency file.
@@ -65,14 +65,22 @@ result; CI regenerates and rejects a diff. PHPUnit compares every output byte,
 including serialised JSON-LD. Run single-site and multisite PHPUnit plus the
 Playwright no-JavaScript fallback test.
 
-The pinned 1.6.0 package registers all four elements (`showfm-player`, `showfm-episodes`,
+The pinned 1.6.1 package registers all four elements (`showfm-player`, `showfm-episodes`,
 `showfm-play` and `showfm-transcript`), loading the list, play button and transcript from
 `chunks/` next to `v1.js`. With "Load players only after a visitor clicks" on, the front end
-enqueues the package's `click-loader.js` instead of `v1.js`. `Assets::loader_tag()` prints it
-with `data-src` set to the bundled `v1.js`, so it never falls back to embed.cdn.media. Its
+enqueues the package's self-hosting `click-loader-local.js` instead of `v1.js`. It names no
+host. It takes `v1.js` from `window.showfmEmbedSrc`, which an inline script set by
+`Assets::register()` sets before it, then from `data-src`, which `Assets::loader_tag()` adds
+to the loader's own tag only. With neither it does nothing and the fallback stays. Script
+optimisers can drop `data-src` or run the loader without `document.currentScript`, but they
+keep inline scripts, so the global still works. The package's CDN `click-loader.js` is
+left out of the zip (`.distignore`), and `scripts/check-zip.mjs` fails if any shipped script
+names embed.cdn.media. Its
 facades ("Play podcast episode", "Load episodes", "Load transcript") add the local `v1.js`
 on the first press. The editor always enqueues `v1.js`. `tests/e2e/click-to-load.spec.js`
-checks every block: a facade, no request before the click, and an upgrade after it. Every element also carries `platform="wordpress"`
+checks every block: a facade, no request before the click, and an upgrade after it. It also
+rewrites the page as an optimiser might: `data-src` stripped, the global dropped, both, and the
+loader run as a module without `currentScript`. Every element also carries `platform="wordpress"`
 (`Attributes::clean()` on the server, `elementAttributes()` in the editor). From 1.6.0 the
 package hides "Powered by show.fm" for `credit="off"` only when the show's plan allows it,
 unless `platform="wordpress"` is set, so the plugin's default (`credit="off"`) hides it for

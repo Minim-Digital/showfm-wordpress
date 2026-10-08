@@ -126,10 +126,13 @@ directory can take a few hours to show new images.
 4. If the screens changed, run `npm run wporg:screenshots` (wp-env must be running) and
    `npm run wporg:assets`, check the images by eye, and copy them into `assets/`.
 
-## Still to do for 1.0.0
+## The bundled package and WordPress.org
 
-- **@showfm/embed 1.6.0.** 1.6.0 adds the player's mini-player, the list's transcript and
-  the credit rule, and it is in review in showfm-embed. Once it is on npm, the plugin bumps
-  to exactly 1.6.0 in its own commit, and every element it renders carries
-  `platform="wordpress"`. With `credit="off"`, that keeps "Powered by" hidden for any show,
-  as guideline 10 needs. I submit after that commit.
+- The plugin bundles @showfm/embed 1.6.1 and checks every file against the npm release.
+- Every element carries `platform="wordpress"`, so with `credit="off"` (the default) no
+  show displays "Powered by show.fm" (guideline 10).
+- Load on click uses the package's self-hosting `click-loader-local.js`. It names no host,
+  and the CDN loader is not in the zip. `npm run release` fails if any shipped script names
+  embed.cdn.media (guideline 8).
+- When I bump the package, I keep both rules: the exact version, verified against npm, and
+  no CDN URL in any shipped script.

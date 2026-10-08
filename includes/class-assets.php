@@ -14,16 +14,25 @@ if ( ! defined( 'ABSPATH' ) ) {
 /** Registers assets early, but only enqueues them for rendered content. */
 final class Assets {
 	/** Exact npm package version. */
-	const VERSION = '1.6.0';
+	const VERSION = '1.6.1';
 	/** Shared script handle. */
 	const HANDLE = 'showfm-embed';
-	/** The package's click loader, used instead of v1.js in load-on-click mode. */
+	/**
+	 * The package's self-hosting click loader, used instead of v1.js in load-on-click mode.
+	 * It names no host: it loads only the v1.js the plugin gives it, and does nothing without.
+	 */
 	const CLICK_HANDLE = 'showfm-embed-click-loader';
 
 	/** Register in the front end and enqueue_block_assets editor iframe lifecycle. */
 	public static function register(): void {
 		wp_register_script( self::HANDLE, self::script_url(), array(), self::VERSION, true );
-		wp_register_script( self::CLICK_HANDLE, plugins_url( 'assets/showfm-embed/click-loader.js', SHOWFM_FILE ), array(), self::VERSION, true );
+		if ( ! wp_script_is( self::CLICK_HANDLE, 'registered' ) ) {
+			wp_register_script( self::CLICK_HANDLE, plugins_url( 'assets/showfm-embed/click-loader-local.js', SHOWFM_FILE ), array(), self::VERSION, true );
+			// The loader's first source. Script optimisers that combine or delay scripts can
+			// drop data-src, or run the loader outside its own tag, but they keep inline
+			// scripts and run them in order.
+			wp_add_inline_script( self::CLICK_HANDLE, 'window.showfmEmbedSrc = ' . wp_json_encode( self::versioned_script_url() ) . ';', 'before' );
+		}
 		wp_register_style( self::HANDLE, plugins_url( 'assets/blocks.css', SHOWFM_FILE ), array(), SHOWFM_VERSION );
 	}
 
@@ -32,10 +41,16 @@ final class Assets {
 		return plugins_url( 'assets/showfm-embed/v1.js', SHOWFM_FILE );
 	}
 
+	/** The bundled v1.js, with the version WordPress would add. */
+	public static function versioned_script_url(): string {
+		return add_query_arg( 'ver', self::VERSION, self::script_url() );
+	}
+
 	/**
 	 * Enqueue once on output, including output generated after wp_head.
 	 *
-	 * In load-on-click mode the front end gets the package's click loader instead of v1.js.
+	 * In load-on-click mode the front end gets the package's self-hosting click loader instead
+	 * of v1.js.
 	 * It draws each element's "Play" or "Load" button and adds the bundled v1.js only when a
 	 * visitor presses one, so nothing loads before the click. The editor always previews
 	 * the real elements.
@@ -50,10 +65,11 @@ final class Assets {
 	}
 
 	/**
-	 * Points the click loader at the bundled v1.js. Without `data-src` it would load v1.js
-	 * from embed.cdn.media, so it is only ever printed with it.
+	 * Gives the click loader's own tag `data-src`, the loader's second source for the bundled
+	 * v1.js after `window.showfmEmbedSrc`. The tag string also holds the inline script that
+	 * sets the global, so only the tag with the loader's id gets it.
 	 *
-	 * @param string $tag    The script tag.
+	 * @param string $tag    The script tags printed for the handle.
 	 * @param string $handle Its handle.
 	 */
 	public static function loader_tag( string $tag, string $handle ): string {
@@ -61,11 +77,13 @@ final class Assets {
 			return $tag;
 		}
 		$processor = new \WP_HTML_Tag_Processor( $tag );
-		if ( ! $processor->next_tag( array( 'tag_name' => 'script' ) ) ) {
-			return '';
+		while ( $processor->next_tag( array( 'tag_name' => 'script' ) ) ) {
+			if ( self::CLICK_HANDLE . '-js' === $processor->get_attribute( 'id' ) ) {
+				$processor->set_attribute( 'data-src', self::versioned_script_url() );
+				return $processor->get_updated_html();
+			}
 		}
-		$processor->set_attribute( 'data-src', add_query_arg( 'ver', self::VERSION, self::script_url() ) );
-		return $processor->get_updated_html();
+		return $tag;
 	}
 
 	/** Print styles enqueued by shortcodes after the theme printed its head. */

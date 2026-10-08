@@ -72,4 +72,8 @@
 # Source maps
 *.map
 
+# The package's CDN click loader defaults to loading v1.js from embed.cdn.media. The plugin
+# uses click-loader-local.js, which names no host, so this one never ships.
+/assets/showfm-embed/click-loader.js
+
 /src
