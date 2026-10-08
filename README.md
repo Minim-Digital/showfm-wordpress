@@ -7,13 +7,12 @@ This file is for developers. The WordPress.org readme is `readme.txt`.
 
 ## Status
 
-Version 0.1.0 has the foundation (the API client, the cache, encrypted connection storage
-and uninstall) and the plugin side of connecting a site to show.fm: the browser flow, the
-code exchange, WP-CLI registration, the ownership challenge, the signed ping endpoint and
-the daily health report. Settings > show.fm has the Connection and Display tabs and the
-admin notices. Blocks and the shortcode are available, together with the background sync engine.
-The blocks have their editor UI (pickers, inspector controls, in-block states and the post
-panel); see [docs-editor.md](docs-editor.md).
+Version 1.0.0 is the first release for WordPress.org. It has the four blocks, the shortcode
+and oEmbed, Settings > show.fm with the Connection, Publishing, Display and Migrate tabs, the
+admin notices, connecting a site to show.fm (in the browser and with WP-CLI), the background
+sync engine and the embed migrator. The editor UI is described in
+[docs-editor.md](docs-editor.md). How the release is built, checked and submitted is in
+[docs-release.md](docs-release.md).
 
 ## Embed migration
 

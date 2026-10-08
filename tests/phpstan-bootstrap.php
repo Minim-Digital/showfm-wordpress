@@ -5,7 +5,7 @@
  * @package ShowFM
  */
 
-define( 'SHOWFM_VERSION', '0.1.0' );
+define( 'SHOWFM_VERSION', '1.0.0' );
 define( 'SHOWFM_FILE', dirname( __DIR__ ) . '/showfm.php' );
 define( 'SHOWFM_DIR', dirname( __DIR__ ) );
 define( 'WPINC', 'wp-includes' );
