@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /** Registers assets early, but only enqueues them for rendered content. */
 final class Assets {
 	/** Exact npm package version. */
-	const VERSION = '1.4.0';
+	const VERSION = '1.5.0';
 	/** Shared script handle. */
 	const HANDLE = 'showfm-embed';
 

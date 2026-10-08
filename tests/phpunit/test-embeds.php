@@ -241,7 +241,7 @@ class Test_Embeds extends WP_UnitTestCase {
 		);
 		$this->assertTrue( wp_script_is( Assets::HANDLE, 'enqueued' ) );
 		$script = wp_scripts()->registered[ Assets::HANDLE ];
-		$this->assertSame( '1.4.0', $script->ver );
+		$this->assertSame( '1.5.0', $script->ver );
 		$this->assertStringEndsWith( '/assets/showfm-embed/v1.js', $script->src );
 		$this->assertNotContains( 'module', $script->extra );
 		$this->block( 'play', array( 'episode' => self::ID ) );

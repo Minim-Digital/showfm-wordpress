@@ -2,7 +2,7 @@
 
 Run `npm ci`, `npm run build` and `composer install` before starting WordPress.
 `npm run zip` builds the editor entry point and copies every file from the exact
-`@showfm/embed@1.4.0` CDN distribution. `npm run test:assets` compares file lists
+`@showfm/embed@1.5.0` CDN distribution. `npm run test:assets` compares file lists
 and SHA-256 hashes, including locales and future chunks. The package's MIT
 licence is in `assets/showfm-embed-LICENSE`. WordPress supplies the editor's React
 and block libraries through the generated dependency file.
@@ -65,7 +65,7 @@ result; CI regenerates and rejects a diff. PHPUnit compares every output byte,
 including serialised JSON-LD. Run single-site and multisite PHPUnit plus the
 Playwright no-JavaScript fallback test.
 
-The pinned 1.4.0 package registers all four elements (`showfm-player`, `showfm-episodes`,
+The pinned 1.5.0 package registers all four elements (`showfm-player`, `showfm-episodes`,
 `showfm-play` and `showfm-transcript`), loading the list, play button and transcript from
 `chunks/` next to `v1.js`. The parity fixtures cover the three functions the PHP port has
 (`renderEpisodeHTML`, `renderEpisodeListHTML`, `episodeJsonLd`); `renderTranscriptHTML` is
