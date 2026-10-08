@@ -656,6 +656,138 @@ class Test_Embeds extends WP_UnitTestCase {
 		}
 	}
 
+	public function test_oembed_catches_fullwidth_and_compatibility_forms(): void {
+		$url   = 'https://test.show.fm/e/first';
+		$ep    = '/ep/' . self::ID;
+		$wide  = static function ( string $ascii ): string {
+			$out = '';
+			foreach ( str_split( $ascii ) as $char ) {
+				$code = ord( $char );
+				$out .= $code >= 0x21 && $code <= 0x7E ? html_entity_decode( '&#' . ( $code + 0xFEE0 ) . ';', ENT_QUOTES, 'UTF-8' ) : $char;
+			}
+			return $out;
+		};
+		$forms = array(
+			'fullwidth host'          => '<iframe src="https://' . $wide( 'embed.cdn.media' ) . $ep . '"></iframe>',
+			'fullwidth whole URL'     => '<iframe src="' . $wide( 'https://embed.cdn.media' . $ep ) . '"></iframe>',
+			'fullwidth upper case'    => '<iframe src="https://' . $wide( 'EMBED.CDN.MEDIA' ) . $ep . '"></iframe>',
+			'fullwidth and ASCII mix' => '<iframe src="https://em' . $wide( 'bed' ) . '.cdn' . $wide( '.' ) . 'media' . $ep . '"></iframe>',
+			'fullwidth staging host'  => '<iframe src="https://' . $wide( 'embed.showfm.dev' ) . $ep . '"></iframe>',
+			'fullwidth, percent'      => '<iframe src="https://' . rawurlencode( $wide( 'embed' ) ) . '%2Ecdn.media' . $ep . '"></iframe>',
+			'fullwidth, entity'       => '<iframe src="https://&#xFF45;mbed&#46;cdn.media' . $ep . '"></iframe>',
+			'fullwidth, tab, dot'     => '<iframe src="https://' . $wide( 'embed' ) . "\t\u{3002}" . $wide( 'cdn' ) . '.media.' . $ep . '"></iframe>',
+			'fullwidth, backslashes'  => '<iframe src="https:\\\\' . $wide( 'embed.cdn.media' ) . '\\ep\\' . self::ID . '"></iframe>',
+			'fullwidth, srcdoc'       => '<iframe srcdoc="&lt;script src=&quot;https://' . $wide( 'embed.cdn.media' ) . '/v1.js&quot;&gt;"></iframe>',
+		);
+		if ( class_exists( 'Normalizer' ) ) {
+			// Forms only compatibility normalisation folds: the small full stop U+FE52 and
+			// mathematical letters.
+			$forms['small full stop'] = '<iframe src="https://embed' . "\u{FE52}" . 'cdn.media' . $ep . '"></iframe>';
+			$forms['math letters']    = '<iframe src="https://' . "\u{1D41E}" . 'mbed.cdn.media' . $ep . '"></iframe>';
+		}
+		foreach ( $forms as $form => $html ) {
+			$this->assertTrue( Oembed::names_show_fm( $html ), $form );
+			$out = apply_filters( 'embed_oembed_html', $html, $url );
+			$this->assertFalse( Oembed::names_show_fm( $out ), "$form: a show.fm host survived in $out" );
+			$this->assertStringNotContainsString( '<iframe', $out, $form );
+		}
+		// A fullwidth spelling of a recognised iframe still becomes the local player.
+		$this->assertStringContainsString( '<showfm-player', apply_filters( 'embed_oembed_html', $forms['fullwidth host'], $url ) );
+
+		// Fullwidth look-alikes stay untouched.
+		foreach ( array( $wide( 'notembed.cdn.media' ), $wide( 'embed.cdn.media.evil.test' ) ) as $host ) {
+			$html = '<iframe src="https://' . $host . $ep . '"></iframe>';
+			$this->assertFalse( Oembed::names_show_fm( $html ), $host );
+			$this->assertSame( $html, apply_filters( 'embed_oembed_html', $html, $url ) );
+		}
+	}
+
+	public function test_oembed_catches_invisible_and_compatibility_characters(): void {
+		$url  = 'https://test.show.fm/e/first';
+		$ep   = '/ep/' . self::ID;
+		$host = static function ( string $inside ): string {
+			return '<iframe src="https://' . $inside . '/ep/11111111-2222-4333-8444-555555555555"></iframe>';
+		};
+		// Spellings headless Chromium resolves to embed.cdn.media.
+		$invisible     = array(
+			'soft hyphen'        => $host( "em\u{00AD}bed.cdn.media" ),
+			'soft hyphen entity' => $host( 'em&shy;bed.cdn.media' ),
+			'zero-width space'   => $host( "embed\u{200B}.cdn.media" ),
+			'word joiner'        => $host( "embed.cdn\u{2060}.media" ),
+			'variation selector' => $host( "embed.cdn.media\u{FE0F}" ),
+			'fullwidth letters'  => $host( "\u{FF45}\u{FF4D}\u{FF42}\u{FF45}\u{FF44}.cdn.media" ),
+		);
+		$compatibility = array(
+			'mathematical bold' => $host( "\u{1D41E}mbed.cdn.media" ),
+			'circled letter'    => $host( "\u{24D4}mbed.cdn.media" ),
+			'superscript a'     => $host( "embed.cdn.medi\u{00AA}" ),
+		);
+		$all           = array_merge( $invisible, $compatibility );
+		if ( ! class_exists( 'Normalizer' ) ) {
+			$all = $invisible;
+		}
+		foreach ( $all as $form => $html ) {
+			$this->assertTrue( Oembed::names_show_fm( $html ), $form );
+			$out = apply_filters( 'embed_oembed_html', $html, $url );
+			$this->assertFalse( Oembed::names_show_fm( $out ), "$form: a show.fm host survived in $out" );
+			$this->assertStringNotContainsString( '<iframe', $out, $form );
+			$this->assertStringContainsString( '<showfm-player', $out, $form );
+		}
+		// Without intl the fallback still catches fullwidth letters and invisible characters.
+		foreach ( $invisible as $form => $html ) {
+			$this->assertTrue( Oembed::names_show_fm( $html, false ), "$form without intl" );
+		}
+		foreach ( $compatibility as $form => $html ) {
+			$this->assertFalse( Oembed::names_show_fm( $html, false ), "$form needs intl" );
+		}
+		// Deleting non-ASCII never makes a look-alike match.
+		$this->assertFalse( Oembed::names_show_fm( $host( "embed\u{00AD}.cdn.media.evil.test" ) ) );
+		$this->assertFalse( Oembed::names_show_fm( $host( "not\u{200B}embed.cdn.media" ) ) );
+	}
+
+	/**
+	 * A separate process, so the normaliser's patterns compile after JIT is off: a pattern
+	 * already compiled with JIT ignores the backtrack limit.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_oembed_fails_closed_and_never_prints_an_empty_link(): void {
+		$url = 'https://test.show.fm/e/first';
+		// A non-ASCII title makes the normaliser's PCRE step run out of backtracking below.
+		$youtube = '<iframe src="https://www.youtube.com/embed/abc?feature=oembed" title="Vidéo"></iframe>';
+		$jit     = ini_get( 'pcre.jit' );
+		$limit   = ini_get( 'pcre.backtrack_limit' );
+		// phpcs:disable WordPress.PHP.IniSet.Risky -- Forces a PCRE error, then restores.
+		ini_set( 'pcre.jit', '0' );
+		ini_set( 'pcre.backtrack_limit', '1' );
+		try {
+			$this->assertTrue( Oembed::names_show_fm( $youtube ) );
+			$out = apply_filters( 'embed_oembed_html', $youtube, $url );
+		} finally {
+			ini_set( 'pcre.jit', (string) $jit );
+			ini_set( 'pcre.backtrack_limit', (string) $limit );
+		}
+		// phpcs:enable
+		// A regex error is never a reason to pass markup through.
+		$this->assertStringNotContainsString( '<iframe', $out );
+
+		// An embed title that isn't valid UTF-8 escapes to nothing: the link says something.
+		$html = '<iframe src="https://embed.cdn.media/unknown" title="' . "\xFF\xFE" . '"></iframe>';
+		$this->assertSame( '<p class="showfm-oembed-link"><a href="https://test.show.fm/e/first">Listen on show.fm</a></p>', apply_filters( 'embed_oembed_html', $html, $url ) );
+	}
+
+	public function test_fullwidth_folding_works_without_intl(): void {
+		// The fallback the normaliser always applies, so hosts without intl are covered.
+		$wide = html_entity_decode( '&#xFF45;&#xFF4D;&#xFF42;&#xFF45;&#xFF44;&#xFF0E;&#xFF43;&#xFF44;&#xFF4E;&#xFF0E;&#xFF4D;&#xFF45;&#xFF44;&#xFF49;&#xFF41;', ENT_QUOTES, 'UTF-8' );
+		$this->assertSame( 'embed.cdn.media', Oembed::fold_fullwidth( $wide ) );
+		$this->assertSame( '!~AZaz09', Oembed::fold_fullwidth( html_entity_decode( '&#xFF01;&#xFF5E;&#xFF21;&#xFF3A;&#xFF41;&#xFF5A;&#xFF10;&#xFF19;', ENT_QUOTES, 'UTF-8' ) ) );
+		$this->assertSame( 'embed', Oembed::fold_fullwidth( 'em' . html_entity_decode( '&#xFF42;&#xFF45;&#xFF44;', ENT_QUOTES, 'UTF-8' ) ) );
+		// Outside the block is left alone. Invalid UTF-8 is an error, so the caller fails closed.
+		$this->assertSame( "\u{FF00}\u{FF5F}\u{3002}", Oembed::fold_fullwidth( "\u{FF00}\u{FF5F}\u{3002}" ) );
+		$this->assertNull( Oembed::fold_fullwidth( "\xFF\xFE" ) );
+	}
+
 	public function test_theme_global_defaults_and_block_overrides(): void {
 		$filter = static function ( $data ) {
 			return $data->update_with(

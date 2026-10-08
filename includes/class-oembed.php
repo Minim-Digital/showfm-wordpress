@@ -68,7 +68,7 @@ final class Oembed {
 		wp_parse_str( $found['parts']['query'] ?? '', $query );
 		$attrs['size']     = $query['size'] ?? 'standard';
 		$attrs['snapshot'] = array(
-			'title'     => '' !== $found['title'] ? $found['title'] : __( 'Listen on show.fm', 'showfm' ),
+			'title'     => self::title( $found['title'] ),
 			'listenUrl' => $url,
 		);
 		// Upgrade core's cached iframe to a local player so the site credit setting and
@@ -77,24 +77,43 @@ final class Oembed {
 	}
 
 	/**
-	 * Whether the markup names a show.fm embed host in any spelling a browser would follow:
-	 * entity-encoded, percent-encoded, upper case, with Unicode dots, whitespace or control
-	 * characters inside it, backslashes for slashes, a trailing dot, in any attribute or text.
+	 * Whether the markup names a show.fm embed host once normalised (see normalise()), in any
+	 * attribute or text. Fails closed: if normalising or matching hits an error, the markup
+	 * counts as show.fm, so it is replaced and never passed through.
 	 *
-	 * @param string $html Markup.
+	 * @param string $html  Markup.
+	 * @param bool   $intl  False skips compatibility normalisation, as on a host without the
+	 *                      intl extension. For tests.
 	 */
-	public static function names_show_fm( string $html ): bool {
-		return 1 === preg_match( self::CDN_PATTERN, self::normalise( $html ) );
+	public static function names_show_fm( string $html, bool $intl = true ): bool {
+		$normalised = self::normalise( $html, $intl );
+		return null === $normalised || 0 !== preg_match( self::CDN_PATTERN, $normalised );
 	}
 
 	/**
-	 * A copy of the markup with every disguise undone, for matching only.
+	 * A copy of the markup with the disguises undone, for matching only. In order:
+	 *
+	 * 1. HTML entities and percent-encoding, decoded until nothing changes (at most 8 passes);
+	 * 2. invalid UTF-8 bytes dropped;
+	 * 3. Unicode compatibility normalisation (NFKC) when the intl extension is available,
+	 *    which folds fullwidth, circled, superscript and mathematical letters and the small
+	 *    and fullwidth full stops;
+	 * 4. fullwidth ASCII (U+FF01 to U+FF5E) folded to ASCII, with or without intl;
+	 * 5. the ideographic, fullwidth and halfwidth full stops (U+3002, U+FF0E, U+FF61) as ".";
+	 * 6. every other non-ASCII character deleted: soft hyphens, zero-width spaces, word
+	 *    joiners, variation selectors and anything else a browser drops or maps away;
+	 * 7. "\" as "/", then lower case;
+	 * 8. ASCII whitespace and control characters removed.
+	 *
+	 * Browsers' IDNA processing maps more than this, but every host that is ASCII after it
+	 * is caught. Without intl, steps 4 to 6 still catch fullwidth letters and the invisible
+	 * characters.
 	 *
 	 * @param string $text Markup.
+	 * @param bool   $intl Whether to use the intl extension when it is available.
+	 * @return string|null Null when a step fails, so the caller fails closed.
 	 */
-	private static function normalise( string $text ): string {
-		// Entities and percent-encoding can nest, so decode until nothing changes, within a
-		// bound.
+	private static function normalise( string $text, bool $intl = true ): ?string {
 		for ( $i = 0; $i < 8; $i++ ) {
 			$decoded = rawurldecode( html_entity_decode( $text, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
 			if ( $decoded === $text ) {
@@ -102,8 +121,65 @@ final class Oembed {
 			}
 			$text = $decoded;
 		}
-		$text = str_replace( array( "\u{3002}", "\u{FF0E}", "\u{FF61}", '\\' ), array( '.', '.', '.', '/' ), $text );
-		return (string) preg_replace( '/[\x00-\x20\x7F]+/', '', strtolower( $text ) );
+		$text = self::scrub_utf8( $text );
+		if ( $intl && class_exists( '\Normalizer' ) ) {
+			$compatible = \Normalizer::normalize( $text, \Normalizer::FORM_KC );
+			if ( ! is_string( $compatible ) ) {
+				return null;
+			}
+			$text = $compatible;
+		}
+		$text = self::fold_fullwidth( $text );
+		if ( null === $text ) {
+			return null;
+		}
+		$text = str_replace( array( "\u{3002}", "\u{FF0E}", "\u{FF61}" ), '.', $text );
+		$text = preg_replace( '/[\x80-\xFF]+/', '', $text );
+		if ( null === $text ) {
+			return null;
+		}
+		$text = strtolower( str_replace( '\\', '/', $text ) );
+		return preg_replace( '/[\x00-\x20\x7F]+/', '', $text );
+	}
+
+	/**
+	 * Drops invalid UTF-8 bytes, so the Unicode steps can't fail on them.
+	 *
+	 * @param string $text Text.
+	 */
+	private static function scrub_utf8( string $text ): string {
+		if ( function_exists( 'mb_scrub' ) ) {
+			return str_replace( "\u{FFFD}", '', mb_scrub( $text, 'UTF-8' ) );
+		}
+		if ( function_exists( 'iconv' ) ) {
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- iconv warns on the bytes it drops.
+			$clean = @iconv( 'UTF-8', 'UTF-8//IGNORE', $text );
+			if ( is_string( $clean ) ) {
+				return $clean;
+			}
+		}
+		return $text;
+	}
+
+	/**
+	 * Folds fullwidth ASCII (U+FF01 to U+FF5E) to ASCII (U+0021 to U+007E). Needs neither
+	 * intl nor mbstring.
+	 *
+	 * @param string $text Text.
+	 * @return string|null Null when the text isn't valid UTF-8.
+	 */
+	public static function fold_fullwidth( string $text ): ?string {
+		$folded = preg_replace_callback(
+			'/[\x{FF01}-\x{FF5E}]/u',
+			static function ( array $found ): string {
+				// Each is three UTF-8 bytes: EF BC 81 to EF BD 9E.
+				$bytes = array_values( (array) unpack( 'C*', $found[0] ) );
+				$code  = ( ( $bytes[0] & 0x0F ) << 12 ) | ( ( $bytes[1] & 0x3F ) << 6 ) | ( $bytes[2] & 0x3F );
+				return chr( $code - 0xFEE0 );
+			},
+			$text
+		);
+		return is_string( $folded ) ? $folded : null;
 	}
 
 	/**
@@ -116,7 +192,8 @@ final class Oembed {
 		$tags = new \WP_HTML_Tag_Processor( $html );
 		while ( $tags->next_tag( array( 'tag_name' => 'iframe' ) ) ) {
 			$src   = $tags->get_attribute( 'src' );
-			$parts = is_string( $src ) ? wp_parse_url( self::normalise( $src ) ) : false;
+			$clean = is_string( $src ) ? self::normalise( $src ) : null;
+			$parts = null !== $clean ? wp_parse_url( $clean ) : false;
 			if ( is_array( $parts ) && in_array( rtrim( (string) ( $parts['host'] ?? '' ), '.' ), self::CDN_HOSTS, true ) ) {
 				$title = $tags->get_attribute( 'title' );
 				return array(
@@ -140,7 +217,16 @@ final class Oembed {
 		if ( ! in_array( is_string( $scheme ) ? strtolower( $scheme ) : '', array( 'http', 'https' ), true ) || self::names_show_fm( $url ) ) {
 			return '';
 		}
-		$text = '' !== $title ? $title : __( 'Listen on show.fm', 'showfm' );
-		return '<p class="showfm-oembed-link"><a href="' . esc_url( $url ) . '">' . esc_html( $text ) . '</a></p>';
+		return '<p class="showfm-oembed-link"><a href="' . esc_url( $url ) . '">' . esc_html( self::title( $title ) ) . '</a></p>';
+	}
+
+	/**
+	 * The embed's title, or "Listen on show.fm" when it would print as nothing (empty, or
+	 * not valid UTF-8, which escaping drops).
+	 *
+	 * @param string $title Title.
+	 */
+	private static function title( string $title ): string {
+		return '' !== trim( esc_html( $title ) ) ? $title : __( 'Listen on show.fm', 'showfm' );
 	}
 }
