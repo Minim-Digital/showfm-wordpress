@@ -67,7 +67,12 @@ Playwright no-JavaScript fallback test.
 
 The pinned 1.5.0 package registers all four elements (`showfm-player`, `showfm-episodes`,
 `showfm-play` and `showfm-transcript`), loading the list, play button and transcript from
-`chunks/` next to `v1.js`. The parity fixtures cover the three functions the PHP port has
+`chunks/` next to `v1.js`. With "Load players only after a visitor clicks" on, the front end
+enqueues the package's `click-loader.js` instead of `v1.js`. `Assets::loader_tag()` prints it
+with `data-src` set to the bundled `v1.js`, so it never falls back to embed.cdn.media. Its
+facades ("Play podcast episode", "Load episodes", "Load transcript") add the local `v1.js`
+on the first press. The editor always enqueues `v1.js`. `tests/e2e/click-to-load.spec.js`
+checks every block: a facade, no request before the click, and an upgrade after it. The parity fixtures cover the three functions the PHP port has
 (`renderEpisodeHTML`, `renderEpisodeListHTML`, `episodeJsonLd`); `renderTranscriptHTML` is
 not ported, because the plugin never fetches a transcript in PHP. Public podcast UUID lookup and list filters depend on APP-4
 reaching the selected API environment. No production deployment is part of this

@@ -10,6 +10,7 @@ use ShowFM\Attributes;
 use ShowFM\Bindings;
 use ShowFM\Cache;
 use ShowFM\Embed;
+use ShowFM\Embed_Settings;
 use ShowFM\Fallback;
 use ShowFM\Theme;
 
@@ -27,6 +28,7 @@ class Test_Embeds extends WP_UnitTestCase {
 		unregister_block_bindings_source( 'showfm/episode' );
 		Bindings::register();
 		wp_dequeue_script( Assets::HANDLE );
+		wp_dequeue_script( Assets::CLICK_HANDLE );
 		wp_dequeue_style( Assets::HANDLE );
 		wp_styles()->registered[ Assets::HANDLE ]->extra = array();
 		_set_cron_array( array() );
@@ -247,6 +249,41 @@ class Test_Embeds extends WP_UnitTestCase {
 		$this->block( 'play', array( 'episode' => self::ID ) );
 		$this->assertCount( 1, wp_styles()->get_data( Assets::HANDLE, 'after' ) );
 		$this->assertNotFalse( has_action( 'enqueue_block_assets', array( Assets::class, 'editor_assets' ) ) );
+	}
+
+	public function test_load_on_click_enqueues_the_local_click_loader_instead_of_v1(): void {
+		update_option( Embed_Settings::LOAD_ON_CLICK, true );
+		Assets::register();
+		$html = $this->block(
+			'transcript',
+			array(
+				'episode'  => self::ID,
+				'snapshot' => $this->snapshot(),
+			)
+		);
+		$this->assertStringContainsString( 'load="click"', $html );
+		$this->assertTrue( wp_script_is( Assets::CLICK_HANDLE, 'enqueued' ) );
+		$this->assertFalse( wp_script_is( Assets::HANDLE, 'enqueued' ) );
+		$this->assertStringEndsWith( '/assets/showfm-embed/click-loader.js', wp_scripts()->registered[ Assets::CLICK_HANDLE ]->src );
+
+		// The loader is always printed with data-src set to the bundled v1.js.
+		$tag       = get_echo( array( wp_scripts(), 'do_item' ), array( Assets::CLICK_HANDLE ) );
+		$processor = new WP_HTML_Tag_Processor( $tag );
+		$this->assertTrue( $processor->next_tag( array( 'tag_name' => 'script' ) ) );
+		$this->assertStringEndsWith( '/assets/showfm-embed/click-loader.js?ver=1.5.0', (string) $processor->get_attribute( 'src' ) );
+		$this->assertSame( plugins_url( 'assets/showfm-embed/v1.js', SHOWFM_FILE ) . '?ver=1.5.0', $processor->get_attribute( 'data-src' ) );
+		$this->assertStringNotContainsString( 'embed.cdn.media', $tag );
+		// Other scripts are left alone.
+		$other = '<script src="x"></script>'; // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- A tag string for the filter, never printed.
+		$this->assertSame( $other, Assets::loader_tag( $other, Assets::HANDLE ) );
+
+		// In the editor the real element always previews.
+		set_current_screen( 'post' );
+		wp_dequeue_script( Assets::CLICK_HANDLE );
+		Assets::enqueue();
+		$this->assertTrue( wp_script_is( Assets::HANDLE, 'enqueued' ) );
+		$this->assertFalse( wp_script_is( Assets::CLICK_HANDLE, 'enqueued' ) );
+		set_current_screen( 'front' );
 	}
 
 	public function test_json_ld_is_public_cache_only_and_setting_is_respected(): void {

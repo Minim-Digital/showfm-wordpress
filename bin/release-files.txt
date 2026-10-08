@@ -86,11 +86,12 @@ showfm/build/notices.js
 
 showfm/assets/blocks.css
 
-# @showfm/embed's dist/cdn, copied unchanged by scripts/embed-assets.mjs, without
-# click-loader.js (see .distignore).
+# @showfm/embed's dist/cdn, copied unchanged by scripts/embed-assets.mjs. The click
+# loader runs in load-on-click mode, always with data-src set to the bundled v1.js.
 showfm/assets/showfm-embed-LICENSE
 showfm/assets/showfm-embed/v1.js
 showfm/assets/showfm-embed/v1-fallback.css
+showfm/assets/showfm-embed/click-loader.js
 showfm/assets/showfm-embed/locales/de.js
 showfm/assets/showfm-embed/locales/fr.js
 showfm/assets/showfm-embed/chunks/episodes-*.js

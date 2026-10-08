@@ -41,7 +41,7 @@ The Migrate tab finds players from Buzzsprout, Libsyn, Captivate, Transistor, Sp
 
 **Source code**
 
-The plugin's source and build instructions are on GitHub at [Minim-Digital/showfm-wordpress](https://github.com/Minim-Digital/showfm-wordpress). The block editor scripts in `build/` are compiled from `src/` there with @wordpress/scripts. The player scripts in `assets/showfm-embed/` are copied unchanged from the MIT-licensed [@showfm/embed 1.5.0](https://github.com/Minim-Digital/showfm-embed/tree/v1.5.0) package, and a test checks every file byte for byte. The package's click loader is left out, because the plugin doesn't use it.
+The plugin's source and build instructions are on GitHub at [Minim-Digital/showfm-wordpress](https://github.com/Minim-Digital/showfm-wordpress). The block editor scripts in `build/` are compiled from `src/` there with @wordpress/scripts. The player scripts in `assets/showfm-embed/` are copied unchanged from the MIT-licensed [@showfm/embed 1.5.0](https://github.com/Minim-Digital/showfm-embed/tree/v1.5.0) package, and a test checks every file byte for byte. With "Load players only after a visitor clicks" on, the plugin loads the package's click loader instead of the player script, with its `data-src` set to the bundled `v1.js`, so the player script comes from the plugin, and only after a visitor presses a block.
 
 == External services ==
 
@@ -83,11 +83,11 @@ Serves the artwork, audio and transcript files of show.fm shows and episodes. me
 
 = What visitors' browsers request =
 
-The Player loads the episode's details from api.show.fm and its artwork as soon as it appears, the audio when the visitor plays it, and the transcript file when the visitor opens the transcript (or as soon as it appears, if the transcript is set to open). The Episode list loads the show's episode details from api.show.fm and each episode's artwork as soon as it appears, and the audio when the visitor plays an episode. The Play button loads the episode's details from api.show.fm as soon as it appears, and the audio and artwork when the visitor plays it. The Transcript loads the episode's details from api.show.fm and the transcript file as soon as it appears. Artwork, audio and transcript files come from m.cdn.media, or media.podcasterplus.com for some older episodes. With "Load players only after a visitor clicks" turned on, nothing is requested until the visitor presses play or chooses to load the transcript. Each request shows show.fm the visitor's IP address and browser details, as with any web request.
+The Player loads the episode's details from api.show.fm and its artwork as soon as it appears, the audio when the visitor plays it, and the transcript file when the visitor opens the transcript (or as soon as it appears, if the transcript is set to open). The Episode list loads the show's episode details from api.show.fm and each episode's artwork as soon as it appears, and the audio when the visitor plays an episode. The Play button loads the episode's details from api.show.fm as soon as it appears, and the audio and artwork when the visitor plays it. The Transcript loads the episode's details from api.show.fm and the transcript file as soon as it appears. Artwork, audio and transcript files come from m.cdn.media, or media.podcasterplus.com for some older episodes. With "Load players only after a visitor clicks" turned on, each block first shows a button ("Play podcast episode", "Load episodes" or "Load transcript"), and nothing is requested from show.fm until the visitor presses it. The block then makes the requests above. Each request shows show.fm the visitor's IP address and browser details, as with any web request.
 
 = show.fm embed CDN (embed.cdn.media) =
 
-Not used. The player scripts ship inside the plugin. A pasted show.fm link that WordPress resolves to an embed.cdn.media iframe is shown as a local player instead.
+Not used. The player scripts ship inside the plugin, and the click loader is always pointed at the bundled copy. A pasted show.fm link that WordPress resolves to an embed.cdn.media iframe is shown as a local player instead.
 
 = show.fm's test service =
 
