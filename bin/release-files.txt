@@ -1,13 +1,71 @@
-# Every file the release zip may hold, relative to the zip's root. `*` matches within one
-# path segment. scripts/check-zip.mjs fails if the zip holds a file no line allows, or if a
-# line matches no file. Edit this list on purpose when the plugin gains or loses a file.
+# Every file the release zip must hold, relative to the zip's root. scripts/check-zip.mjs
+# fails if the zip holds a file no line names, or if a line doesn't match exactly one file.
+# `*` matches within one path segment, and is only for the package's hashed chunk names.
+# Edit this list on purpose when the plugin gains or loses a file.
 
 showfm/showfm.php
 showfm/uninstall.php
 showfm/readme.txt
 showfm/LICENSE
 showfm/languages/showfm.pot
-showfm/includes/class-*.php
+
+# One class per file in includes/.
+showfm/includes/class-account.php
+showfm/includes/class-admin-endpoint.php
+showfm/includes/class-admin-status.php
+showfm/includes/class-admin.php
+showfm/includes/class-api-client.php
+showfm/includes/class-api-result.php
+showfm/includes/class-assets.php
+showfm/includes/class-attributes.php
+showfm/includes/class-autoloader.php
+showfm/includes/class-bindings.php
+showfm/includes/class-blocks.php
+showfm/includes/class-cache.php
+showfm/includes/class-challenge-endpoint.php
+showfm/includes/class-cli.php
+showfm/includes/class-connect.php
+showfm/includes/class-connection-busy.php
+showfm/includes/class-connection-lost.php
+showfm/includes/class-connection.php
+showfm/includes/class-editor-api.php
+showfm/includes/class-editor.php
+showfm/includes/class-embed-settings.php
+showfm/includes/class-embed.php
+showfm/includes/class-fallback.php
+showfm/includes/class-health.php
+showfm/includes/class-migrate-endpoint.php
+showfm/includes/class-migration-admin.php
+showfm/includes/class-migration-catalogue.php
+showfm/includes/class-migration-cli.php
+showfm/includes/class-migration-detectors.php
+showfm/includes/class-migration-legacy.php
+showfm/includes/class-migration-matcher.php
+showfm/includes/class-migration-scanner.php
+showfm/includes/class-migration-store.php
+showfm/includes/class-migration-swap.php
+showfm/includes/class-migration-tokens.php
+showfm/includes/class-migration-url.php
+showfm/includes/class-migrator.php
+showfm/includes/class-notices.php
+showfm/includes/class-oembed.php
+showfm/includes/class-ping-endpoint.php
+showfm/includes/class-plugin.php
+showfm/includes/class-privacy.php
+showfm/includes/class-publishing-endpoint.php
+showfm/includes/class-publishing.php
+showfm/includes/class-shortcode.php
+showfm/includes/class-sync-activity.php
+showfm/includes/class-sync-artwork.php
+showfm/includes/class-sync-identity.php
+showfm/includes/class-sync-local-reports.php
+showfm/includes/class-sync-lock.php
+showfm/includes/class-sync-log.php
+showfm/includes/class-sync-posts.php
+showfm/includes/class-sync.php
+showfm/includes/class-text.php
+showfm/includes/class-theme.php
+showfm/includes/class-uninstaller.php
 
 showfm/blocks/episodes/block.json
 showfm/blocks/play/block.json

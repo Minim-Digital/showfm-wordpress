@@ -10,7 +10,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
-import { crc32, deflateSync } from 'node:zlib';
+import { deflateSync } from 'node:zlib';
 import { chromium } from '@playwright/test';
 
 const ORIGIN = 'https://wporg-assets.test';
@@ -23,6 +23,25 @@ const TYPES = {
 	'.css': 'text/css',
 	'.svg': 'image/svg+xml',
 };
+
+/**
+ * A CRC-32, for PNG chunks. zlib.crc32 needs Node 22.15, and the plugin supports 22.12.
+ *
+ * @param {Buffer} bytes Bytes.
+ * @return {number} CRC.
+ */
+function crc32( bytes ) {
+	/* eslint-disable no-bitwise -- CRC-32 is bitwise by definition. */
+	let crc = 0xffffffff;
+	for ( const byte of bytes ) {
+		crc ^= byte;
+		for ( let bit = 0; bit < 8; bit++ ) {
+			crc = crc & 1 ? ( crc >>> 1 ) ^ 0xedb88320 : crc >>> 1;
+		}
+	}
+	return ( crc ^ 0xffffffff ) >>> 0;
+	/* eslint-enable no-bitwise */
+}
 
 /**
  * A solid-colour PNG, standing in for the episode artwork.

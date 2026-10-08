@@ -96,6 +96,22 @@ jobs:
         run: npm run env:start
       - name: Playwright
         run: npm run test:e2e
+      # The asset script runs only on demand, so run it here on the oldest Node that
+      # package.json supports. It would catch an API newer than the declared floor.
+      - name: The Node floor here matches package.json engines
+        run: |
+          node -e "
+            const floor = require('./package.json').engines.node;
+            if (!floor.startsWith('^22.12.0')) {
+              console.error('engines.node is ' + floor + ', so update this step and the next.');
+              process.exit(1);
+            }
+          "
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+      - name: The WordPress.org asset script runs on Node 22.12.0
+        run: node --version && npm run wporg:assets
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -114,10 +130,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - name: Build the distribution zip
+      - name: Build the distribution zip and check it against the allow-list
         run: npm run release
-      - name: The zip holds exactly the files on the allow-list
-        run: npm run zip:check
       - uses: actions/upload-artifact@v4
         with:
           name: showfm-zip

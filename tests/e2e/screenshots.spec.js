@@ -382,8 +382,14 @@ test.describe( 'WordPress.org screenshots', () => {
 			'showfm-e2e-fixtures/showfm-e2e-fixtures',
 			'inactive'
 		);
-		await setTest( requestUtils, 'state', { state: 'connected' } );
+		await setTest( requestUtils, 'state', {
+			state: 'connected',
+			site: 'https://thelongtable.co.uk',
+		} );
 		await admin.visitAdminPage( 'options-general.php', 'page=showfm' );
+		await expect(
+			page.getByText( 'https://thelongtable.co.uk' )
+		).toBeVisible();
 		await expect( page.getByText( 'Maya Lindgren' ) ).toBeVisible();
 		await capture( page, 3 );
 	} );
@@ -393,7 +399,7 @@ test.describe( 'WordPress.org screenshots', () => {
 		page,
 		requestUtils,
 	} ) => {
-		await page.setViewportSize( { width: 1280, height: 1100 } );
+		await page.setViewportSize( { width: 1280, height: 1200 } );
 		await setTest( requestUtils, 'state', { state: 'connected' } );
 		await setTest( requestUtils, 'publishing', { activity: true } );
 		await admin.visitAdminPage(

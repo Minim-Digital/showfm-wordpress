@@ -1,8 +1,10 @@
 /**
  * Checks languages/showfm.pot against the source.
  *
- * Every literal string passed to a translation function in the PHP and JavaScript source
- * must be in the .pot, so no string is left untranslatable. With `--fresh <file>`, the
+ * Every string passed to a translation function in the PHP and JavaScript source must be in
+ * the .pot, so no string is left untranslatable. A call the script can't read (anything but
+ * string literals for the text, context and domain) fails the check rather than being
+ * skipped. With `--fresh <file>`, the
  * committed .pot must also hold exactly the same entries as a freshly generated one, so it
  * is never stale. Line references and the creation date are ignored.
  */
@@ -95,68 +97,133 @@ function files( dir, pattern, skip = [] ) {
 	} );
 }
 
-const STRING = String.raw`('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")`;
-const SEP = String.raw`\s*,\s*`;
-// Function name => the order of its string arguments: s = singular, p = plural, c = context.
+// Function name => its arguments: s = singular, p = plural, n = number, c = context,
+// d = text domain.
 const FUNCTIONS = {
-	__: 's',
-	_e: 's',
-	esc_html__: 's',
-	esc_html_e: 's',
-	esc_attr__: 's',
-	esc_attr_e: 's',
-	_x: 'sc',
-	_ex: 'sc',
-	esc_html_x: 'sc',
-	esc_attr_x: 'sc',
-	_n: 'sp',
-	_n_noop: 'sp',
-	_nx: 'spc',
-	_nx_noop: 'spc',
+	__: 'sd',
+	_e: 'sd',
+	esc_html__: 'sd',
+	esc_html_e: 'sd',
+	esc_attr__: 'sd',
+	esc_attr_e: 'sd',
+	_x: 'scd',
+	_ex: 'scd',
+	esc_html_x: 'scd',
+	esc_attr_x: 'scd',
+	_n: 'spnd',
+	_n_noop: 'spd',
+	_nx: 'spncd',
+	_nx_noop: 'spcd',
 };
+const CALL = new RegExp(
+	String.raw`(?<![\w$>:])(${ Object.keys( FUNCTIONS ).join( '|' ) })\s*\(`,
+	'g'
+);
 
 /**
- * Finds literal translation calls for the text domain in one file.
+ * Splits a call's arguments at top-level commas, from just after its opening bracket.
  *
- * @param {string} file Path.
+ * @param {string} source Source.
+ * @param {number} start  Index after the opening bracket.
+ * @return {string[]|null} Arguments, or null when the call never closes.
+ */
+function splitArguments( source, start ) {
+	const args = [];
+	let depth = 0;
+	let quote = null;
+	let from = start;
+	for ( let i = start; i < source.length; i++ ) {
+		const char = source[ i ];
+		if ( quote ) {
+			if ( char === '\\' ) {
+				i++;
+			} else if ( char === quote ) {
+				quote = null;
+			}
+		} else if ( char === "'" || char === '"' || char === '`' ) {
+			quote = char;
+		} else if ( '([{'.includes( char ) ) {
+			depth++;
+		} else if ( ')]}'.includes( char ) ) {
+			if ( depth === 0 ) {
+				args.push( source.slice( from, i ).trim() );
+				// A trailing comma leaves one empty argument.
+				return args.filter(
+					( arg, index ) => arg !== '' || index < args.length - 1
+				);
+			}
+			depth--;
+		} else if ( char === ',' && depth === 0 ) {
+			args.push( source.slice( from, i ).trim() );
+			from = i + 1;
+		}
+	}
+	return null;
+}
+
+/**
+ * The text of one quoted string literal, or null when the argument is anything else.
+ *
+ * @param {string}  arg Argument source.
+ * @param {boolean} php Whether it is PHP, where single quotes only escape \' and \\.
+ * @return {string|null} Text.
+ */
+function literal( arg, php ) {
+	const match =
+		/^'((?:[^'\\]|\\.)*)'$/s.exec( arg ) ||
+		/^"((?:[^"\\]|\\.)*)"$/s.exec( arg );
+	if ( ! match ) {
+		return null;
+	}
+	if ( php && arg.startsWith( "'" ) ) {
+		return match[ 1 ].replace( /\\(['\\])/g, '$1' );
+	}
+	return match[ 1 ].replace(
+		/\\(.)/gs,
+		( _, c ) => ( { n: '\n', t: '\t' } )[ c ] ?? c
+	);
+}
+
+/**
+ * Finds every translation call in one file. A call it can't read, or one with another
+ * text domain, is a problem rather than something to skip.
+ *
+ * @param {string}   file     Path.
+ * @param {string[]} problems Problems found, added to.
  * @return {Array<{key: string, where: string}>} Calls.
  */
-function calls( file ) {
+function calls( file, problems ) {
 	const source = readFileSync( file, 'utf8' );
 	const found = [];
-	for ( const [ name, order ] of Object.entries( FUNCTIONS ) ) {
-		// _n and _nx take a number after the plural; _noop variants do not.
-		const parts = [ ...order ].map( () => STRING );
-		const number =
-			name === '_n' || name === '_nx' ? String.raw`${ SEP }[^,]+?` : '';
-		const args =
-			'p' === order[ 1 ]
-				? parts[ 0 ] +
-					SEP +
-					parts[ 1 ] +
-					number +
-					( parts[ 2 ] ? SEP + parts[ 2 ] : '' )
-				: parts.join( SEP );
-		const pattern = new RegExp(
-			String.raw`(?<![\w$])${ name.replace(
-				/\$/g,
-				'\\$'
-			) }\(\s*${ args }${ SEP }['"]${ DOMAIN }['"]\s*[,)]`,
-			'g'
-		);
-		for ( const match of source.matchAll( pattern ) ) {
-			const values = match
-				.slice( 1, 1 + order.length )
-				.map( ( literal ) => literal.slice( 1, -1 ) )
-				.map( ( text ) => text.replace( /\\(['"\\])/g, '$1' ) );
-			const arg = Object.fromEntries(
-				[ ...order ].map( ( role, i ) => [ role, values[ i ] ] )
-			);
-			const line = source.slice( 0, match.index ).split( '\n' ).length;
-			found.push( {
-				key: key( arg.c, arg.s, arg.p ),
-				where: `${ file }:${ line }`,
+	for ( const match of source.matchAll( CALL ) ) {
+		const where = `${ file }:${
+			source.slice( 0, match.index ).split( '\n' ).length
+		}`;
+		const roles = FUNCTIONS[ match[ 1 ] ];
+		const args = splitArguments( source, match.index + match[ 0 ].length );
+		const values = {};
+		const readable =
+			args &&
+			args.length === roles.length &&
+			[ ...roles ].every( ( role, i ) => {
+				if ( role === 'n' ) {
+					return args[ i ] !== '';
+				}
+				values[ role ] = literal( args[ i ], file.endsWith( '.php' ) );
+				return values[ role ] !== null;
 			} );
+		if ( ! readable ) {
+			problems.push(
+				`${ where }: can't read this ${ match[ 1 ] }() call. Use string literals for the text, context and domain.`
+			);
+		} else if ( values.d !== DOMAIN ) {
+			problems.push(
+				`${ where }: ${ match[ 1 ] }() uses the text domain ${ JSON.stringify(
+					values.d
+				) }, not "${ DOMAIN }".`
+			);
+		} else {
+			found.push( { key: key( values.c, values.s, values.p ), where } );
 		}
 	}
 	return found;
@@ -169,13 +236,16 @@ const sources = [
 	...files( 'includes', /\.php$/ ),
 	...files( 'src', /\.jsx?$/, [ 'test' ] ),
 ];
-const found = sources.flatMap( calls );
+const problems = [];
+const found = sources.flatMap( ( file ) => calls( file, problems ) );
 const missing = found.filter( ( call ) => ! committed.has( call.key ) );
-const problems = missing.map(
-	( call ) =>
-		`${ call.where }: not in ${ POT }: ${ JSON.stringify(
-			call.key.split( '\u0004' ).pop()
-		) }`
+problems.push(
+	...missing.map(
+		( call ) =>
+			`${ call.where }: not in ${ POT }: ${ JSON.stringify(
+				call.key.split( '\u0004' ).pop()
+			) }`
+	)
 );
 
 const freshIndex = process.argv.indexOf( '--fresh' );

@@ -51,7 +51,7 @@ This plugin connects to show.fm, a podcast hosting service run by show.fm Ltd. I
 
 Gives the titles, descriptions, artwork, audio links and transcript links of public shows and episodes.
 
-* When: WP-Cron refreshes a show or episode you added to a page when its cached copy is missing or more than 15 minutes old. Pages read only the cache and never wait for a request. In the block editor, the site looks up a show when someone who can edit posts enters its address or opens a show.fm block. WordPress asks /v1/oembed about a pasted show.fm link once, and keeps the answer in post meta.
+* When: WP-Cron refreshes a show or episode you added to a page when its cached copy is missing or more than 15 minutes old. Pages read only the cache and never wait for a request. While the site is connected and featured images are on, the sync also reads each new episode's public details (/v1/episodes/{id}) once, to find its artwork. In the block editor, the site looks up a show when someone who can edit posts enters its address or opens a show.fm block. WordPress asks /v1/oembed about a pasted show.fm link once, and keeps the answer in post meta.
 * In visitors' browsers: the player asks for the episode's public data when it loads. With "Load players only after a visitor clicks" turned on (Settings > show.fm > Display), the browser asks for nothing until the visitor presses play.
 * What is sent: the show or episode identifier, and your site's address in the User-Agent header. show.fm sees your server's IP address. From a browser, show.fm sees the visitor's IP address and browser details, as with any web request. No visitor data is sent from your server.
 
@@ -62,7 +62,7 @@ Used only after an administrator connects the site to a show.fm account.
 * Connecting: once, when the administrator returns from my.show.fm. Sent: a one-time code and the verifier this site created. show.fm answers with a site key and ping secret, which the plugin stores encrypted. With `wp showfm connect`, the plugin sends the site key you give it, the site's address and REST API address, and a one-time state and challenge.
 * Reporting in: right after connecting, and again before the next sync if that fails. Sent: the site key, the plugin, WordPress and PHP versions, and the site's name.
 * Health report: once a day while connected. Sent: the site key, the plugin, WordPress and PHP versions, the time of the last sync and the number of sync errors. After connecting and after each report, the plugin reads the account holder's name and the shows the key can read, to show on the settings screen.
-* Sync: every 15 minutes, when show.fm sends a wake-up ping, and when someone runs `wp showfm sync`. Sent: the site key and the last change the site applied. After each post is created, published or moved to the bin, the plugin reports the episode ID, post ID, post address and post status. No post text and no visitor data are sent.
+* Sync: every 15 minutes, when show.fm sends a wake-up ping, and when someone runs `wp showfm sync`. Sent: the site key and the last change the site applied. After each post is created, published or moved to the bin, the plugin reports the episode ID, post ID, post address, post status and the content hash show.fm sent for that post, so show.fm knows which version the post holds. No post text and no visitor data are sent.
 * Block editor: while connected, when someone who can publish posts adds a show.fm block, the site lists the account's shows and episodes, including scheduled ones. Sent: the site key, and show and episode IDs. The key never reaches the browser.
 * Migrate: when an administrator runs a scan, the plugin lists the account's shows and published episodes, with fingerprints of their audio files, to match old players. Post content and old player addresses stay on your site.
 * Disconnecting: one request asks show.fm to revoke the site key. The plugin removes the key from the site whatever the answer.
@@ -72,16 +72,21 @@ Used only after an administrator connects the site to a show.fm account.
 * While an administrator connects, show.fm requests `/wp-json/showfm/v1/challenge` once to confirm the site asked to connect. The site answers with the one-time challenge only.
 * While connected, show.fm sends signed, empty requests to `/wp-json/showfm/v1/ping` when an episode changes. The plugin checks the signature, then syncs in the background.
 
-= show.fm media (m.cdn.media) =
+= show.fm media (m.cdn.media and media.podcasterplus.com) =
 
-Serves the audio, transcript and artwork files of show.fm episodes.
+Serves the artwork, audio and transcript files of show.fm shows and episodes. media.podcasterplus.com is show.fm's older media host, which some older episodes still use.
 
-* When: a visitor's browser loads the audio when the visitor plays an episode, and the transcript when it is shown. With "Use the episode artwork as the featured image" on (Settings > show.fm > Publishing), the sync downloads each episode's artwork once into the media library.
+* When, in visitors' browsers: the player and the episode list load the show and episode artwork as soon as they appear, so every page view with a player or list contacts the media host. The audio loads when the visitor plays an episode, and the transcript when it is shown. With "Load players only after a visitor clicks" turned on (Settings > show.fm > Display), nothing loads until the visitor presses play. The settings screen also shows each connected show's artwork in the administrator's browser.
+* When, from your server: with "Use the episode artwork as the featured image" on (Settings > show.fm > Publishing), the sync downloads each episode's artwork once into the media library.
 * What is sent: the file's address. show.fm sees the visitor's IP address and browser details, or your server's IP address for artwork downloads. No site key is sent.
 
 = show.fm embed CDN (embed.cdn.media) =
 
 Not used. The player scripts ship inside the plugin. A pasted show.fm link that WordPress resolves to an embed.cdn.media iframe is shown as a local player instead.
+
+= show.fm's test service =
+
+A `SHOWFM_API_URL` constant in `wp-config.php` points the plugin at show.fm's test API (api.showfm.dev, with media on m.showfm.dev and media.podcasterplus.dev, and `SHOWFM_APP_URL` for my.showfm.dev). It is for show.fm's own development and testing. Without the constants, the plugin only uses the services above, and it never sends a site key to any other host.
 
 = show.fm account (my.show.fm) =
 

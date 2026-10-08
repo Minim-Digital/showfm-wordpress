@@ -105,7 +105,24 @@ directory can take a few hours to show new images.
    blocks' `block.json` files, `tests/phpstan-bootstrap.php` and the readme's Stable tag,
    and add a changelog entry.
 2. Run `npm run i18n:pot` and commit the `.pot`.
-3. Build with `npm run release`, then copy `dist/showfm/` into `trunk/` and to a new tag.
+3. Build with `npm run release`, then bring `trunk/` in line with the new zip and tag it:
+
+    ```sh
+    cd showfm-svn
+    svn update
+    rsync -a --delete ../showfm-wordpress/dist/showfm/ trunk/
+    # Files the release removed: rsync deleted them, and svn must delete them too.
+    svn status trunk | awk '/^!/ { print $2 }' | xargs -r svn rm
+    # Files the release added.
+    svn add --force trunk
+    svn status trunk            # check: only M, A and D lines
+    svn cp trunk tags/1.0.1     # the new version
+    svn commit -m "Release 1.0.1" --username showfm
+    ```
+
+    The package's hashed chunk names change with each @showfm/embed release, so most
+    releases delete and add files under `trunk/assets/showfm-embed/chunks/`.
+
 4. If the screens changed, run `npm run wporg:screenshots` (wp-env must be running) and
    `npm run wporg:assets`, check the images by eye, and copy them into `assets/`.
 

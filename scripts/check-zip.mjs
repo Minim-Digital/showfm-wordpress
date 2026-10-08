@@ -3,8 +3,8 @@
  *
  * Usage: node scripts/check-zip.mjs dist/showfm-<version>.zip
  *
- * Every file in the zip must match a line of the allow-list, and every line must match at
- * least one file, so the zip holds exactly the distributable files.
+ * Every file in the zip must match a line of the allow-list, and every line must match
+ * exactly one file, so the zip holds exactly the distributable files and none is missing.
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -39,7 +39,7 @@ const toRegExp = ( pattern ) =>
 const rules = patterns.map( ( pattern ) => ( {
 	pattern,
 	regexp: toRegExp( pattern ),
-	used: false,
+	used: 0,
 } ) );
 const files = execFileSync( 'unzip', [ '-Z1', zip ], { encoding: 'utf8' } )
 	.split( '\n' )
@@ -49,13 +49,19 @@ const problems = [];
 for ( const file of files ) {
 	const rule = rules.find( ( { regexp } ) => regexp.test( file ) );
 	if ( rule ) {
-		rule.used = true;
+		rule.used++;
 	} else {
 		problems.push( `Not on the allow-list: ${ file }` );
 	}
 }
-for ( const rule of rules.filter( ( { used } ) => ! used ) ) {
-	problems.push( `Missing from the zip: ${ rule.pattern }` );
+for ( const rule of rules ) {
+	if ( rule.used === 0 ) {
+		problems.push( `Missing from the zip: ${ rule.pattern }` );
+	} else if ( rule.used > 1 ) {
+		problems.push(
+			`${ rule.used } files match ${ rule.pattern }, not one`
+		);
+	}
 }
 
 if ( problems.length ) {
