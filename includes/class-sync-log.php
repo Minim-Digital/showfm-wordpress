@@ -23,6 +23,9 @@ final class Sync_Log {
 	 * @param int    $seq Feed sequence, or zero.
 	 */
 	public static function record( string $code, int $seq = 0 ): void {
+		if ( ! Sync::owns_health() ) {
+			return;
+		}
 		$code  = in_array( $code, self::CODES, true ) ? $code : 'internal_error';
 		$log   = (array) get_option( self::OPTION, array() );
 		$log[] = array(

@@ -293,6 +293,45 @@ class Test_Cache extends WP_UnitTestCase {
 		$this->assertSame( $expected, $cleaned );
 	}
 
+	public function test_posts_that_only_mention_the_value_cannot_use_up_the_purge_limit(): void {
+		$uuid  = '2f1c9a1e-0000-4000-8000-000000000002';
+		$decoy = '<!-- wp:showfm/player {"episode":"2f1c9a1e-0000-4000-8000-0000000000ff"} /--><!-- wp:paragraph --><p>Next week: ' . $uuid . '</p><!-- /wp:paragraph -->';
+		for ( $i = 0; $i < Cache::PURGE_LIMIT + 10; $i++ ) {
+			self::factory()->post->create( array( 'post_content' => $decoy ) );
+		}
+		$real = self::factory()->post->create( array( 'post_content' => '[showfm episode="' . $uuid . '"]' ) );
+
+		$this->assertSame( array( $real ), Cache::purge_posts( '/v1/episodes/' . $uuid ) );
+	}
+
+	public function test_a_synced_pattern_purges_the_posts_that_show_it(): void {
+		$uuid    = '2f1c9a1e-0000-4000-8000-000000000003';
+		$pattern = self::factory()->post->create(
+			array(
+				'post_type'    => 'wp_block',
+				'post_content' => '<!-- wp:showfm/player {"episode":"' . $uuid . '"} /-->',
+			)
+		);
+		$outer   = self::factory()->post->create(
+			array(
+				'post_type'    => 'wp_block',
+				'post_content' => '<!-- wp:block {"ref":' . $pattern . '} /-->',
+			)
+		);
+		$shows   = self::factory()->post->create( array( 'post_content' => '<!-- wp:block {"ref":' . $pattern . '} /-->' ) );
+		$nested  = self::factory()->post->create( array( 'post_content' => '<!-- wp:group --><div class="wp-block-group"><!-- wp:block {"ref":' . $outer . '} /--></div><!-- /wp:group -->' ) );
+		$longer  = self::factory()->post->create( array( 'post_content' => '<!-- wp:block {"ref":' . $pattern . '1} /-->' ) );
+		$text    = self::factory()->post->create( array( 'post_content' => '<!-- wp:block {"ref":1} /--><!-- wp:paragraph --><p>"ref":' . $pattern . '</p><!-- /wp:paragraph -->' ) );
+
+		$cleaned  = Cache::purge_posts( '/v1/episodes/' . $uuid );
+		$expected = array( $pattern, $outer, $shows, $nested );
+		sort( $cleaned );
+		sort( $expected );
+		$this->assertSame( $expected, $cleaned );
+		$this->assertNotContains( $longer, $cleaned );
+		$this->assertNotContains( $text, $cleaned );
+	}
+
 	public function test_a_short_slug_purges_only_posts_that_name_it(): void {
 		$list    = self::factory()->post->create( array( 'post_content' => '<!-- wp:showfm/episodes {"podcast":"news"} /-->' ) );
 		$code    = self::factory()->post->create( array( 'post_content' => "[showfm type='episodes' podcast='news']" ) );

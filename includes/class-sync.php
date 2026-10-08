@@ -36,6 +36,12 @@ final class Sync {
 	 * @var array<int,Sync_Lock>
 	 */
 	private static $locks = array();
+	/**
+	 * The site id each running pull started with, per blog.
+	 *
+	 * @var array<int,string>
+	 */
+	private static $sites = array();
 
 	/**
 	 * Per-site durable state.
@@ -121,8 +127,9 @@ final class Sync {
 		try {
 			// Reread after acquiring, bypassing a stale per-request options cache.
 			wp_cache_delete( self::OPTION, 'options' );
-			$state = self::state();
-			$site  = (string) $connection->site_id();
+			$state                = self::state();
+			$site                 = (string) $connection->site_id();
+			self::$sites[ $blog ] = $site;
 			if ( $site !== $state['site'] ) {
 				$state = array(
 					'site'           => $site,
@@ -257,7 +264,9 @@ final class Sync {
 					$state['retry_at'] = 0;
 					$state['error']    = '';
 					self::save( $state );
-					update_option( Health::LAST_SYNC_OPTION, time(), false );
+					if ( self::owns_health() ) {
+						update_option( Health::LAST_SYNC_OPTION, time(), false );
+					}
 					return $result;
 				}
 			}
@@ -271,9 +280,24 @@ final class Sync {
 			// Do not retain hook exception messages: third-party hooks can include secrets.
 			return $dry_run ? array_merge( $result, array( 'status' => 'apply_failed' ) ) : $this->failure( $state, $result, 'apply_failed' );
 		} finally {
-			unset( self::$running[ $blog ], self::$locks[ $blog ] );
+			unset( self::$running[ $blog ], self::$locks[ $blog ], self::$sites[ $blog ] );
 			$lock->release();
 		}
+	}
+
+	/**
+	 * Whether the sync health (last sync time, error count, sync log) may be written. While a
+	 * pull runs, only if the stored credentials are still for the site it started with: a
+	 * connection to another site, made meanwhile, starts with no history, and a late write
+	 * from the old run would show the old site's. Reads the stored credentials fresh.
+	 */
+	public static function owns_health(): bool {
+		$blog = get_current_blog_id();
+		if ( ! isset( self::$sites[ $blog ] ) ) {
+			return true;
+		}
+		wp_cache_delete( Connection::OPTION, 'options' );
+		return strtolower( (string) ( new Connection() )->site_id() ) === strtolower( self::$sites[ $blog ] );
 	}
 
 	/**
@@ -567,7 +591,9 @@ final class Sync {
 		$state['error']    = $error;
 		$state['retry_at'] = time() + max( $retry_after, min( 3600, 30 * ( 2 ** min( 7, $state['failures'] - 1 ) ) + wp_rand( 0, 15 ) ) );
 		self::save( $state );
-		update_option( Health::SYNC_ERRORS_OPTION, min( 1000000, 1 + (int) get_option( Health::SYNC_ERRORS_OPTION, 0 ) ), false );
+		if ( self::owns_health() ) {
+			update_option( Health::SYNC_ERRORS_OPTION, min( 1000000, 1 + (int) get_option( Health::SYNC_ERRORS_OPTION, 0 ) ), false );
+		}
 		if ( Plugin::connection()->is_connected() ) {
 			self::wake( $state['retry_at'] );
 		}

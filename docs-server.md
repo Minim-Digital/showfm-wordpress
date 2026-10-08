@@ -62,8 +62,10 @@ and the bundled-script policy apply to oEmbed as well.
 `Cache::refresh()` and `Cache::store()` call `Cache::purge_posts()` when an entry's data or
 state changes, including the first fill. It runs `clean_post_cache()` for published,
 scheduled and private posts that name the episode or show in a show.fm block or shortcode,
-and for synced posts by `_showfm_episode_id`, at most 200 of each. Page-cache plugins that
-hook `clean_post_cache` then purge the old render.
+for posts that show such a synced pattern, and for synced posts by `_showfm_episode_id`, at
+most 200 of each. SQL only prefilters. WordPress's block parser and shortcode regex confirm
+each candidate, read in pages in ID order, and at most 2,000 candidates are read for one
+change. Page-cache plugins that hook `clean_post_cache` then purge the old render.
 
 In click mode a Transcript block renders nothing when the cached public episode has no
 transcript. A Transcript block with its own height sets `--showfm-height` to the height plus
