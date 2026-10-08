@@ -53,6 +53,20 @@ class Test_Privacy extends WP_UnitTestCase {
 		}
 	}
 
+	public function test_the_text_names_the_hosts_in_use(): void {
+		$text = Privacy::text();
+		$this->assertSame( 4, substr_count( $text, 'from api.show.fm' ) );
+		$this->assertStringContainsString( 'files come from m.cdn.media, or media.podcasterplus.com for some older episodes.', $text );
+
+		showfm_use_test_environment();
+		$text = Privacy::text();
+		$this->assertSame( 4, substr_count( $text, 'from api.example.test' ) );
+		$this->assertStringContainsString( 'files come from m.example.test.', $text );
+		$this->assertStringNotContainsString( 'api.show.fm', $text );
+		$this->assertStringNotContainsString( 'm.cdn.media', $text );
+		$this->assertStringNotContainsString( 'podcasterplus', $text );
+	}
+
 	public function test_browser_requests_match_the_readme_word_for_word(): void {
 		$text = Privacy::text();
 		$from = strpos( $text, 'The Player loads' );
