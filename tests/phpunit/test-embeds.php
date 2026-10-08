@@ -649,6 +649,13 @@ class Test_Embeds extends WP_UnitTestCase {
 			'<iframe src="https://embed-cdn.media' . $ep . '"></iframe>',
 			'<iframe src="https://embed.cdn.mediaplayer.test' . $ep . '"></iframe>',
 			'<iframe src="https://www.youtube.com/embed/abc?feature=oembed" title="Video"></iframe>',
+			// Other non-ASCII breaks a label, never joins two: these are other hosts.
+			'<iframe src="https://emb' . "\u{00E9}" . 'ed.cdn.media' . $ep . '"></iframe>',
+			'<iframe src="https://embed.cdn' . "\u{00E9}" . '.media' . $ep . '"></iframe>',
+			'<iframe src="https://embed.cdn.media' . "\u{00E9}" . $ep . '"></iframe>',
+			'<iframe src="https://embed.cdn.medi' . "\u{03B1}" . 'a' . $ep . '"></iframe>',
+			'<iframe src="https://embed' . "\xFF" . '.cdn.media' . $ep . '"></iframe>',
+			'<blockquote>embed' . "\u{65E5}" . '.cdn' . "\u{65E5}" . '.media</blockquote>',
 		);
 		foreach ( $untouched as $html ) {
 			$this->assertFalse( Oembed::names_show_fm( $html ), $html );

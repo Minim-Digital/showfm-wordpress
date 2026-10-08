@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-08T08:48:42+00:00\n"
+"POT-Creation-Date: 2026-10-08T09:07:09+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: showfm\n"
@@ -856,7 +856,7 @@ msgid_plural "Your show.fm connection expires in %d days."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/class-oembed.php:230
+#: includes/class-oembed.php:238
 msgid "Listen on show.fm"
 msgstr ""
 

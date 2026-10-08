@@ -36,6 +36,9 @@ final class Oembed {
 	 */
 	const CDN_PATTERN = '~(?<![a-z0-9-])embed\.(?:cdn\.media|showfm\.dev)\.*+(?![a-z0-9-])~';
 
+	/** Code points browsers ignore in hostnames: UTS 46 "ignored", bidi and format controls. */
+	const IGNORED = '/[\x{00AD}\x{034F}\x{180B}-\x{180F}\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}-\x{206F}\x{FE00}-\x{FE0F}\x{FEFF}\x{E0000}-\x{E0FFF}]/u';
+
 	/**
 	 * Replaces any show.fm embed in cached oEmbed markup, never passing markup that names a
 	 * show.fm embed host through, however it is spelled. A recognised episode or
@@ -94,14 +97,17 @@ final class Oembed {
 	 * A copy of the markup with the disguises undone, for matching only. In order:
 	 *
 	 * 1. HTML entities and percent-encoding, decoded until nothing changes (at most 8 passes);
-	 * 2. invalid UTF-8 bytes dropped;
+	 * 2. invalid UTF-8 bytes replaced with U+FFFD, as browsers decode them;
 	 * 3. Unicode compatibility normalisation (NFKC) when the intl extension is available,
 	 *    which folds fullwidth, circled, superscript and mathematical letters and the small
 	 *    and fullwidth full stops;
 	 * 4. fullwidth ASCII (U+FF01 to U+FF5E) folded to ASCII, with or without intl;
 	 * 5. the ideographic, fullwidth and halfwidth full stops (U+3002, U+FF0E, U+FF61) as ".";
-	 * 6. every other non-ASCII character deleted: soft hyphens, zero-width spaces, word
-	 *    joiners, variation selectors and anything else a browser drops or maps away;
+	 * 6. the code points browsers ignore in hostnames deleted: UTS 46 "ignored" (soft hyphen,
+	 *    combining grapheme joiner, Mongolian variation selectors, variation selectors, zero
+	 *    width space and joiners, BOM, tags) and the bidi and format controls. Every other
+	 *    non-ASCII character becomes "x", so it breaks a label instead of joining two:
+	 *    embéed.cdn.media and embed.cdn.mediaé are look-alikes, never matches;
 	 * 7. "\" as "/", then lower case;
 	 * 8. ASCII whitespace and control characters removed.
 	 *
@@ -134,7 +140,8 @@ final class Oembed {
 			return null;
 		}
 		$text = str_replace( array( "\u{3002}", "\u{FF0E}", "\u{FF61}" ), '.', $text );
-		$text = preg_replace( '/[\x80-\xFF]+/', '', $text );
+		$text = preg_replace( self::IGNORED, '', $text );
+		$text = null === $text ? null : preg_replace( '/[^\x00-\x7F]/u', 'x', $text );
 		if ( null === $text ) {
 			return null;
 		}
@@ -143,22 +150,23 @@ final class Oembed {
 	}
 
 	/**
-	 * Drops invalid UTF-8 bytes, so the Unicode steps can't fail on them.
+	 * Replaces invalid UTF-8 bytes with U+FFFD, as browsers decode them, so a bad byte breaks
+	 * a label (step 6 turns it into "x") rather than joining two. Without mbstring the text
+	 * is unchanged, and the Unicode steps then fail closed on it.
 	 *
 	 * @param string $text Text.
 	 */
 	private static function scrub_utf8( string $text ): string {
-		if ( function_exists( 'mb_scrub' ) ) {
-			return str_replace( "\u{FFFD}", '', mb_scrub( $text, 'UTF-8' ) );
+		if ( ! function_exists( 'mb_scrub' ) ) {
+			return $text;
 		}
-		if ( function_exists( 'iconv' ) ) {
-			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- iconv warns on the bytes it drops.
-			$clean = @iconv( 'UTF-8', 'UTF-8//IGNORE', $text );
-			if ( is_string( $clean ) ) {
-				return $clean;
-			}
+		$previous = mb_substitute_character();
+		mb_substitute_character( 0xFFFD );
+		try {
+			return mb_scrub( $text, 'UTF-8' );
+		} finally {
+			mb_substitute_character( $previous );
 		}
-		return $text;
 	}
 
 	/**
