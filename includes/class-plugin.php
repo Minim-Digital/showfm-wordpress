@@ -29,6 +29,7 @@ final class Plugin {
 		Health::HOOK,
 		Sync::POLL_HOOK,
 		Ping_Endpoint::PULL_HOOK,
+		Account::REFRESH_HOOK,
 	);
 
 	/**
@@ -73,6 +74,7 @@ final class Plugin {
 		add_action( Cache::REFRESH_HOOK, array( self::cache(), 'refresh' ) );
 		add_filter( 'site_status_tests', array( Health::class, 'site_tests' ) );
 		add_action( Health::HOOK, array( self::health(), 'run' ) );
+		add_action( Account::REFRESH_HOOK, array( Account::class, 'run_refresh' ) );
 		// phpcs:ignore WordPress.WP.CronInterval.ChangeDetected -- Sync::schedules sets a 900-second interval.
 		add_filter( 'cron_schedules', array( Sync::class, 'schedules' ) );
 		add_action( Sync::POLL_HOOK, array( Sync::class, 'run' ) );

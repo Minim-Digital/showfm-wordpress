@@ -511,10 +511,17 @@ export default function PublishingTab() {
 										'Include the transcript',
 										'showfm'
 									) }
-									help={ __(
-										'Adds the transcript under the player, so search engines and screen readers can use it. It starts the way you chose when you approved the connection.',
-										'showfm'
-									) }
+									help={
+										data.transcriptApproval === 'unknown'
+											? __(
+													'Adds the transcript under the player, so search engines and screen readers can use it. It starts on until show.fm has told this site whether you approved transcripts when you connected.',
+													'showfm'
+												)
+											: __(
+													'Adds the transcript under the player, so search engines and screen readers can use it. It starts the way you chose when you approved the connection.',
+													'showfm'
+												)
+									}
 									checked={ settings.transcript }
 									onChange={ ( checked ) =>
 										setSettings( {

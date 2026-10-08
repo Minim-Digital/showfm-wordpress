@@ -46,6 +46,24 @@ add_action(
 );
 
 /**
+ * Nothing reaches the real show.fm API while this plugin is active. A request no fixture has
+ * answered fails as unreachable, a transient error, so a background job (an account refresh,
+ * a health report, a cache refresh) can't get the fake key refused or mark a made-up episode
+ * unavailable.
+ */
+add_filter(
+	'pre_http_request',
+	static function ( $pre, $args, $url ) {
+		if ( false !== $pre || ! preg_match( '#^https://api\.show(?:fm\.dev|\.fm)/#', (string) $url ) ) {
+			return $pre;
+		}
+		return new WP_Error( 'http_request_failed', 'Blocked by the e2e states plugin.' );
+	},
+	99,
+	3
+);
+
+/**
  * Disconnect's revoke request never leaves the test site: it gets the answer the test chose
  * with `revoke` (`revoked`, `refused` or `unreachable`; unreachable by default).
  */

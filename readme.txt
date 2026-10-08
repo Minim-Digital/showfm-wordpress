@@ -62,7 +62,7 @@ Used only after an administrator connects the site to a show.fm account.
 
 * Connecting: once, when the administrator returns from my.show.fm. Sent: a one-time code and the verifier this site created. show.fm answers with a site key and ping secret, which the plugin stores encrypted. With `wp showfm connect`, the plugin sends the site key you give it, the site's address and REST API address, and a one-time state and challenge.
 * Reporting in: right after connecting, and again before the next sync if that fails. Sent: the site key, the plugin, WordPress and PHP versions, and the site's name.
-* Health report: once a day while connected. Sent: the site key, the plugin, WordPress and PHP versions, the time of the last sync and the number of sync errors. After connecting and after each report, the plugin reads the account holder's name and the shows the key can read, to show on the settings screen.
+* Health report: once a day while connected. Sent: the site key, the plugin, WordPress and PHP versions, the time of the last sync and the number of sync errors. After connecting and after each report, the plugin reads the account holder's name and the shows the key can read, to show on the settings screen. For a connection made before 1.0.1, the plugin also reads them once in the background, at most hourly, when an administrator opens the Publishing tab, to learn whether transcripts were approved.
 * Sync: every 15 minutes, when show.fm sends a wake-up ping, and when someone runs `wp showfm sync`. Sent: the site key and the last change the site applied. After each post is created, published or moved to the bin, the plugin reports the episode ID, post ID, post address, post status and the content hash show.fm sent for that post, so show.fm knows which version the post holds. No post text and no visitor data are sent.
 * Block editor: while connected, when someone who can publish posts adds a show.fm block, the site lists the account's shows and episodes, including scheduled ones. Sent: the site key, and show and episode IDs. The key never reaches the browser.
 * Migrate: when an administrator runs a scan, the plugin lists the account's shows and published episodes, with fingerprints of their audio files, to match old players. Post content and old player addresses stay on your site.
@@ -177,7 +177,8 @@ The plugin's settings, cache, scheduled events and its own post meta. Your posts
 * The Connection tab shows each show's address from show.fm, including on staging.
 * `wp showfm cache flush` reports the new cache version when the site uses a persistent object cache.
 * With "Load players only after a visitor clicks" on, a Transcript block for an episode without a transcript shows nothing instead of a "Load transcript" box, and a Transcript block with its own height reserves that height before it loads.
-* "Include the transcript" (Settings > show.fm > Publishing) starts the way the connection was approved: on with "Include transcripts in posts", off without it.
+* "Include the transcript" (Settings > show.fm > Publishing) starts the way the connection was approved: on with "Include transcripts in posts", off without it. For a connection made before 1.0.1 it starts on until show.fm tells the site, which the plugin asks soon after you open the Publishing tab.
+* Disconnecting clears the last sync time and the sync errors, so a new connection shows "never" until it first syncs.
 
 = 1.0.0 =
 * First public release.

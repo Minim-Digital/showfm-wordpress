@@ -461,6 +461,46 @@ class Test_Publishing extends WP_UnitTestCase {
 		$this->assertTrue( Publishing::settings()['transcript'], 'A saved choice wins.' );
 	}
 
+	public function test_the_tab_says_how_the_connection_was_approved_and_asks_early_when_unknown(): void {
+		$this->connect();
+		$account = get_option( Account::OPTION );
+
+		$this->assertSame( 'unknown', $this->dispatch( 'GET' )->get_data()['transcriptApproval'] );
+		$this->assertNotFalse( wp_next_scheduled( Account::REFRESH_HOOK ), 'One background refresh, not a request from the screen.' );
+		$this->assertSame( 0, $this->http->count() );
+
+		// Throttled: an hour passes before it asks again.
+		wp_clear_scheduled_hook( Account::REFRESH_HOOK );
+		$this->dispatch( 'GET' );
+		$this->assertFalse( wp_next_scheduled( Account::REFRESH_HOOK ) );
+
+		// The refresh records the approval from the key's scopes.
+		$this->http->respond( 200, '{"data":{"user":{"name":"Maya Lindgren"},"key":{"scopes":["episodes:read","sites:write"]}}}' );
+		$this->http->respond( 200, '{"data":[]}' );
+		do_action( Account::REFRESH_HOOK );
+		$this->assertFalse( Account::details_of( Plugin::connection()->pinned() )['transcripts'] );
+		$this->assertSame( 'off', $this->dispatch( 'GET' )->get_data()['transcriptApproval'] );
+
+		// Known: no refresh is asked for.
+		delete_transient( Account::ASKED_TRANSIENT );
+		update_option( Account::OPTION, array_merge( $account, array( 'transcripts' => true ) ) );
+		$this->assertSame( 'on', $this->dispatch( 'GET' )->get_data()['transcriptApproval'] );
+		$this->assertFalse( wp_next_scheduled( Account::REFRESH_HOOK ) );
+	}
+
+	public function test_a_snapshot_falls_back_to_the_slug_built_listen_page(): void {
+		$this->connect();
+		$this->save( array( 'featured_image' => false ) );
+		Plugin::cache()->store(
+			'/v1/episodes/' . self::EPISODE,
+			new Api_Result( Api_Result::SUCCESS, 200, array( 'data' => array( 'links' => array( 'listen' => 'https://custom.example/e/sourdough' ) ) ) )
+		);
+		$row                    = $this->row();
+		$row['episode']['slug'] = 'sourdough';
+		$snapshot               = parse_blocks( get_post( $this->apply( $row ) )->post_content )[0]['attrs']['snapshot'];
+		$this->assertSame( 'https://the-long-table.show.fm/e/sourdough', $snapshot['listenUrl'] );
+	}
+
 	public function test_a_new_post_uses_the_settings(): void {
 		$category = self::factory()->category->create( array( 'name' => 'Podcast' ) );
 		$author   = self::factory()->user->create( array( 'role' => 'editor' ) );

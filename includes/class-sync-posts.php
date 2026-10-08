@@ -433,10 +433,11 @@ final class Sync_Posts {
 		if ( 'published' !== ( $episode['status'] ?? '' ) ) {
 			return array();
 		}
-		$cached = Plugin::cache()->get( '/v1/episodes/' . $episode['id'] );
+		$cached = Plugin::cache()->get( '/v1/episodes/' . strtolower( (string) $episode['id'] ) );
 		$public = is_array( $cached ) && is_array( $cached['data'] ?? null ) ? $cached['data'] : array();
 		$listen = $public['links']['listen'] ?? null;
-		if ( ! is_string( $listen ) ) {
+		// The cached link when it passes the editor's host rules, else the slug-built one.
+		if ( ! is_string( $listen ) || ! isset( Attributes::snapshot( array( 'listenUrl' => $listen ) )['listenUrl'] ) ) {
 			$listen = self::listen_url( $episode );
 		}
 		$snapshot = Attributes::snapshot(

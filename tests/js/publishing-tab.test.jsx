@@ -31,6 +31,25 @@ describe( 'Publishing tab', () => {
 		expect( PUBLISHING_PATH ).toBe( '/showfm/v1/admin/publishing' );
 	} );
 
+	it( 'says how "Include the transcript" starts, from the connection approval', async () => {
+		await open( publishing( { transcriptApproval: 'off' } ) );
+		expect(
+			screen.getByText(
+				/It starts the way you chose when you approved the connection\./
+			)
+		).toBeInTheDocument();
+	} );
+
+	it( 'says it starts on while show.fm hasn’t told this site', async () => {
+		await open( publishing( { transcriptApproval: 'unknown' } ) );
+		expect(
+			screen.getByText( /It starts on until show\.fm has told this site/ )
+		).toBeInTheDocument();
+		expect(
+			screen.queryByText( /the way you chose/ )
+		).not.toBeInTheDocument();
+	} );
+
 	it( 'shows every setting with its saved value (2a)', async () => {
 		await open();
 

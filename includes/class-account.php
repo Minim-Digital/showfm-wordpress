@@ -28,6 +28,12 @@ final class Account {
 	/** Longest name or title kept. */
 	const MAX_TEXT = 200;
 
+	/** One background refresh, when the connection's transcripts approval isn't known yet. */
+	const REFRESH_HOOK = 'showfm_account_refresh';
+
+	/** Throttles ask_if_unknown() to once an hour. */
+	const ASKED_TRANSIENT = 'showfm_account_asked';
+
 	/**
 	 * Connection store.
 	 *
@@ -51,6 +57,31 @@ final class Account {
 	public function __construct( Connection $connection, Api_Client $api_client ) {
 		$this->connection = $connection;
 		$this->api_client = $api_client;
+	}
+
+	/**
+	 * Schedules one background refresh when the connection's "Include transcripts in posts"
+	 * approval isn't known yet (a connection made before 1.0.1), so it doesn't wait for a
+	 * successful daily health report. At most once an hour, and never inline: the screen
+	 * that calls it makes no request itself.
+	 *
+	 * @param Connection $pinned The connection as the caller read it.
+	 */
+	public static function ask_if_unknown( Connection $pinned ): void {
+		if ( ! $pinned->is_connected() || null !== self::details_of( $pinned )['transcripts'] || false !== get_transient( self::ASKED_TRANSIENT ) ) {
+			return;
+		}
+		set_transient( self::ASKED_TRANSIENT, 1, HOUR_IN_SECONDS );
+		if ( false === wp_next_scheduled( self::REFRESH_HOOK ) ) {
+			wp_schedule_single_event( time(), self::REFRESH_HOOK );
+		}
+	}
+
+	/**
+	 * Runs the refresh ask_if_unknown() scheduled.
+	 */
+	public static function run_refresh(): void {
+		( new self( Plugin::connection(), Plugin::api_client() ) )->refresh();
 	}
 
 	/**

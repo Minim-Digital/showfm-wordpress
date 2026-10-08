@@ -158,6 +158,10 @@ final class Cache {
 		}
 
 		$entry = $this->read( $path );
+		if ( null !== $entry && self::STATE_PENDING !== $entry['state'] && ! $this->is_stale( $entry ) ) {
+			// Still fresh, for example just stored by the sync: nothing to ask.
+			return;
+		}
 		if ( null !== $entry && $entry['next_attempt'] > time() ) {
 			$this->schedule_refresh( $path, $entry['next_attempt'] );
 			return;
@@ -245,17 +249,21 @@ final class Cache {
 	 */
 	public static function purge_posts( string $path ): array {
 		global $wpdb;
-		if ( ! preg_match( '~\A/v1/(?:episodes|podcasts)/([a-z0-9-]+)~i', $path, $match ) ) {
+		if ( ! preg_match( '~\A/v1/(episodes|podcasts)/([a-z0-9-]+)~i', $path, $match ) ) {
 			return array();
 		}
-		$token = $match[1];
+		$token = $match[2];
+		$name  = 'episodes' === strtolower( $match[1] ) ? 'episode' : 'podcast';
+		// The attribute itself, as a block (JSON) or a shortcode writes it, so a short slug
+		// like "news" doesn't match every post that mentions the word.
+		$forms = array( '"' . $name . '":"' . $token . '"', $name . '="' . $token . '"', $name . "='" . $token . "'" );
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- A bounded lookup, run only when a cached entry changes.
 		$ids    = $wpdb->get_col(
 			$wpdb->prepare(
-				"SELECT ID FROM {$wpdb->posts} WHERE post_status IN ('publish','future','private') AND post_content LIKE %s AND ( post_content LIKE %s OR post_content LIKE %s ) LIMIT 200",
-				'%' . $wpdb->esc_like( $token ) . '%',
-				'%' . $wpdb->esc_like( '<!-- wp:showfm/' ) . '%',
-				'%' . $wpdb->esc_like( '[showfm' ) . '%'
+				"SELECT ID FROM {$wpdb->posts} WHERE post_status IN ('publish','future','private') AND ( post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s ) LIMIT 200",
+				'%' . $wpdb->esc_like( $forms[0] ) . '%',
+				'%' . $wpdb->esc_like( $forms[1] ) . '%',
+				'%' . $wpdb->esc_like( $forms[2] ) . '%'
 			)
 		);
 		$synced = $wpdb->get_col(

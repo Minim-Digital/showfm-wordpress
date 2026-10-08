@@ -249,7 +249,10 @@ schedules the episode's refresh, and the artwork step stores the public answer i
 with `Cache::store()`. When a cache entry changes, `Cache::purge_posts()` calls
 `clean_post_cache()` for the published posts that render it, so page caches drop the cold
 render. The Publishing tab's "Include the transcript" defaults to whether the key has
-`transcripts:read` (from `/v1/me`), until the setting is saved.
+`transcripts:read` (from `/v1/me`), until the setting is saved. While that is unknown (a
+connection made before 1.0.1), opening the tab schedules one `showfm_account_refresh` at
+most hourly (`Account::ask_if_unknown()`), and the help text says it starts on. Disconnect
+clears the last sync time, the sync error count and the sync log.
 
 A per-blog options lease uses a unique row and conditional updates to prevent
 concurrent claims. It renews before work and expires after five minutes if a worker
