@@ -52,7 +52,8 @@ This plugin connects to show.fm, a podcast hosting service run by show.fm Ltd. I
 Gives the titles, descriptions, artwork, audio links and transcript links of public shows and episodes.
 
 * When: WP-Cron refreshes a show or episode you added to a page when its cached copy is missing or more than 15 minutes old. Pages read only the cache and never wait for a request. While the site is connected and featured images are on, the sync also reads each new episode's public details (/v1/episodes/{id}) once, to find its artwork. In the block editor, the site looks up a show when someone who can edit posts enters its address or opens a show.fm block. WordPress asks /v1/oembed about a pasted show.fm link once, and keeps the answer in post meta.
-* In visitors' browsers: the player asks for the episode's public data when it loads. With "Load players only after a visitor clicks" turned on (Settings > show.fm > Display), the browser asks for nothing until the visitor presses play.
+* On a connected site, opening Settings > show.fm may schedule a WP-Cron refresh of each connected show's public details (/v1/podcasts/{id}), for the artwork shown there. The screen itself makes no request.
+* In visitors' browsers: see "What visitors' browsers request" below.
 * What is sent: the show or episode identifier, and your site's address in the User-Agent header. show.fm sees your server's IP address. From a browser, show.fm sees the visitor's IP address and browser details, as with any web request. No visitor data is sent from your server.
 
 = show.fm API for connected sites (api.show.fm) =
@@ -76,9 +77,13 @@ Used only after an administrator connects the site to a show.fm account.
 
 Serves the artwork, audio and transcript files of show.fm shows and episodes. media.podcasterplus.com is show.fm's older media host, which some older episodes still use.
 
-* When, in visitors' browsers: the player and the episode list load the show and episode artwork as soon as they appear, so every page view with a player or list contacts the media host. The audio loads when the visitor plays an episode, and the transcript when it is shown. With "Load players only after a visitor clicks" turned on (Settings > show.fm > Display), nothing loads until the visitor presses play. The settings screen also shows each connected show's artwork in the administrator's browser.
+* When, in visitors' browsers: see "What visitors' browsers request" below. A page with a Player or an Episode list contacts the media host on every view, for the artwork. The settings screen also shows each connected show's artwork in the administrator's browser.
 * When, from your server: with "Use the episode artwork as the featured image" on (Settings > show.fm > Publishing), the sync downloads each episode's artwork once into the media library.
 * What is sent: the file's address. show.fm sees the visitor's IP address and browser details, or your server's IP address for artwork downloads. No site key is sent.
+
+= What visitors' browsers request =
+
+The Player loads the episode's details from api.show.fm and its artwork as soon as it appears, the audio when the visitor plays it, and the transcript file when the visitor opens the transcript (or as soon as it appears, if the transcript is set to open). The Episode list loads the show's episode details from api.show.fm and each episode's artwork as soon as it appears, and the audio when the visitor plays an episode. The Play button loads the episode's details from api.show.fm as soon as it appears, and the audio and artwork when the visitor plays it. The Transcript loads the episode's details from api.show.fm and the transcript file as soon as it appears. Artwork, audio and transcript files come from m.cdn.media, or media.podcasterplus.com for some older episodes. With "Load players only after a visitor clicks" turned on, nothing is requested until the visitor presses play or chooses to load the transcript. Each request shows show.fm the visitor's IP address and browser details, as with any web request.
 
 = show.fm embed CDN (embed.cdn.media) =
 
