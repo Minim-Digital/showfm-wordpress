@@ -41,7 +41,7 @@ The Migrate tab finds players from Buzzsprout, Libsyn, Captivate, Transistor, Sp
 
 **Source code**
 
-The plugin's source and build instructions are on GitHub at [Minim-Digital/showfm-wordpress](https://github.com/Minim-Digital/showfm-wordpress). The block editor scripts in `build/` are compiled from `src/` there with @wordpress/scripts. The player scripts in `assets/showfm-embed/` are copied unchanged from the MIT-licensed [@showfm/embed 1.5.0](https://github.com/Minim-Digital/showfm-embed/tree/v1.5.0) package, and a test checks every file byte for byte.
+The plugin's source and build instructions are on GitHub at [Minim-Digital/showfm-wordpress](https://github.com/Minim-Digital/showfm-wordpress). The block editor scripts in `build/` are compiled from `src/` there with @wordpress/scripts. The player scripts in `assets/showfm-embed/` are copied unchanged from the MIT-licensed [@showfm/embed 1.5.0](https://github.com/Minim-Digital/showfm-embed/tree/v1.5.0) package, and a test checks every file byte for byte. The package's click loader is left out, because the plugin doesn't use it.
 
 == External services ==
 

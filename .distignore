@@ -72,4 +72,8 @@
 # Source maps
 *.map
 
+# The embed package's click loader. The plugin never loads it (v1.js handles load="click"),
+# and it defaults to loading v1.js from embed.cdn.media, which a plugin must not do.
+/assets/showfm-embed/click-loader.js
+
 /src
