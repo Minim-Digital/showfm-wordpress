@@ -32,6 +32,7 @@ showfm/includes/class-editor-api.php
 showfm/includes/class-editor.php
 showfm/includes/class-embed-settings.php
 showfm/includes/class-embed.php
+showfm/includes/class-environment.php
 showfm/includes/class-fallback.php
 showfm/includes/class-health.php
 showfm/includes/class-migrate-endpoint.php

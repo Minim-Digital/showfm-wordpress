@@ -133,6 +133,9 @@ final class Editor_Api {
 			'connectUrl'  => Connect::settings_url(),
 			'appUrl'      => Connect::app_url(),
 			'api'         => Api_Client::base_url(),
+			// The environment's hosts, so the editor checks links by the server's rules.
+			'listenRoots' => Environment::listen_domains(),
+			'mediaHosts'  => Environment::media_hosts(),
 		);
 	}
 

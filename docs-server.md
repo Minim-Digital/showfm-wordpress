@@ -2,7 +2,7 @@
 
 Run `npm ci`, `npm run build` and `composer install` before starting WordPress.
 `npm run zip` builds the editor entry point and copies every file from the exact
-`@showfm/embed@1.6.1` CDN distribution. `npm run test:assets` compares file lists
+`@showfm/embed@1.6.2` CDN distribution. `npm run test:assets` compares file lists
 and SHA-256 hashes, including locales and future chunks. The package's MIT
 licence is in `assets/showfm-embed-LICENSE`. WordPress supplies the editor's React
 and block libraries through the generated dependency file.
@@ -44,9 +44,9 @@ sanitises the result with `wp_kses_post()` and preserves those escaped entities.
 
 The site options are `showfm_show_credit` (boolean, false) and `showfm_json_ld`
 (boolean, true). Both are registered with sanitisation but have no admin screen.
-A post author cannot enable credit without the site option. `SHOWFM_API_URL`
-selects the API for both PHP and browser requests; per-post origins cannot send
-visitors to a different API. Theme primary colour and body font map to
+A post author cannot enable credit without the site option. The environment (see
+`Environment` and the `showfm_environment` filter) selects the API for both PHP and
+browser requests; per-post origins cannot send visitors to a different API. Theme primary colour and body font map to
 `--showfm-accent` and `--showfm-font`; block overrides are inline on the element.
 Colour, typography and spacing supports also map to the corresponding
 `--showfm-*` variables, with normal WordPress wrapper styles retained.
@@ -79,7 +79,7 @@ result; CI regenerates and rejects a diff. PHPUnit compares every output byte,
 including serialised JSON-LD. Run single-site and multisite PHPUnit plus the
 Playwright no-JavaScript fallback test.
 
-The pinned 1.6.1 package registers all four elements (`showfm-player`, `showfm-episodes`,
+The pinned 1.6.2 package registers all four elements (`showfm-player`, `showfm-episodes`,
 `showfm-play` and `showfm-transcript`), loading the list, play button and transcript from
 `chunks/` next to `v1.js`. With "Load players only after a visitor clicks" on, the front end
 enqueues the package's self-hosting `click-loader-local.js` instead of `v1.js`. It names no

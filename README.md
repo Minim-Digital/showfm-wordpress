@@ -185,7 +185,7 @@ Plan sections 5.2.2, 5.2.6 and 5.3.5 (show.fm issue #731). Every admin action ne
 
 1. **Connect** (`admin-post.php?action=showfm_connect`). The plugin makes a `state` (32
    random bytes, base64url) and a PKCE `code_verifier`, keeps both for 10 minutes in a
-   per-user transient, and redirects to `{SHOWFM_APP_URL}/connect/wordpress` with
+   per-user transient, and redirects to `{app}/connect/wordpress` (the environment's app) with
    `site_url` (`home_url()`), `rest_root` (`rest_url()`), `state`, `code_challenge` (S256),
    `return` (the settings page) and `partner` (if `SHOWFM_PARTNER` is set). No outbound HTTP.
 2. **Challenge.** show.fm fetches `GET /wp-json/showfm/v1/challenge?state=…`. The route is
@@ -296,8 +296,8 @@ The per-blog `showfm_publishing` option is the Publishing tab's (see `Publishing
 "Not posted" in the recent activity); existing posts keep updating. A new post is a player,
 then the `showfm/transcript` block when the transcript setting is on, then show notes,
 falling back to the plain description. Public artwork is
-sideloaded once from the exact show.fm media hosts `m.cdn.media`, `m.showfm.dev`,
-`media.podcasterplus.com` or `media.podcasterplus.dev`. Downloads require HTTPS, no
+sideloaded once from the exact show.fm media hosts, `m.cdn.media` or
+`media.podcasterplus.com` (plus the selected environment's, see below). Downloads require HTTPS, no
 credentials, explicit ports or redirects, and safe HTTP validation. Limits are 10 MB,
 8000 pixels per side and 16 million pixels, checked before image processing; only
 JPEG, PNG, WebP and GIF are accepted. Indexed attachment receipts deduplicate source
@@ -332,23 +332,56 @@ connection's posts. Uninstall removes plugin receipts, never posts or media file
 Contract reviewed against podcaster-plus-app `04f2718fc344f4fdecd9a90a6cfb9b8d5685db33`:
 `connected-sites.md`, the keyed site routes and the generated OpenAPI schemas.
 
-### Staging
+### Another show.fm environment
 
-Point the plugin at the staging API in `wp-config.php`:
+Every show.fm host comes from `ShowFM\Environment`: the API (the only host the site key is
+ever sent to), the app, the listen domain, the media hosts and the embed hosts. Production
+is built in. A site's own code, such as a must-use plugin, can select another show.fm
+environment for testing:
 
 ```php
-define( 'SHOWFM_API_URL', 'https://api.showfm.dev' );
+add_filter(
+	'showfm_environment',
+	function () {
+		return array(
+			'api'    => 'https://api.example.test',
+			'app'    => 'https://my.example.test',
+			'listen' => 'example.test',
+			'media'  => array( 'm.example.test' ),
+			'embed'  => array( 'embed.example.test' ),
+		);
+	}
+);
 ```
 
-Only `https://api.show.fm` and `https://api.showfm.dev` are accepted. Anything else falls
-back to production, so the site key is never sent to another host.
+Every part is required. `api` and `app` are https origins with no port, credentials or
+path. `listen` is the domain whose subdomains serve listen pages. `media` and `embed` list
+up to ten hosts. Hosts are plain names: no wildcards or IP addresses. If anything is
+missing or invalid, the whole value is ignored, production is used and WordPress logs a
+"doing it wrong" notice. show.fm's production listen, media and embed hosts stay recognised
+alongside the environment's. The editor gets the listen domains and media hosts from
+`window.showfmEditor`, and on another environment the player gets its media hosts from
+`window.showfmMediaHosts`, set before the player script and the click loader.
 
-The connect flow opens the app at `SHOWFM_APP_URL`, which accepts `https://my.show.fm`
-(the default) and `https://my.showfm.dev` only. A host that resells show.fm can set its
-partner code, which is passed to show.fm for attribution:
+Saved credentials record the API that issued the key. If the environment's API differs,
+the site shows "Reconnect" and the key is never sent: not from production to a test API,
+and not from a test API to production. Credentials saved before 1.0.2 are pinned at the
+first request after the upgrade (`Connection::pin_issuer()`, first on `init`): to the API
+a valid `SHOWFM_API_URL` constant names, otherwise production. That is never worked out
+again, so removing or adding the constant later changes nothing, and a pinned test API the
+environment doesn't select is another environment's. Disconnect can't revoke a key another
+environment issued, and says it may still work. While either old constant is defined,
+administrators see a dismissible notice pointing to the filter. The embed hosts of every
+environment a site has used are remembered (`showfm_embed_hosts_seen`), so oEmbed markup
+cached from one is still replaced after the site moves to another.
+
+1.0.2 removed the `SHOWFM_API_URL` and `SHOWFM_APP_URL` constants: the filter names a
+whole environment, so they had nothing left to select.
+
+A host that resells show.fm can set its partner code, which is passed to show.fm for
+attribution:
 
 ```php
-define( 'SHOWFM_APP_URL', 'https://my.showfm.dev' );
 define( 'SHOWFM_PARTNER', 'your-partner-code' );
 ```
 

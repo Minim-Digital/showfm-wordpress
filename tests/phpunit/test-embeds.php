@@ -244,7 +244,7 @@ class Test_Embeds extends WP_UnitTestCase {
 		);
 		$this->assertTrue( wp_script_is( Assets::HANDLE, 'enqueued' ) );
 		$script = wp_scripts()->registered[ Assets::HANDLE ];
-		$this->assertSame( '1.6.1', $script->ver );
+		$this->assertSame( '1.6.2', $script->ver );
 		$this->assertStringEndsWith( '/assets/showfm-embed/v1.js', $script->src );
 		$this->assertNotContains( 'module', $script->extra );
 		$this->block( 'play', array( 'episode' => self::ID ) );
@@ -266,7 +266,7 @@ class Test_Embeds extends WP_UnitTestCase {
 		$this->assertTrue( wp_script_is( Assets::CLICK_HANDLE, 'enqueued' ) );
 		$this->assertFalse( wp_script_is( Assets::HANDLE, 'enqueued' ) );
 		$this->assertStringEndsWith( '/assets/showfm-embed/click-loader-local.js', wp_scripts()->registered[ Assets::CLICK_HANDLE ]->src );
-		$v1 = plugins_url( 'assets/showfm-embed/v1.js', SHOWFM_FILE ) . '?ver=1.6.1';
+		$v1 = plugins_url( 'assets/showfm-embed/v1.js', SHOWFM_FILE ) . '?ver=1.6.2';
 		$this->assertSame( $v1, Assets::versioned_script_url() );
 
 		// Registering again adds no second global.
@@ -284,7 +284,7 @@ class Test_Embeds extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'window.showfmEmbedSrc = ' . wp_json_encode( $v1 ) . ';', $tag );
 		$this->assertTrue( $processor->next_tag( array( 'tag_name' => 'script' ) ) );
 		$this->assertSame( Assets::CLICK_HANDLE . '-js', $processor->get_attribute( 'id' ) );
-		$this->assertStringEndsWith( '/assets/showfm-embed/click-loader-local.js?ver=1.6.1', (string) $processor->get_attribute( 'src' ) );
+		$this->assertStringEndsWith( '/assets/showfm-embed/click-loader-local.js?ver=1.6.2', (string) $processor->get_attribute( 'src' ) );
 		$this->assertSame( $v1, $processor->get_attribute( 'data-src' ) );
 		$this->assertFalse( $processor->next_tag( array( 'tag_name' => 'script' ) ) );
 		$this->assertStringNotContainsString( 'embed.cdn.media', $tag );
@@ -574,6 +574,8 @@ class Test_Embeds extends WP_UnitTestCase {
 	}
 
 	public function test_oembed_never_passes_a_show_fm_embed_through(): void {
+		// The environment's embed host counts as show.fm's too.
+		showfm_use_test_environment();
 		$url    = 'https://test.show.fm/e/first';
 		$iframe = static function ( string $src ): string {
 			return '<iframe src="' . $src . '" title="Episode &amp; title" width="100%" height="200"></iframe>';
@@ -585,7 +587,7 @@ class Test_Embeds extends WP_UnitTestCase {
 			'https://embed.cdn.media/ep/' . self::ID . '/?size=compact',
 			'https://EMBED.CDN.MEDIA/ep/' . self::ID,
 			'//embed.cdn.media/ep/' . self::ID,
-			'https://embed.showfm.dev/ep/' . self::ID,
+			'https://embed.example.test/ep/' . self::ID,
 			'https://embed.cdn.media/latest/my-show',
 			'https://embed.cdn.media/latest/my-show/?size=compact',
 		);
@@ -596,7 +598,7 @@ class Test_Embeds extends WP_UnitTestCase {
 			'https://embed.cdn.media/ep/' . self::ID . '/extra',
 			'https://embed.cdn.media/latest/Not_A_Slug',
 			'https://embed.cdn.media/show/my-show?size=compact',
-			'https://embed.showfm.dev/anything',
+			'https://embed.example.test/anything',
 		);
 		foreach ( $player as $src ) {
 			$html = apply_filters( 'embed_oembed_html', $iframe( $src ), $url );
@@ -619,7 +621,7 @@ class Test_Embeds extends WP_UnitTestCase {
 		foreach ( array_merge( $player, $link ) as $src ) {
 			$html = apply_filters( 'embed_oembed_html', $iframe( $src ), $url );
 			$this->assertStringNotContainsStringIgnoringCase( 'embed.cdn.media', $html, $src );
-			$this->assertStringNotContainsStringIgnoringCase( 'embed.showfm.dev', $html, $src );
+			$this->assertStringNotContainsStringIgnoringCase( 'embed.example.test', $html, $src );
 		}
 
 		// Other sites' embeds are left exactly as they are.
@@ -629,6 +631,8 @@ class Test_Embeds extends WP_UnitTestCase {
 	}
 
 	public function test_oembed_catches_every_spelling_of_a_show_fm_embed_host(): void {
+		// The environment's embed host counts as show.fm's too.
+		showfm_use_test_environment();
 		$url = 'https://test.show.fm/e/first';
 		$ep  = '/ep/' . self::ID;
 		$tab = "\t";
@@ -649,7 +653,7 @@ class Test_Embeds extends WP_UnitTestCase {
 			'ideographic dot'   => '<iframe src="https://embed' . "\u{3002}" . 'cdn.media' . $ep . '"></iframe>',
 			'fullwidth dot'     => '<iframe src="https://embed' . "\u{FF0E}" . 'cdn.media' . $ep . '"></iframe>',
 			'halfwidth dot'     => '<iframe src="https://embed' . "\u{FF61}" . 'cdn.media' . $ep . '"></iframe>',
-			'staging host'      => '<iframe src="https://embed.showfm.dev.' . $ep . '"></iframe>',
+			'environment host'  => '<iframe src="https://embed.example.test.' . $ep . '"></iframe>',
 			'srcdoc'            => '<iframe srcdoc="&lt;script src=&quot;https://embed.cdn.media/player/v1.js&quot;&gt;&lt;/script&gt;"></iframe>',
 			'inline import'     => '<script>import("https://embed.cdn.media/player/v1.js")</script>',
 			'object data'       => '<object data="https://embed.cdn.media' . $ep . '"></object>',
@@ -695,6 +699,8 @@ class Test_Embeds extends WP_UnitTestCase {
 	}
 
 	public function test_oembed_catches_fullwidth_and_compatibility_forms(): void {
+		// The environment's embed host counts as show.fm's too.
+		showfm_use_test_environment();
 		$url   = 'https://test.show.fm/e/first';
 		$ep    = '/ep/' . self::ID;
 		$wide  = static function ( string $ascii ): string {
@@ -710,7 +716,7 @@ class Test_Embeds extends WP_UnitTestCase {
 			'fullwidth whole URL'     => '<iframe src="' . $wide( 'https://embed.cdn.media' . $ep ) . '"></iframe>',
 			'fullwidth upper case'    => '<iframe src="https://' . $wide( 'EMBED.CDN.MEDIA' ) . $ep . '"></iframe>',
 			'fullwidth and ASCII mix' => '<iframe src="https://em' . $wide( 'bed' ) . '.cdn' . $wide( '.' ) . 'media' . $ep . '"></iframe>',
-			'fullwidth staging host'  => '<iframe src="https://' . $wide( 'embed.showfm.dev' ) . $ep . '"></iframe>',
+			'fullwidth env host'      => '<iframe src="https://' . $wide( 'embed.example.test' ) . $ep . '"></iframe>',
 			'fullwidth, percent'      => '<iframe src="https://' . rawurlencode( $wide( 'embed' ) ) . '%2Ecdn.media' . $ep . '"></iframe>',
 			'fullwidth, entity'       => '<iframe src="https://&#xFF45;mbed&#46;cdn.media' . $ep . '"></iframe>',
 			'fullwidth, tab, dot'     => '<iframe src="https://' . $wide( 'embed' ) . "\t\u{3002}" . $wide( 'cdn' ) . '.media.' . $ep . '"></iframe>',

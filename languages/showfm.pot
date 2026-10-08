@@ -2,38 +2,42 @@
 # This file is distributed under the GPLv2 or later.
 msgid ""
 msgstr ""
-"Project-Id-Version: show.fm 1.0.1\n"
-"Report-Msgid-Bugs-To: https://github.com/Minim-Digital/showfm-wordpress/issues\n"
+"Project-Id-Version: show.fm Podcast Player 1.0.2\n"
+"Report-Msgid-Bugs-To: https://github.com/ShowDotFM/showfm-wordpress/issues\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-08T12:32:40+00:00\n"
+"POT-Creation-Date: 2026-10-08T23:14:11+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: showfm\n"
 
 #. Plugin Name of the plugin
-#. Author of the plugin
 #: showfm.php
-#: includes/class-admin.php:87
-#: includes/class-admin.php:88
-#: includes/class-admin.php:216
 #: includes/class-privacy.php:27
-#: build/admin.js:52
-#: build/index.js:20
-msgid "show.fm"
+msgid "show.fm Podcast Player"
 msgstr ""
 
 #. Plugin URI of the plugin
 #: showfm.php
-msgid "https://github.com/Minim-Digital/showfm-wordpress"
+msgid "https://github.com/ShowDotFM/showfm-wordpress"
 msgstr ""
 
 #. Description of the plugin
 #: showfm.php
 msgid "Podcast player, episode lists and auto-posting for show.fm shows."
+msgstr ""
+
+#. Author of the plugin
+#: showfm.php
+#: includes/class-admin.php:87
+#: includes/class-admin.php:88
+#: includes/class-admin.php:216
+#: build/admin.js:52
+#: build/index.js:20
+msgid "show.fm"
 msgstr ""
 
 #. Author URI of the plugin
@@ -57,24 +61,24 @@ msgstr ""
 msgid "That notice can’t be dismissed."
 msgstr ""
 
-#: includes/class-admin-status.php:245
+#: includes/class-admin-status.php:248
 msgid "The connection request expired. Try again."
 msgstr ""
 
-#: includes/class-admin-status.php:248
+#: includes/class-admin-status.php:251
 msgid "The connection request didn’t start in this browser. Try again."
 msgstr ""
 
-#: includes/class-admin-status.php:251
+#: includes/class-admin-status.php:254
 msgid "show.fm couldn’t be reached. Try again in a few minutes."
 msgstr ""
 
-#: includes/class-admin-status.php:284
+#: includes/class-admin-status.php:287
 msgid "just now"
 msgstr ""
 
 #. translators: %d: number of minutes.
-#: includes/class-admin-status.php:289
+#: includes/class-admin-status.php:292
 #, php-format
 msgid "%d minute ago"
 msgid_plural "%d minutes ago"
@@ -82,19 +86,19 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %d: number of hours.
-#: includes/class-admin-status.php:294
+#: includes/class-admin-status.php:297
 #, php-format
 msgid "%d hour ago"
 msgid_plural "%d hours ago"
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/class-admin-status.php:298
+#: includes/class-admin-status.php:301
 msgid "yesterday"
 msgstr ""
 
 #. translators: %d: number of days.
-#: includes/class-admin-status.php:301
+#: includes/class-admin-status.php:304
 #, php-format
 msgid "%d day ago"
 msgid_plural "%d days ago"
@@ -161,243 +165,247 @@ msgstr ""
 msgid "reconnect needed"
 msgstr ""
 
-#. translators: %s: connection state.
 #: includes/class-cli.php:159
+msgid "reconnect needed (connected to a different show.fm environment)"
+msgstr ""
+
+#. translators: %s: connection state.
+#: includes/class-cli.php:163
 #, php-format
 msgid "State: %s"
 msgstr ""
 
 #. translators: %s: site id at show.fm.
-#: includes/class-cli.php:168
+#: includes/class-cli.php:172
 #, php-format
 msgid "Site ID: %s"
 msgstr ""
 
 #. translators: %s: masked site key.
-#: includes/class-cli.php:170
+#: includes/class-cli.php:174
 #, php-format
 msgid "Key: %s"
 msgstr ""
 
 #. translators: %s: masked site key.
-#: includes/class-cli.php:170
-msgid "unreadable"
-msgstr ""
-
-#. translators: %s: date and time.
-#: includes/class-cli.php:172
-#, php-format
-msgid "Key expires: %s"
-msgstr ""
-
-#. translators: %s: date and time.
-#: includes/class-cli.php:172
-msgid "unknown"
-msgstr ""
-
-#. translators: %s: date and time.
 #: includes/class-cli.php:174
-#, php-format
-msgid "Last sync: %s"
+msgid "unreadable"
 msgstr ""
 
 #. translators: %s: date and time.
 #: includes/class-cli.php:176
 #, php-format
+msgid "Key expires: %s"
+msgstr ""
+
+#. translators: %s: date and time.
+#: includes/class-cli.php:176
+msgid "unknown"
+msgstr ""
+
+#. translators: %s: date and time.
+#: includes/class-cli.php:178
+#, php-format
+msgid "Last sync: %s"
+msgstr ""
+
+#. translators: %s: date and time.
+#: includes/class-cli.php:180
+#, php-format
 msgid "Last ping: %s"
 msgstr ""
 
-#: includes/class-cli.php:178
+#: includes/class-cli.php:182
 msgid "Reported in: not yet (retried by the daily health check)"
 msgstr ""
 
 #. translators: %d: seconds.
-#: includes/class-cli.php:183
+#: includes/class-cli.php:187
 #, php-format
 msgid "Rate limited: waiting %d more seconds"
 msgstr ""
 
-#: includes/class-cli.php:215
+#: includes/class-cli.php:219
 msgid "This site is not connected to show.fm."
 msgstr ""
 
-#: includes/class-cli.php:218
+#: includes/class-cli.php:222
 msgid "Disconnect this site from show.fm? Posts already created stay."
 msgstr ""
 
-#: includes/class-cli.php:232
+#: includes/class-cli.php:236
 msgid "The connection changed while this command ran, so nothing was disconnected. Check it with wp showfm status, then run the command again."
 msgstr ""
 
-#: includes/class-cli.php:237
+#: includes/class-cli.php:241
 msgid "Disconnected here."
 msgstr ""
 
-#: includes/class-cli.php:240
+#: includes/class-cli.php:244
 msgid "Disconnected."
 msgstr ""
 
-#: includes/class-cli.php:279
+#: includes/class-cli.php:283
 msgid "Use wp showfm sync or wp showfm sync status."
 msgstr ""
 
 #. translators: 1: sync outcome, 2: rows handled, 3: cursor.
-#: includes/class-cli.php:285
+#: includes/class-cli.php:289
 #, php-format
 msgid "Sync: %1$s; rows: %2$d; cursor: %3$d."
 msgstr ""
 
-#: includes/class-cli.php:323
+#: includes/class-cli.php:327
 msgid "Use wp showfm cache flush."
 msgstr ""
 
 #. translators: %d: the cache version.
-#: includes/class-cli.php:333
+#: includes/class-cli.php:337
 #, php-format
 msgid "Flushed the show.fm cache (cache version now %d)."
 msgstr ""
 
 #. translators: %d: number of stored entries.
-#: includes/class-cli.php:339
+#: includes/class-cli.php:343
 #, php-format
 msgid "Flushed the show.fm cache: removed %d stored entry."
 msgid_plural "Flushed the show.fm cache: removed %d stored entries."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/class-cli.php:346
+#: includes/class-cli.php:350
 msgid "This is not a multisite network. Run wp showfm cache flush without --network."
 msgstr ""
 
 #. translators: 1: site URL, 2: the cache version.
-#: includes/class-cli.php:363
+#: includes/class-cli.php:367
 #, php-format
 msgid "%1$s: cache version now %2$d."
 msgstr ""
 
 #. translators: 1: site URL, 2: number of stored entries.
-#: includes/class-cli.php:366
+#: includes/class-cli.php:370
 #, php-format
 msgid "%1$s: removed %2$d stored entries."
 msgstr ""
 
 #. translators: %d: number of sites.
-#: includes/class-cli.php:374
+#: includes/class-cli.php:378
 #, php-format
 msgid "Flushed the show.fm cache on %d sites."
 msgstr ""
 
 #. translators: 1: number of sites, 2: number of stored entries.
-#: includes/class-cli.php:380
+#: includes/class-cli.php:384
 #, php-format
 msgid "Flushed the show.fm cache on %1$d sites: removed %2$d stored entries."
 msgstr ""
 
-#: includes/class-cli.php:398
+#: includes/class-cli.php:402
 msgid "A key given as --key=VALUE stays in your shell history and shows in the process list. Use SHOWFM_KEY or --key=- next time."
 msgstr ""
 
-#: includes/class-cli.php:408
+#: includes/class-cli.php:412
 msgid "Site key from show.fm (input hidden)"
 msgstr ""
 
-#: includes/class-connect.php:603
+#: includes/class-connect.php:571
 msgid "This site’s key was revoked at show.fm."
 msgstr ""
 
-#: includes/class-connect.php:605
+#: includes/class-connect.php:573
 msgid "show.fm had already stopped accepting this site’s key, so there was nothing left to revoke."
 msgstr ""
 
-#: includes/class-connect.php:607
+#: includes/class-connect.php:575
 msgid "show.fm didn’t confirm the key was revoked, so it may still work. Revoke it in show.fm under Connected sites."
 msgstr ""
 
-#: includes/class-connect.php:628
+#: includes/class-connect.php:596
 msgid "This site is disconnected, but another change took over before its clean-up finished. It finishes the next time an admin page loads, or run wp showfm disconnect again."
 msgstr ""
 
-#: includes/class-connect.php:629
+#: includes/class-connect.php:597
 msgid "This site is disconnected, but another change took over before its clean-up finished. It finishes the next time an admin page loads, or select Disconnect again."
 msgstr ""
 
-#: includes/class-connect.php:635
+#: includes/class-connect.php:603
 msgid "This site’s key was revoked at show.fm, but another change to the connection was in progress, so this site hasn’t finished disconnecting. Run wp showfm disconnect again to finish."
 msgstr ""
 
-#: includes/class-connect.php:636
+#: includes/class-connect.php:604
 msgid "This site’s key was revoked at show.fm, but another change to the connection was in progress, so this site hasn’t finished disconnecting. Select Disconnect again to finish."
 msgstr ""
 
-#: includes/class-connect.php:645
+#: includes/class-connect.php:613
 msgid "This site finished disconnecting."
 msgstr ""
 
-#: includes/class-connect.php:807
+#: includes/class-connect.php:775
 msgid "This connection request did not come from this browser session. Start again with Connect to show.fm."
 msgstr ""
 
-#: includes/class-connect.php:809
+#: includes/class-connect.php:777
 msgid "The connection request expired or was already used. Start again with Connect to show.fm."
 msgstr ""
 
-#: includes/class-connect.php:811
+#: includes/class-connect.php:779
 msgid "show.fm did not accept the connection. Codes last five minutes and work once. Start again with Connect to show.fm."
 msgstr ""
 
-#: includes/class-connect.php:813
+#: includes/class-connect.php:781
 msgid "That is not a show.fm site key. Copy the key from Connected sites in show.fm."
 msgstr ""
 
-#: includes/class-connect.php:815
+#: includes/class-connect.php:783
 msgid "show.fm did not accept that key. Site keys must be registered within 24 hours. Create a new one in show.fm under Connected sites."
 msgstr ""
 
-#: includes/class-connect.php:817
+#: includes/class-connect.php:785
 msgid "show.fm could not confirm that this site belongs to you. Check that the site is public, uses https and has the show.fm plugin active, then try again."
 msgstr ""
 
 #. translators: %d: number of seconds.
-#: includes/class-connect.php:821
+#: includes/class-connect.php:789
 #, php-format
 msgid "show.fm asked this site to wait. Try again in %d second."
 msgid_plural "show.fm asked this site to wait. Try again in %d seconds."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/class-connect.php:825
+#: includes/class-connect.php:793
 msgid "show.fm could not be reached. Try again in a few minutes."
 msgstr ""
 
-#: includes/class-connect.php:827
+#: includes/class-connect.php:795
 msgid "show.fm sent an answer this plugin does not understand. Update the plugin, then try again."
 msgstr ""
 
-#: includes/class-connect.php:829
+#: includes/class-connect.php:797
 msgid "The connection was cancelled."
 msgstr ""
 
-#: includes/class-connect.php:831
+#: includes/class-connect.php:799
 msgid "This site’s address must use https."
 msgstr ""
 
-#: includes/class-connect.php:833
+#: includes/class-connect.php:801
 msgid "The change took too long and another change took over part way through. Reload to see the connection as it is now."
 msgstr ""
 
-#: includes/class-connect.php:835
+#: includes/class-connect.php:803
 msgid "Another change to this site’s show.fm connection was in progress. Try again in a moment."
 msgstr ""
 
-#: includes/class-connect.php:837
+#: includes/class-connect.php:805
 msgid "The connection could not be saved. Your server needs the PHP sodium extension, or WordPress 6.6 or later. Then try again."
 msgstr ""
 
-#: includes/class-connect.php:839
+#: includes/class-connect.php:807
 msgid "Connected, but this site could not report in to show.fm yet. It tries again automatically."
 msgstr ""
 
-#: includes/class-connect.php:841
+#: includes/class-connect.php:809
 msgid "Something went wrong. Start again with Connect to show.fm."
 msgstr ""
 
@@ -423,6 +431,10 @@ msgstr ""
 #: includes/class-embed-settings.php:50
 #: build/admin.js:15
 msgid "Use my theme’s colours and fonts"
+msgstr ""
+
+#: includes/class-environment.php:83
+msgid "The show.fm environment needs an https api and app origin, a listen domain, and media and embed hosts. Using production."
 msgstr ""
 
 #: includes/class-health.php:78
@@ -828,45 +840,57 @@ msgid "The active scan changed."
 msgstr ""
 
 #: includes/class-notices.php:146
+msgid "SHOWFM_API_URL and SHOWFM_APP_URL no longer choose the show.fm environment. To use another one, return it from the showfm_environment filter."
+msgstr ""
+
+#: includes/class-notices.php:149
+msgid "How to choose an environment"
+msgstr ""
+
+#: includes/class-notices.php:170
 #: build/admin.js:10
 msgid "Reconnect"
 msgstr ""
 
-#: includes/class-notices.php:157
+#: includes/class-notices.php:181
+msgid "This site was connected with a different show.fm environment, so its key isn’t used here. Reconnect to post new episodes again."
+msgstr ""
+
+#: includes/class-notices.php:190
 msgid "show.fm disconnected this site, for example because the account password changed."
 msgstr ""
 
-#: includes/class-notices.php:169
+#: includes/class-notices.php:202
 msgid "Auto-posting is paused. The show’s plan doesn’t include connected sites, so new episodes aren’t posted here."
 msgstr ""
 
-#: includes/class-notices.php:172
+#: includes/class-notices.php:205
 #: build/admin.js:13
 msgid "Check your plan"
 msgstr ""
 
-#: includes/class-notices.php:181
+#: includes/class-notices.php:214
 msgid "New episodes aren’t being posted here because the chosen post type isn’t available."
 msgstr ""
 
-#: includes/class-notices.php:182
+#: includes/class-notices.php:215
 msgid "New episodes aren’t being posted here because the chosen author can’t publish posts."
 msgstr ""
 
-#: includes/class-notices.php:183
+#: includes/class-notices.php:216
 msgid "New episodes aren’t being posted here because show.fm sent changes the plugin couldn’t read. It keeps trying."
 msgstr ""
 
-#: includes/class-notices.php:191
+#: includes/class-notices.php:224
 msgid "See what to fix"
 msgstr ""
 
-#: includes/class-notices.php:195
+#: includes/class-notices.php:228
 msgid "Check the Publishing settings"
 msgstr ""
 
 #. translators: %d: number of days.
-#: includes/class-notices.php:207
+#: includes/class-notices.php:240
 #: build/admin.js:11
 #, php-format,js-format
 msgid "Your show.fm connection expires in %d day."
@@ -874,27 +898,33 @@ msgid_plural "Your show.fm connection expires in %d days."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/class-oembed.php:238
+#: includes/class-oembed.php:297
 msgid "Listen on show.fm"
 msgstr ""
 
-#: includes/class-privacy.php:35
-msgid "This site uses the show.fm plugin to show podcast episodes. show.fm is a podcast hosting service run by show.fm Ltd."
+#: includes/class-privacy.php:38
+msgid "m.cdn.media, or media.podcasterplus.com for some older episodes"
 msgstr ""
 
-#: includes/class-privacy.php:36
-msgid "This site's show.fm blocks ask the visitor's browser to request files from show.fm. The Player loads the episode's details from api.show.fm and its artwork as soon as it appears, the audio when the visitor plays it, and the transcript file when the visitor opens the transcript (or as soon as it appears, if the transcript is set to open). The Episode list loads the show's episode details from api.show.fm and each episode's artwork as soon as it appears, the audio when the visitor plays an episode, and that episode's transcript file when the visitor opens its transcript. The Play button loads the episode's details from api.show.fm as soon as it appears, and the audio and artwork when the visitor plays it. The Transcript loads the episode's details from api.show.fm and the transcript file as soon as it appears. Artwork, audio and transcript files come from m.cdn.media, or media.podcasterplus.com for some older episodes. With \"Load players only after a visitor clicks\" turned on, each block first shows a button (\"Play podcast episode\", \"Load episodes\" or \"Load transcript\"), and nothing is requested from show.fm until the visitor presses it. The block then makes the requests above. show.fm then sees the visitor's IP address and browser details, as with any file on the web. This site's server sends no visitor data to show.fm."
+#: includes/class-privacy.php:41
+msgid "This site uses the show.fm Podcast Player plugin to show podcast episodes. show.fm is a podcast hosting service run by show.fm Ltd."
 msgstr ""
 
-#: includes/class-privacy.php:37
+#. translators: 1: show.fm API host, such as api.show.fm. 2: show.fm media hosts, such as "m.cdn.media, or media.podcasterplus.com for some older episodes".
+#: includes/class-privacy.php:44
+#, php-format
+msgid "This site's show.fm blocks ask the visitor's browser to request files from show.fm. The Player loads the episode's details from %1$s and its artwork as soon as it appears, the audio when the visitor plays it, and the transcript file when the visitor opens the transcript (or as soon as it appears, if the transcript is set to open). The Episode list loads the show's episode details from %1$s and each episode's artwork as soon as it appears, the audio when the visitor plays an episode, and that episode's transcript file when the visitor opens its transcript. The Play button loads the episode's details from %1$s as soon as it appears, and the audio and artwork when the visitor plays it. The Transcript loads the episode's details from %1$s and the transcript file as soon as it appears. Artwork, audio and transcript files come from %2$s. With \"Load players only after a visitor clicks\" turned on, each block first shows a button (\"Play podcast episode\", \"Load episodes\" or \"Load transcript\"), and nothing is requested from show.fm until the visitor presses it. The block then makes the requests above. show.fm then sees the visitor's IP address and browser details, as with any file on the web. This site's server sends no visitor data to show.fm."
+msgstr ""
+
+#: includes/class-privacy.php:48
 msgid "When this site is connected to a show.fm account, the site's server sends show.fm: the site's address, its name, the WordPress, PHP and plugin versions, the site key show.fm issued, sync times and error counts, the feed sequence number, and the address, ID, publication state and source content hash of each post synced from show.fm. It never uploads the WordPress post text. When featured images are enabled, the server downloads public artwork into the media library; the image host sees the server IP address, but never the site key. It does not send visitor data. show.fm sends this site signed wake-up requests that carry no personal data."
 msgstr ""
 
-#: includes/class-privacy.php:38
+#: includes/class-privacy.php:49
 msgid "While connected, the site's server also asks show.fm for the account holder’s name and the names and addresses of the shows the site posts for, right after connecting and once a day. It keeps them in the WordPress database to show on the plugin's settings screen, and deletes them when the site disconnects or the plugin is uninstalled. When an administrator disconnects the site, the site's server asks show.fm to revoke the site's key. The plugin keeps a list of the last 20 changes it made to posts (the episode title, the show and the post), which only administrators see. For each administrator, the plugin also remembers which of its admin notices they dismissed."
 msgstr ""
 
-#: includes/class-privacy.php:39
+#: includes/class-privacy.php:50
 msgid "show.fm's privacy policy is at https://show.fm/privacy."
 msgstr ""
 
@@ -1044,15 +1074,15 @@ msgctxt "scheduled post date"
 msgid "j F"
 msgstr ""
 
-#: includes/class-sync-artwork.php:164
+#: includes/class-sync-artwork.php:163
 msgid "Artwork must use a public HTTPS address."
 msgstr ""
 
-#: includes/class-sync-artwork.php:176
+#: includes/class-sync-artwork.php:175
 msgid "A temporary artwork file could not be created."
 msgstr ""
 
-#: includes/class-sync-artwork.php:213
+#: includes/class-sync-artwork.php:212
 msgid "Artwork must be a JPEG, PNG, WebP or GIF image."
 msgstr ""
 
@@ -1064,7 +1094,7 @@ msgstr ""
 msgid "The post could not be moved to the bin."
 msgstr ""
 
-#: includes/class-sync.php:71
+#: includes/class-sync.php:77
 msgid "Every 15 minutes (show.fm)"
 msgstr ""
 
@@ -1214,6 +1244,14 @@ msgstr ""
 msgid "This site’s security keys changed."
 msgstr ""
 
+#: build/admin.js:7
+msgid "Key is for another show.fm environment"
+msgstr ""
+
+#: build/admin.js:7
+msgid "Reconnect to get a key for this one."
+msgstr ""
+
 #. translators: %s: a date.
 #: build/admin.js:8
 #, js-format
@@ -1358,6 +1396,10 @@ msgstr ""
 
 #: build/admin.js:13
 msgid "Reconnect to show.fm."
+msgstr ""
+
+#: build/admin.js:13
+msgid "This site was connected with a different show.fm environment, so its key isn’t used here. Blocks still play public episodes."
 msgstr ""
 
 #: build/admin.js:13

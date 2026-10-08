@@ -8,15 +8,6 @@ import { getSettings } from './settings';
 const MAX_TITLE = 300;
 
 /**
- * Whether staging hosts are allowed too (the site uses the staging API).
- *
- * @return {boolean} Staging.
- */
-function staging() {
-	return getSettings().api === 'https://api.showfm.dev';
-}
-
-/**
  * The URL's host when it is a plain https URL (no credentials or port), else null.
  *
  * @param {unknown} value Candidate URL.
@@ -44,7 +35,7 @@ function httpsHost( value ) {
  */
 export function isListenUrl( value ) {
 	const host = httpsHost( value );
-	const roots = staging() ? [ 'show.fm', 'showfm.dev' ] : [ 'show.fm' ];
+	const roots = getSettings().listenRoots;
 	return (
 		!! host &&
 		roots.some( ( root ) => host === root || host.endsWith( `.${ root }` ) )
@@ -58,11 +49,7 @@ export function isListenUrl( value ) {
  * @return {boolean} Allowed.
  */
 export function isAudioUrl( value ) {
-	const hosts = [ 'm.cdn.media', 'media.podcasterplus.com' ];
-	if ( staging() ) {
-		hosts.push( 'm.showfm.dev', 'media.podcasterplus.dev' );
-	}
-	return hosts.includes( httpsHost( value ) );
+	return getSettings().mediaHosts.includes( httpsHost( value ) );
 }
 
 /**

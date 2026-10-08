@@ -155,6 +155,10 @@ final class Cli {
 			Connection::STATE_RECONNECT_NEEDED => __( 'reconnect needed', 'showfm' ),
 		);
 
+		if ( $this->connection->issued_elsewhere() ) {
+			$labels[ Connection::STATE_RECONNECT_NEEDED ] = __( 'reconnect needed (connected to a different show.fm environment)', 'showfm' );
+		}
+
 		/* translators: %s: connection state. */
 		\WP_CLI::line( sprintf( __( 'State: %s', 'showfm' ), $labels[ $state ] ?? $state ) );
 		if ( Connection::STATE_DISCONNECTED === $state ) {

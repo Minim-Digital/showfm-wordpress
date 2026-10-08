@@ -123,12 +123,12 @@ class Test_Editor_Blocks extends WP_UnitTestCase {
 				'https://user:pass@the-long-table.show.fm/e/x',
 				'https://the-long-table.show.fm:8443/e/x',
 				'http://the-long-table.show.fm/e/x',
-				'https://the-long-table.showfm.dev/e/x',
+				'https://the-long-table.example.test/e/x',
 			) as $url
 		) {
 			$this->assertArrayNotHasKey( 'listenUrl', Attributes::snapshot( array( 'listenUrl' => $url ) ), $url );
 		}
-		foreach ( array( 'https://evil.example/a.mp3', 'https://m.cdn.media.evil.example/a.mp3', 'https://m.showfm.dev/a.mp3', 'http://m.cdn.media/a.mp3' ) as $url ) {
+		foreach ( array( 'https://evil.example/a.mp3', 'https://m.cdn.media.evil.example/a.mp3', 'https://m.example.test/a.mp3', 'http://m.cdn.media/a.mp3' ) as $url ) {
 			$this->assertArrayNotHasKey( 'audioUrl', Attributes::snapshot( array( 'audioUrl' => $url ) ), $url );
 		}
 		$this->assertSame( 300, mb_strlen( Attributes::snapshot( array( 'title' => str_repeat( 'é', 400 ) ) )['title'] ) );

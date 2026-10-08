@@ -1,9 +1,10 @@
+import { getSettings } from './settings';
+
 /**
  * Turns what someone types for a show into a slug or UUID the API accepts.
  */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const HOSTS = [ 'show.fm', 'showfm.dev' ];
 const RESERVED = [ 'my', 'api', 'www', 'embed', 'm' ];
 
 /**
@@ -33,7 +34,7 @@ export function parseShowAddress( input ) {
 			return null;
 		}
 		const host = url.hostname.toLowerCase().replace( /^www\./, '' );
-		for ( const base of HOSTS ) {
+		for ( const base of getSettings().listenRoots ) {
 			if ( host === base ) {
 				const first = url.pathname.split( '/' ).filter( Boolean )[ 0 ];
 				const slug = first ? first.toLowerCase() : '';

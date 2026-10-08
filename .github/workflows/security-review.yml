@@ -1,8 +1,8 @@
 name: Security Review
 
-# Ported from Minim-Digital/podcaster-plus-app (.github/workflows/security-review.yml at
+# Ported from ShowDotFM/podcaster-plus-app (.github/workflows/security-review.yml at
 # 0e568357), trimmed to this repo. Read that file's header for the full history.
-# Fork PRs are explicitly excluded from the secret-bearing job. See Minim-Digital/podcaster-plus-app#734.
+# Fork PRs are explicitly excluded from the secret-bearing job. See ShowDotFM/podcaster-plus-app#734.
 #
 # HOW TO USE IT. Nothing scans until a PR has the `security-review` label. Add the label
 # when the PR is ready to merge, so the scan covers the final state. Any push while the
@@ -15,9 +15,9 @@ name: Security Review
 # re-run it and trust the tick. The final step checks the verdict, not the exit status.
 #
 # To force a genuine re-scan, delete the PR's marker caches first:
-#   gh api /repos/Minim-Digital/showfm-wordpress/actions/caches --paginate \
+#   gh api /repos/ShowDotFM/showfm-wordpress/actions/caches --paginate \
 #     -q '.actions_caches[]|select(.key|test("pr-<N>"))|.id' \
-#     | xargs -I{} gh api -X DELETE /repos/Minim-Digital/showfm-wordpress/actions/caches/{}
+#     | xargs -I{} gh api -X DELETE /repos/ShowDotFM/showfm-wordpress/actions/caches/{}
 #
 # SCOPE. No paths are skipped. Every file in this repo ships in the plugin or controls how
 # it is built, tested or reviewed, including Markdown and AI instruction files.
@@ -78,14 +78,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # Minim-Digital fork of anthropics/claude-code-security-review, pinned to the
+      # ShowDotFM fork of anthropics/claude-code-security-review, pinned to the
       # OAuth-token commit. scripts/security-review/ verifies the pin and source hashes,
       # then applies a checked-in patch that feeds the action a complete local Git
       # manifest and diff. See scripts/security-review/README.md.
       - name: Checkout pinned security reviewer
         uses: actions/checkout@v4
         with:
-          repository: Minim-Digital/claude-code-security-review
+          repository: ShowDotFM/claude-code-security-review
           ref: e1092743ad11d9d918e00cb4e740e7b121205d98
           path: .security-review-action
           persist-credentials: false

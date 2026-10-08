@@ -46,16 +46,6 @@ final class Connect {
 	 */
 	const RETURN_ARG = 'showfm_return';
 
-	/** The show.fm app, where the admin approves the connection. */
-	const DEFAULT_APP_URL = 'https://my.show.fm';
-
-	/**
-	 * Hosts `SHOWFM_APP_URL` may point at.
-	 *
-	 * @var string[]
-	 */
-	const ALLOWED_APP_HOSTS = array( 'my.show.fm', 'my.showfm.dev' );
-
 	/** Path of the approval page on the app. */
 	const APP_PATH = '/connect/wordpress';
 
@@ -191,33 +181,10 @@ final class Connect {
 	}
 
 	/**
-	 * The app's base URL. `SHOWFM_APP_URL` can point it at staging (`https://my.showfm.dev`).
-	 * Anything other than https on an allowed host with no path falls back to production.
+	 * The app's base URL: production, or the environment's (see Environment).
 	 */
 	public static function app_url(): string {
-		return defined( 'SHOWFM_APP_URL' ) ? self::sanitize_app_url( constant( 'SHOWFM_APP_URL' ) ) : self::DEFAULT_APP_URL;
-	}
-
-	/**
-	 * Returns the URL's origin if it is https on an allowed host with no port, credentials,
-	 * path, query or fragment, otherwise the production app.
-	 *
-	 * @param mixed $url Candidate app URL.
-	 */
-	public static function sanitize_app_url( $url ): string {
-		$parts = is_string( $url ) ? wp_parse_url( $url ) : false;
-		if (
-			! is_array( $parts )
-			|| ! isset( $parts['scheme'], $parts['host'] )
-			|| 'https' !== strtolower( $parts['scheme'] )
-			|| ! in_array( strtolower( $parts['host'] ), self::ALLOWED_APP_HOSTS, true )
-			|| isset( $parts['port'] ) || isset( $parts['user'] ) || isset( $parts['pass'] )
-			|| isset( $parts['query'] ) || isset( $parts['fragment'] )
-			|| ( isset( $parts['path'] ) && '/' !== $parts['path'] )
-		) {
-			return self::DEFAULT_APP_URL;
-		}
-		return 'https://' . strtolower( $parts['host'] );
+		return Environment::get()['app'];
 	}
 
 	/**
@@ -569,15 +536,16 @@ final class Connect {
 	 * - Success: the key is revoked.
 	 * - A 401 now, or a key show.fm already refused or that has expired: show.fm no longer
 	 *   accepts it, so there is nothing to revoke. A 401 is never retried.
-	 * - Anything else (no answer, a server error, a rate limit, or a key that can't be read
-	 *   after the salts changed): the key may still work, so it must be revoked at show.fm.
+	 * - Anything else (no answer, a server error, a rate limit, a key that can't be read
+	 *   after the salts changed, or a key another show.fm environment's API issued, which is
+	 *   never sent here): the key may still work, so it must be revoked at show.fm.
 	 *
 	 * @param Connection $pinned The connection, pinned when the caller read it.
 	 * @return string One of the REVOKE_ constants.
 	 */
 	public function revoke( Connection $pinned ): string {
 		$site = $pinned->site_id();
-		if ( null === $site || $pinned->is_unreadable() ) {
+		if ( null === $site || $pinned->is_unreadable() || $pinned->issued_elsewhere() ) {
 			return self::REVOKE_FAILED;
 		}
 		$key = $pinned->key();

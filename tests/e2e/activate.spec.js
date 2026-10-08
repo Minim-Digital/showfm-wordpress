@@ -26,7 +26,10 @@ test.describe( 'show.fm plugin', () => {
 		await admin.visitAdminPage( 'plugins.php' );
 
 		await page
-			.getByRole( 'link', { name: 'Activate show.fm', exact: true } )
+			.getByRole( 'link', {
+				name: 'Activate show.fm Podcast Player',
+				exact: true,
+			} )
 			.click();
 
 		await expect( page.locator( '#message' ) ).toContainText(
@@ -34,7 +37,7 @@ test.describe( 'show.fm plugin', () => {
 		);
 		await expect(
 			page.getByRole( 'link', {
-				name: 'Deactivate show.fm',
+				name: 'Deactivate show.fm Podcast Player',
 				exact: true,
 			} )
 		).toBeVisible();

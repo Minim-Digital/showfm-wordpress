@@ -59,3 +59,26 @@ require __DIR__ . '/class-http-mock.php';
 require __DIR__ . '/class-test-redirect.php';
 require __DIR__ . '/../stubs/wp-cli.php';
 require __DIR__ . '/../stubs/cli-prompt.php';
+
+/**
+ * A show.fm environment on example hosts, as a site's own code would select one.
+ *
+ * @return array<string,mixed>
+ */
+function showfm_test_environment(): array {
+	return array(
+		'api'    => 'https://api.example.test',
+		'app'    => 'https://my.example.test',
+		'listen' => 'example.test',
+		'media'  => array( 'm.example.test' ),
+		'embed'  => array( 'embed.example.test' ),
+	);
+}
+
+/**
+ * Selects the example environment for the rest of the test (WP_UnitTestCase restores
+ * hooks afterwards).
+ */
+function showfm_use_test_environment(): void {
+	add_filter( 'showfm_environment', 'showfm_test_environment' );
+}

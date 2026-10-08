@@ -77,6 +77,13 @@ final class Connection {
 	 */
 	const LEGACY_GENERATION_OPTION = 'showfm_connection_generation';
 
+	/**
+	 * The state id `pin_issuer()` last checked (autoloaded). Matching the stored state id
+	 * means there is nothing to do, so later requests skip it without taking the lock. A new
+	 * state, such as a reconnect made by 1.0.1 after a downgrade, is checked again.
+	 */
+	const ISSUER_PINNED_OPTION = 'showfm_connection_issuer_pinned';
+
 	/** `state_id()` for credentials stored before state ids existed, or an unreadable value. */
 	const LEGACY_ID = 'legacy';
 
@@ -141,34 +148,24 @@ final class Connection {
 			return false;
 		}
 
-		$plain = wp_json_encode(
+		$sealed = self::seal(
 			array(
 				'key'         => $key,
 				'ping_secret' => $ping_secret,
 				'site_id'     => $site_id,
 				'expires_at'  => $expires_at,
+				// The API that issued the key: it is only ever sent back there.
+				'api'         => Api_Client::base_url(),
 			)
 		);
-		if ( false === $plain ) {
-			return false;
-		}
-
-		try {
-			$nonce  = random_bytes( SODIUM_CRYPTO_SECRETBOX_NONCEBYTES );
-			$cipher = sodium_crypto_secretbox( $plain, $nonce, self::encryption_key() );
-		} catch ( \Throwable $e ) {
+		if ( null === $sealed ) {
 			return false;
 		}
 
 		// A random id for this state, written with the credentials. Nothing is counted or
 		// ordered: a connect outcome matches a state by this id only.
 		$id     = wp_generate_uuid4();
-		$stored = array(
-			'v' => self::FORMAT_VERSION,
-			'n' => base64_encode( $nonce ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Binary ciphertext stored as text.
-			'c' => base64_encode( $cipher ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Binary ciphertext stored as text.
-			'i' => $id,
-		);
+		$stored = $sealed + array( 'i' => $id );
 
 		// Under the connection lock, one UPDATE (or INSERT when nothing is stored) writes the
 		// credentials and their state id together, and the flags of the old state go with
@@ -382,7 +379,20 @@ final class Connection {
 		if ( $credentials['expires_at'] > 0 && $credentials['expires_at'] <= time() ) {
 			return self::STATE_RECONNECT_NEEDED;
 		}
+		// A key is only ever sent to the API that issued it.
+		if ( Api_Client::base_url() !== $credentials['api'] ) {
+			return self::STATE_RECONNECT_NEEDED;
+		}
 		return self::STATE_CONNECTED;
+	}
+
+	/**
+	 * Whether readable credentials were issued by another show.fm environment's API than
+	 * the one in use, so the key is kept but never sent.
+	 */
+	public function issued_elsewhere(): bool {
+		$credentials = $this->credentials();
+		return null !== $credentials && Api_Client::base_url() !== $credentials['api'];
 	}
 
 	/**
@@ -787,11 +797,35 @@ final class Connection {
 	}
 
 	/**
-	 * Decrypts the stored credentials.
+	 * Encrypts credentials for storage.
 	 *
-	 * @return array{key:string,ping_secret:string,site_id:string,expires_at:int}|null Null when missing or unreadable.
+	 * @param array<string,mixed> $data Credentials.
+	 * @return array{v:int,n:string,c:string}|null Null when they can't be encrypted.
 	 */
-	private function credentials(): ?array {
+	private static function seal( array $data ): ?array {
+		$plain = wp_json_encode( $data );
+		if ( false === $plain ) {
+			return null;
+		}
+		try {
+			$nonce  = random_bytes( SODIUM_CRYPTO_SECRETBOX_NONCEBYTES );
+			$cipher = sodium_crypto_secretbox( $plain, $nonce, self::encryption_key() );
+		} catch ( \Throwable $e ) {
+			return null;
+		}
+		return array(
+			'v' => self::FORMAT_VERSION,
+			'n' => base64_encode( $nonce ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Binary ciphertext stored as text.
+			'c' => base64_encode( $cipher ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Binary ciphertext stored as text.
+		);
+	}
+
+	/**
+	 * Decrypts the stored credentials, unchecked.
+	 *
+	 * @return array<string,mixed>|null Null when missing or unreadable.
+	 */
+	private function decrypted(): ?array {
 		$stored = $this->stored();
 		if (
 			! is_array( $stored )
@@ -819,6 +853,16 @@ final class Connection {
 		}
 
 		$data = json_decode( $plain, true );
+		return is_array( $data ) ? $data : null;
+	}
+
+	/**
+	 * Decrypts and checks the stored credentials.
+	 *
+	 * @return array{key:string,ping_secret:string,site_id:string,expires_at:int,api:string}|null Null when missing or unreadable.
+	 */
+	private function credentials(): ?array {
+		$data = $this->decrypted();
 		if (
 			! is_array( $data )
 			|| ! is_string( $data['key'] ?? null )
@@ -834,7 +878,60 @@ final class Connection {
 			'ping_secret' => $data['ping_secret'],
 			'site_id'     => $data['site_id'],
 			'expires_at'  => $data['expires_at'],
+			'api'         => is_string( $data['api'] ?? null ) ? $data['api'] : self::legacy_issuer(),
 		);
+	}
+
+	/**
+	 * The API that issued credentials saved before 1.0.2, which didn't record it: the one a
+	 * valid `SHOWFM_API_URL` constant names, otherwise production. `pin_issuer()` saves it at
+	 * the first request after the upgrade, so it is worked out once and never again. A test
+	 * API that the environment doesn't select is then simply another environment's, and its
+	 * key is never sent anywhere else.
+	 */
+	private static function legacy_issuer(): string {
+		$constant = defined( 'SHOWFM_API_URL' ) ? Environment::origin( constant( 'SHOWFM_API_URL' ) ) : null;
+		return $constant ?? Environment::PRODUCTION['api'];
+	}
+
+	/**
+	 * Saves the issuing API into credentials saved before 1.0.2. Runs first on `init`. It
+	 * reads the stored option, which `Sync::schedule()` reads on every request anyway, and
+	 * takes the lock only when credentials without an issuer are actually stored. Nothing
+	 * stored, unreadable credentials or credentials with an issuer need nothing, and the
+	 * state id is recorded so that later requests skip it.
+	 */
+	public static function pin_issuer(): void {
+		$current = new self();
+		$id      = self::id_of( $current->stored() );
+		if ( get_option( self::ISSUER_PINNED_OPTION ) === $id ) {
+			return;
+		}
+		$data = $current->decrypted();
+		if ( null !== $data && ! is_string( $data['api'] ?? null ) ) {
+			try {
+				$done = self::mutate(
+					static function ( Connection $fresh ) use ( $id ): bool {
+						$stored = $fresh->stored();
+						$data   = $fresh->decrypted();
+						if ( self::id_of( $stored ) !== $id || null === $data || is_string( $data['api'] ?? null ) ) {
+							// Changed meanwhile: the next request checks the new state.
+							return false;
+						}
+						$data['api'] = self::legacy_issuer();
+						$sealed      = self::seal( $data );
+						return null !== $sealed && self::write( self::OPTION, $sealed + (array) $stored );
+					}
+				);
+			} catch ( Connection_Busy $e ) {
+				// Busy, or the lock lost part way (Connection_Lost extends it): next request.
+				return;
+			}
+			if ( true !== $done ) {
+				return;
+			}
+		}
+		update_option( self::ISSUER_PINNED_OPTION, $id, true );
 	}
 
 	/**

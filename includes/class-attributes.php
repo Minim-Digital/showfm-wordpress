@@ -46,19 +46,12 @@ final class Attributes {
 	const MAX_TITLE = 300;
 
 	/**
-	 * Whether `SHOWFM_API_URL` selects staging, which adds the staging hosts below.
-	 */
-	private static function staging(): bool {
-		return 'https://api.showfm.dev' === Api_Client::base_url();
-	}
-
-	/**
-	 * Hosts whose subdomains serve show.fm listen pages.
+	 * Domains whose subdomains serve show.fm listen pages.
 	 *
 	 * @return string[]
 	 */
 	public static function listen_roots(): array {
-		return self::staging() ? array( 'show.fm', 'showfm.dev' ) : array( 'show.fm' );
+		return Environment::listen_domains();
 	}
 
 	/**
@@ -67,8 +60,7 @@ final class Attributes {
 	 * @return string[]
 	 */
 	public static function audio_hosts(): array {
-		$hosts = array( 'm.cdn.media', 'media.podcasterplus.com' );
-		return self::staging() ? array_merge( $hosts, array( 'm.showfm.dev', 'media.podcasterplus.dev' ) ) : $hosts;
+		return Environment::media_hosts();
 	}
 
 	/**
@@ -80,7 +72,7 @@ final class Attributes {
 		if ( ! preg_match( '/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/', $slug ) || strlen( $slug ) > 63 ) {
 			return null;
 		}
-		return 'https://' . $slug . '.' . ( self::staging() ? 'showfm.dev' : 'show.fm' );
+		return 'https://' . $slug . '.' . Environment::get()['listen'];
 	}
 
 	/**
@@ -184,7 +176,8 @@ final class Attributes {
 			} elseif ( 'accent' === $name ) {
 				$value = preg_match( '/\A#(?:[a-f0-9]{3}|[a-f0-9]{6})\z/i', $value ) ? $value : '';
 			} elseif ( 'api' === $name ) {
-				$value = Api_Client::sanitize_base_url( $value );
+				// Never a per-embed origin: always the environment's API (set again below).
+				$value = Api_Client::base_url();
 			} elseif ( in_array( $name, array( 'count', 'season', 'height' ), true ) ) {
 				if ( ! ctype_digit( $value ) || (int) $value < ( 'season' === $name ? 0 : 1 ) ) {
 					continue;
@@ -210,7 +203,7 @@ final class Attributes {
 		if ( Embed_Settings::enabled( Embed_Settings::LOAD_ON_CLICK ) ) {
 			$output['load'] = 'click';
 		}
-		// A per-embed origin would make browser and server cache disagree. Staging is site-wide.
+		// A per-embed origin would make browser and server cache disagree. The environment is site-wide.
 		$output['api'] = Api_Client::base_url();
 		return $output;
 	}

@@ -1,7 +1,7 @@
 # Import provenance parity vectors
 
 `provenance-vectors.json` is an unchanged copy of all 64 vectors from
-`Minim-Digital/podcaster-plus-app` at `08da1983625ae0683ed43ef0b58d7468daff2064`:
+`ShowDotFM/podcaster-plus-app` at `08da1983625ae0683ed43ef0b58d7468daff2064`:
 `src/lib/developer-api/__fixtures__/provenance-vectors.json` (PR #747).
 
 The matching normalisation module is `src/lib/developer-api/provenance.ts`, contract
