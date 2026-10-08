@@ -225,13 +225,13 @@ class Test_Api_Client extends WP_UnitTestCase {
 		$this->assertSame( 'https://api.show.fm', Api_Client::base_url() );
 	}
 
-	public function test_base_url_accepts_only_https_show_fm_api_hosts(): void {
-		$this->assertSame( 'https://api.showfm.dev', Api_Client::sanitize_base_url( 'https://api.showfm.dev' ) );
-		$this->assertSame( 'https://api.showfm.dev', Api_Client::sanitize_base_url( 'https://API.showfm.dev/' ) );
-		$this->assertSame( 'https://api.show.fm', Api_Client::sanitize_base_url( 'https://api.show.fm' ) );
-		foreach ( array( 'http://api.showfm.dev', 'https://evil.example', 'https://api.showfm.dev:8443', 'https://api.showfm.dev/v1', 'https://user:pass@api.showfm.dev', 42 ) as $bad ) {
-			$this->assertSame( Api_Client::DEFAULT_BASE_URL, Api_Client::sanitize_base_url( $bad ) );
-		}
+	public function test_the_key_goes_only_to_the_environments_api(): void {
+		showfm_use_test_environment();
+		$this->http->respond( 200, '{"data":{}}' );
+
+		$this->client->get_keyed( '/v1/me' );
+
+		$this->assertStringStartsWith( 'https://api.example.test/v1/me', $this->http->last()['url'] );
 	}
 
 	public function test_the_key_is_not_in_dumps_of_the_connection(): void {

@@ -1,10 +1,10 @@
 === show.fm ===
-Contributors: showfm
+Contributors: danmaby
 Tags: podcast, podcasting, audio, player, episodes
 Requires at least: 6.6
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.0.1
+Stable tag: 1.0.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -41,11 +41,13 @@ The Migrate tab finds players from Buzzsprout, Libsyn, Captivate, Transistor, Sp
 
 **Source code**
 
-The plugin's source and build instructions are on GitHub at [Minim-Digital/showfm-wordpress](https://github.com/Minim-Digital/showfm-wordpress). The block editor scripts in `build/` are compiled from `src/` there with @wordpress/scripts. The player scripts in `assets/showfm-embed/` are copied unchanged from the MIT-licensed [@showfm/embed 1.6.1](https://github.com/Minim-Digital/showfm-embed/tree/v1.6.1) package, and a test checks every file byte for byte. With "Load players only after a visitor clicks" on, the plugin loads the package's self-hosting click loader (`click-loader-local.js`) instead of the player script. It names no host: it loads only the bundled `v1.js` the plugin gives it, after a visitor presses a block, and without that it does nothing. The package's CDN click loader is not in the plugin, and a release check fails if any script in the plugin names embed.cdn.media.
+The plugin's source and build instructions are on GitHub at [ShowDotFM/showfm-wordpress](https://github.com/ShowDotFM/showfm-wordpress). The block editor scripts in `build/` are compiled from `src/` there with @wordpress/scripts. The player scripts in `assets/showfm-embed/` are copied unchanged from the MIT-licensed [@showfm/embed 1.6.1](https://github.com/ShowDotFM/showfm-embed/tree/v1.6.1) package, and a test checks every file byte for byte. With "Load players only after a visitor clicks" on, the plugin loads the package's self-hosting click loader (`click-loader-local.js`) instead of the player script. It names no host: it loads only the bundled `v1.js` the plugin gives it, after a visitor presses a block, and without that it does nothing. The package's CDN click loader is not in the plugin, and a release check fails if any script in the plugin names embed.cdn.media.
 
 == External services ==
 
 This plugin connects to show.fm, a podcast hosting service run by show.fm Ltd. It sends nothing until you add a show or an episode to a page, paste a show.fm link, or connect the site to show.fm. It collects no analytics or telemetry. show.fm's [Terms of Service](https://show.fm/terms) and [Privacy Policy](https://show.fm/privacy) apply to every service below.
+
+A site's own code can point the plugin at a different show.fm environment for testing, with the `showfm_environment` filter. The plugin then uses that environment's hosts instead of the ones below, and sends the site key only to that environment's API.
 
 = show.fm public API (api.show.fm) =
 
@@ -88,10 +90,6 @@ The Player loads the episode's details from api.show.fm and its artwork as soon 
 = show.fm embed CDN (embed.cdn.media) =
 
 Not used. The plugin's own code never loads anything from a CDN: the player scripts ship inside the plugin, and the click loader loads only the bundled copy. show.fm embeds in pasted links are always replaced with the plugin's local player, or with a plain link to the show.fm page when the plugin can't play them locally.
-
-= show.fm's test service =
-
-A `SHOWFM_API_URL` constant in `wp-config.php` points the plugin at show.fm's test API (api.showfm.dev, with media on m.showfm.dev and media.podcasterplus.dev, and `SHOWFM_APP_URL` for my.showfm.dev). It is for show.fm's own development and testing. Without the constants, the plugin only uses the services above, and it never sends a site key to any other host.
 
 = show.fm account (my.show.fm) =
 
@@ -172,9 +170,12 @@ The plugin's settings, cache, scheduled events and its own post meta. Your posts
 
 == Changelog ==
 
+= 1.0.2 =
+* The plugin's built-in hosts are show.fm's production services only. A site's own code can select another show.fm environment for testing with the `showfm_environment` filter, which replaces the `SHOWFM_API_URL` and `SHOWFM_APP_URL` constants. The block editor gets the same hosts from the site.
+
 = 1.0.1 =
 * Posts created by Publish to WordPress save the episode's title, listen page and audio in their blocks, as the editor does, so their first view has a readable fallback. The plugin also fills its cache for the episode during the sync and clears the post's cache whenever that changes, so page caches don't keep an empty first render.
-* The Connection tab shows each show's address from show.fm, including on staging.
+* The Connection tab shows each show's address from show.fm.
 * `wp showfm cache flush` reports the new cache version when the site uses a persistent object cache.
 * With "Load players only after a visitor clicks" on, a Transcript block for an episode without a transcript shows nothing instead of a "Load transcript" box, and a Transcript block with its own height reserves that height before it loads.
 * "Include the transcript" (Settings > show.fm > Publishing) starts the way the connection was approved: on with "Include transcripts in posts", off without it. For a connection made before 1.0.1 it starts on until show.fm tells the site, which the plugin asks soon after you open the Publishing tab.
@@ -194,6 +195,9 @@ The plugin's settings, cache, scheduled events and its own post meta. Your posts
 * Bundles @showfm/embed 1.6.1. Every element carries `platform="wordpress"`, so with the credit setting off, no show displays "Powered by show.fm".
 
 == Upgrade Notice ==
+
+= 1.0.2 =
+Production hosts only. Sites that set `SHOWFM_API_URL` or `SHOWFM_APP_URL` use the `showfm_environment` filter instead.
 
 = 1.0.1 =
 Fixes empty first renders of synced posts behind page caches, and smaller display and WP-CLI issues.

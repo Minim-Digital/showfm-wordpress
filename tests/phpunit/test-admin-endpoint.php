@@ -206,14 +206,10 @@ class Test_Admin_Endpoint extends WP_UnitTestCase {
 		$this->assertSame( 'the-long-table.show.fm', $this->view()['shows'][0]['address'] );
 	}
 
-	/**
-	 * @runInSeparateProcess
-	 * @preserveGlobalState disabled
-	 */
-	public function test_the_show_address_uses_the_staging_host_on_staging(): void {
-		define( 'SHOWFM_API_URL', 'https://api.showfm.dev' );
+	public function test_the_show_address_uses_the_environments_listen_domain(): void {
+		showfm_use_test_environment();
 		$this->connect();
-		$this->assertSame( 'the-long-table.showfm.dev', $this->view()['shows'][0]['address'] );
+		$this->assertSame( 'the-long-table.example.test', $this->view()['shows'][0]['address'] );
 	}
 
 	public function test_artwork_comes_from_the_public_cache_and_reading_makes_no_request(): void {

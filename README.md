@@ -296,8 +296,8 @@ The per-blog `showfm_publishing` option is the Publishing tab's (see `Publishing
 "Not posted" in the recent activity); existing posts keep updating. A new post is a player,
 then the `showfm/transcript` block when the transcript setting is on, then show notes,
 falling back to the plain description. Public artwork is
-sideloaded once from the exact show.fm media hosts `m.cdn.media`, `m.showfm.dev`,
-`media.podcasterplus.com` or `media.podcasterplus.dev`. Downloads require HTTPS, no
+sideloaded once from the exact show.fm media hosts, `m.cdn.media` or
+`media.podcasterplus.com` (plus the selected environment's, see below). Downloads require HTTPS, no
 credentials, explicit ports or redirects, and safe HTTP validation. Limits are 10 MB,
 8000 pixels per side and 16 million pixels, checked before image processing; only
 JPEG, PNG, WebP and GIF are accepted. Indexed attachment receipts deduplicate source
@@ -332,23 +332,43 @@ connection's posts. Uninstall removes plugin receipts, never posts or media file
 Contract reviewed against podcaster-plus-app `04f2718fc344f4fdecd9a90a6cfb9b8d5685db33`:
 `connected-sites.md`, the keyed site routes and the generated OpenAPI schemas.
 
-### Staging
+### Another show.fm environment
 
-Point the plugin at the staging API in `wp-config.php`:
+Every show.fm host comes from `ShowFM\Environment`: the API (the only host the site key is
+ever sent to), the app, the listen domain, the media hosts and the embed hosts. Production
+is built in. A site's own code, such as a must-use plugin, can select another show.fm
+environment for testing:
 
 ```php
-define( 'SHOWFM_API_URL', 'https://api.showfm.dev' );
+add_filter(
+	'showfm_environment',
+	function () {
+		return array(
+			'api'    => 'https://api.example.test',
+			'app'    => 'https://my.example.test',
+			'listen' => 'example.test',
+			'media'  => array( 'm.example.test' ),
+			'embed'  => array( 'embed.example.test' ),
+		);
+	}
+);
 ```
 
-Only `https://api.show.fm` and `https://api.showfm.dev` are accepted. Anything else falls
-back to production, so the site key is never sent to another host.
+Every part is required. `api` and `app` are https origins with no port, credentials or
+path. `listen` is the domain whose subdomains serve listen pages. `media` and `embed` list
+up to ten hosts. Hosts are plain names: no wildcards or IP addresses. If anything is
+missing or invalid, the whole value is ignored, production is used and WordPress logs a
+"doing it wrong" notice. show.fm's production listen, media and embed hosts stay recognised
+alongside the environment's. The editor gets the listen domains and media hosts from
+`window.showfmEditor`.
 
-The connect flow opens the app at `SHOWFM_APP_URL`, which accepts `https://my.show.fm`
-(the default) and `https://my.showfm.dev` only. A host that resells show.fm can set its
-partner code, which is passed to show.fm for attribution:
+1.0.2 removed the `SHOWFM_API_URL` and `SHOWFM_APP_URL` constants: the filter names a
+whole environment, so they had nothing left to select.
+
+A host that resells show.fm can set its partner code, which is passed to show.fm for
+attribution:
 
 ```php
-define( 'SHOWFM_APP_URL', 'https://my.showfm.dev' );
 define( 'SHOWFM_PARTNER', 'your-partner-code' );
 ```
 

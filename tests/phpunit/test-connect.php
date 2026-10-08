@@ -155,16 +155,10 @@ class Test_Connect extends WP_UnitTestCase {
 		$this->assertNull( Connect::sanitize_partner( array( 'acme' ) ) );
 	}
 
-	public function test_app_url_accepts_only_show_fm_hosts(): void {
+	public function test_app_url_is_production_unless_the_environment_names_another(): void {
 		$this->assertSame( 'https://my.show.fm', Connect::app_url(), 'Production by default.' );
-		$this->assertSame( 'https://my.showfm.dev', Connect::sanitize_app_url( 'https://my.showfm.dev' ) );
-		$this->assertSame( 'https://my.showfm.dev', Connect::sanitize_app_url( 'https://MY.showfm.dev/' ) );
-		$this->assertSame( 'https://my.show.fm', Connect::sanitize_app_url( 'https://evil.example' ) );
-		$this->assertSame( 'https://my.show.fm', Connect::sanitize_app_url( 'http://my.showfm.dev' ) );
-		$this->assertSame( 'https://my.show.fm', Connect::sanitize_app_url( 'https://my.showfm.dev/x' ) );
-		$this->assertSame( 'https://my.show.fm', Connect::sanitize_app_url( 'https://my.showfm.dev:8443' ) );
-		$this->assertSame( 'https://my.show.fm', Connect::sanitize_app_url( 'https://user@my.showfm.dev' ) );
-		$this->assertSame( 'https://my.show.fm', Connect::sanitize_app_url( null ) );
+		showfm_use_test_environment();
+		$this->assertSame( 'https://my.example.test', Connect::app_url() );
 	}
 
 	/**
@@ -173,16 +167,16 @@ class Test_Connect extends WP_UnitTestCase {
 	 * @runInSeparateProcess
 	 * @preserveGlobalState disabled
 	 */
-	public function test_constants_set_the_partner_and_the_staging_app(): void {
+	public function test_the_partner_constant_and_the_environments_app(): void {
 		define( 'SHOWFM_PARTNER', 'Acme-Hosting' );
-		define( 'SHOWFM_APP_URL', 'https://my.showfm.dev' );
+		showfm_use_test_environment();
 
 		$url = $this->connect->start( $this->user_id );
 
-		$this->assertStringStartsWith( 'https://my.showfm.dev/connect/wordpress?', $url );
+		$this->assertStringStartsWith( 'https://my.example.test/connect/wordpress?', $url );
 		parse_str( (string) wp_parse_url( $url, PHP_URL_QUERY ), $query );
 		$this->assertSame( 'acme-hosting', $query['partner'] );
-		$this->assertSame( array( 'my.showfm.dev' ), array_values( array_intersect( array( 'my.showfm.dev' ), Admin::allow_app_host( array() ) ) ) );
+		$this->assertSame( array( 'my.example.test' ), Admin::allow_app_host( array() ) );
 	}
 
 	public function test_admin_post_needs_manage_options(): void {

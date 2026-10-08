@@ -54,7 +54,7 @@ add_action(
 add_filter(
 	'pre_http_request',
 	static function ( $pre, $args, $url ) {
-		if ( false !== $pre || ! preg_match( '#^https://api\.show(?:fm\.dev|\.fm)/#', (string) $url ) ) {
+		if ( false !== $pre || ( 0 !== strpos( (string) $url, 'https://api.show.fm/' ) && 0 !== strpos( (string) $url, \ShowFM\Api_Client::base_url() . '/' ) ) ) {
 			return $pre;
 		}
 		return new WP_Error( 'http_request_failed', 'Blocked by the e2e states plugin.' );
@@ -290,7 +290,7 @@ add_filter(
 	'pre_http_request',
 	static function ( $pre, $args, $url ) {
 		$catalogue = get_option( 'showfm_e2e_catalogue', '' );
-		if ( '' === $catalogue || ! preg_match( '~^https://api\.show(?:fm\.dev|\.fm)(/v1/me/podcasts[^#]*)$~', (string) $url, $match ) ) {
+		if ( '' === $catalogue || ! preg_match( '~^' . preg_quote( \ShowFM\Api_Client::base_url(), '~' ) . '(/v1/me/podcasts[^#]*)$~', (string) $url, $match ) ) {
 			return $pre;
 		}
 		if ( 'down' === $catalogue ) {

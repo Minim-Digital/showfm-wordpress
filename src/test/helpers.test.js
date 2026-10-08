@@ -79,7 +79,6 @@ describe( 'parseShowAddress', () => {
 		[ 'https://the-long-table.show.fm/e/knives', 'the-long-table' ],
 		[ 'https://show.fm/The-Long-Table', 'the-long-table' ],
 		[ 'www.show.fm/the-long-table', 'the-long-table' ],
-		[ 'second-helpings.showfm.dev', 'second-helpings' ],
 		[ '  the-long-table ', 'the-long-table' ],
 		[
 			'33333333-3333-4333-8333-333333333333',
@@ -87,6 +86,21 @@ describe( 'parseShowAddress', () => {
 		],
 	] )( '%s gives %s', ( input, expected ) => {
 		expect( parseShowAddress( input ) ).toBe( expected );
+	} );
+
+	it( 'reads the listen domains from the settings', () => {
+		expect( parseShowAddress( 'second-helpings.example.test' ) ).toBeNull();
+		window.showfmEditor = { listenRoots: [ 'show.fm', 'example.test' ] };
+		expect( parseShowAddress( 'second-helpings.example.test' ) ).toBe(
+			'second-helpings'
+		);
+		expect(
+			parseShowAddress( 'https://example.test/second-helpings' )
+		).toBe( 'second-helpings' );
+		expect( parseShowAddress( 'the-long-table.show.fm' ) ).toBe(
+			'the-long-table'
+		);
+		delete window.showfmEditor;
 	} );
 
 	it.each( [
@@ -163,22 +177,30 @@ describe( 'snapshots', () => {
 		).toEqual( { title: 'Lookalike' } );
 		expect(
 			episodeSnapshot( {
-				title: 'Staging',
-				listen: 'https://the-long-table.showfm.dev/e/x',
-				audio: 'https://m.showfm.dev/x.mp3',
+				title: 'Another environment',
+				listen: 'https://the-long-table.example.test/e/x',
+				audio: 'https://m.example.test/x.mp3',
 			} )
-		).toEqual( { title: 'Staging' } );
-		window.showfmEditor = { api: 'https://api.showfm.dev' };
+		).toEqual( { title: 'Another environment' } );
+		// The hosts come from the server's environment, in the settings.
+		window.showfmEditor = {
+			listenRoots: [ 'show.fm', 'example.test' ],
+			mediaHosts: [
+				'm.cdn.media',
+				'media.podcasterplus.com',
+				'm.example.test',
+			],
+		};
 		expect(
 			episodeSnapshot( {
-				title: 'Staging',
-				listen: 'https://the-long-table.showfm.dev/e/x',
-				audio: 'https://m.showfm.dev/x.mp3',
+				title: 'Another environment',
+				listen: 'https://the-long-table.example.test/e/x',
+				audio: 'https://m.example.test/x.mp3',
 			} )
 		).toEqual( {
-			title: 'Staging',
-			listenUrl: 'https://the-long-table.showfm.dev/e/x',
-			audioUrl: 'https://m.showfm.dev/x.mp3',
+			title: 'Another environment',
+			listenUrl: 'https://the-long-table.example.test/e/x',
+			audioUrl: 'https://m.example.test/x.mp3',
 		} );
 		delete window.showfmEditor;
 		expect(
@@ -343,7 +365,7 @@ describe( 'control helpers', () => {
 	} );
 
 	it( 'passes only element attributes to the preview, with the site API', () => {
-		window.showfmEditor = { api: 'https://api.showfm.dev' };
+		window.showfmEditor = { api: 'https://api.example.test' };
 		expect(
 			elementAttributes( 'play', {
 				episode: 'e',
@@ -356,7 +378,7 @@ describe( 'control helpers', () => {
 			episode: 'e',
 			podcast: 'p',
 			size: 'lg',
-			api: 'https://api.showfm.dev',
+			api: 'https://api.example.test',
 			credit: 'off',
 			platform: 'wordpress',
 		} );

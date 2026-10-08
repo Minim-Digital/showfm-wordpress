@@ -1,14 +1,14 @@
 # Releasing to WordPress.org
 
-My notes for submitting show.fm 1.0.0 to the WordPress.org plugin directory, and for each
-release after it. Nothing here has been submitted yet.
+My notes for submitting show.fm to the WordPress.org plugin directory, starting with 1.0.2,
+and for each release after it. Nothing here has been submitted yet.
 
 ## Before I submit
 
-- **Account.** I need a WordPress.org account with a show.fm email address. I'll register the
-  username `showfm`: the readme's `Contributors: showfm` line must name a real WordPress.org
-  user, and that username was free on 8 October 2026 (`profiles.wordpress.org/showfm` was a
-  404). If I use another username, I change the Contributors line to match before I build.
+- **Account.** I submit under my own WordPress.org account, `danmaby`. The readme's
+  `Contributors: danmaby` line must name a real WordPress.org user, and the submitter
+  becomes the plugin's first committer. After approval I add the others (see "Committers"
+  below).
 - **Two-factor authentication.** WordPress.org has required 2FA for plugin authors since
   1 October 2024. I turn it on in the account's security settings before I submit.
 - **SVN password.** Committing to the plugin's SVN needs the SVN password from the same
@@ -20,19 +20,20 @@ release after it. Nothing here has been submitted yet.
 npm ci
 composer install
 npm run env:start
-npm run release            # dist/showfm-1.0.0.zip, checked against bin/release-files.txt
+npm run release            # dist/showfm-1.0.2.zip, checked against bin/release-files.txt
 ```
 
 `npm run release` stops if the plugin header, `SHOWFM_VERSION` and the readme's Stable tag
-disagree, or if the zip holds anything other than the files in `bin/release-files.txt`. CI
+disagree, if the zip holds anything other than the files in `bin/release-files.txt`, or if
+any shipped file names a show.fm development host. The plugin's built-in hosts are
+production only. A development environment is selected by a must-use plugin through the
+`showfm_environment` filter, kept outside this repository. CI
 runs the same build, the allow-list check and Plugin Check (Plugin Repo category) on every
 pull request. I only submit a zip from a green `main`, ideally the `showfm-zip` artifact of
 that CI run.
 
 On 8 October 2026 the 1.0.0 zip passed Plugin Check with no errors and no warnings in every
-category, including the runtime and experimental checks. The readme passed the WordPress.org
-readme validator with no errors. Its one warning was that `showfm` is not yet a WordPress.org
-user, which the account above fixes.
+category, including the runtime and experimental checks, and so has each release since.
 
 ## Publish the GitHub release
 
@@ -49,7 +50,7 @@ is merged and `main` is green:
 ## Submit
 
 1. Sign in and open <https://wordpress.org/plugins/developers/add/>.
-2. Upload `showfm-1.0.0.zip`.
+2. Upload `showfm-1.0.2.zip`.
 3. **Check the slug.** WordPress.org builds the slug from the plugin name, and "show.fm"
    becomes `show-fm`. I want `showfm`, which matches the text domain, the GitHub repo and
    the npm scope. If the form shows `show-fm`, I ask for `showfm` in the reviewer notes, and
@@ -63,7 +64,7 @@ is merged and `main` is green:
 > our official WordPress plugin, and we own the show.fm name.
 >
 > **Slug:** please use `showfm` rather than `show-fm`. It matches the text domain, our
-> GitHub repository (Minim-Digital/showfm-wordpress) and our npm package (@showfm/embed).
+> GitHub repository (ShowDotFM/showfm-wordpress) and our npm package (@showfm/embed).
 >
 > **What it does:** blocks, a shortcode and oEmbed for public show.fm podcasts, with no
 > account needed. Connecting a show.fm account adds posting new episodes as WordPress posts,
@@ -74,9 +75,9 @@ is merged and `main` is green:
 > site is connected. There is no telemetry.
 >
 > **Bundled code:** `assets/showfm-embed/` is an unmodified copy of our MIT-licensed
-> @showfm/embed package (source: github.com/Minim-Digital/showfm-embed). A test checks it
+> @showfm/embed package (source: github.com/ShowDotFM/showfm-embed). A test checks it
 > byte for byte against the npm release. `build/` is compiled from `src/` in
-> github.com/Minim-Digital/showfm-wordpress with @wordpress/scripts. Nothing loads from a CDN.
+> github.com/ShowDotFM/showfm-wordpress with @wordpress/scripts. Nothing loads from a CDN.
 >
 > **Credit:** "Powered by show.fm" is off unless the site owner turns it on in
 > Settings > show.fm > Display.
@@ -94,10 +95,10 @@ The approval email gives the SVN address, `https://plugins.svn.wordpress.org/sho
 svn checkout https://plugins.svn.wordpress.org/showfm/ showfm-svn
 cd showfm-svn
 
-# The plugin: trunk and the 1.0.0 tag hold the zip's contents.
+# The plugin: trunk and the 1.0.2 tag hold the zip's contents.
 rsync -a --delete ../showfm-wordpress/dist/showfm/ trunk/
 svn add --force trunk
-svn cp trunk tags/1.0.0
+svn cp trunk tags/1.0.2
 
 # The listing assets: banners, icons and screenshots go in the top-level assets folder.
 cp ../showfm-wordpress/.wordpress-org/* assets/
@@ -105,11 +106,18 @@ svn add --force assets
 svn propset svn:mime-type image/png assets/*.png
 svn propset svn:mime-type image/svg+xml assets/icon.svg
 
-svn commit -m "Release 1.0.0" --username showfm
+svn commit -m "Release 1.0.2" --username danmaby
 ```
 
 `svn commit` asks for the SVN password. The assets never go in `trunk` or a tag. The
 directory can take a few hours to show new images.
+
+### Committers
+
+Once the plugin is live, on its page, Advanced view, "Committers": I add the show.fm
+company account (registered with a show.fm email address, with 2FA on) and Nathan's account
+by their WordPress.org usernames. Each needs 2FA and their own SVN password. In the next
+release I add both usernames to the readme's `Contributors:` line, after mine.
 
 ## Each later release
 
@@ -128,8 +136,8 @@ directory can take a few hours to show new images.
     # Files the release added.
     svn add --force trunk
     svn status trunk            # check: only M, A and D lines
-    svn cp trunk tags/1.0.1     # the new version
-    svn commit -m "Release 1.0.1" --username showfm
+    svn cp trunk tags/1.0.3     # the new version
+    svn commit -m "Release 1.0.3" --username danmaby
     ```
 
     The package's hashed chunk names change with each @showfm/embed release, so most

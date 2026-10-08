@@ -29,8 +29,10 @@ stores its UUID and nothing else. Latest episode stores the show's title and lis
 
 `Attributes::snapshot()` applies the same rules on save (`content_save_pre`) and on render:
 listen URLs must be https on `show.fm` or a subdomain, audio URLs https on `m.cdn.media` or
-`media.podcasterplus.com`; with `SHOWFM_API_URL` on staging, `showfm.dev`, `m.showfm.dev`
-and `media.podcasterplus.dev` too. No credentials or ports. Anything else is dropped.
+`media.podcasterplus.com`. With another environment selected through `showfm_environment`
+(see `Environment`), its listen domain and media hosts count too. The editor gets the same
+lists as `listenRoots` and `mediaHosts` in `window.showfmEditor`. No credentials or ports.
+Anything else is dropped.
 
 A block whose episode has never been confirmed public and has no snapshot title (a
 scheduled pick, or a block written by the sync) renders the bare element with no fallback

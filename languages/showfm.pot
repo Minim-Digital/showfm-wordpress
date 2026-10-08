@@ -2,14 +2,14 @@
 # This file is distributed under the GPLv2 or later.
 msgid ""
 msgstr ""
-"Project-Id-Version: show.fm 1.0.1\n"
-"Report-Msgid-Bugs-To: https://github.com/Minim-Digital/showfm-wordpress/issues\n"
+"Project-Id-Version: show.fm 1.0.2\n"
+"Report-Msgid-Bugs-To: https://github.com/ShowDotFM/showfm-wordpress/issues\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-08T12:32:40+00:00\n"
+"POT-Creation-Date: 2026-10-08T18:33:11+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: showfm\n"
@@ -28,7 +28,7 @@ msgstr ""
 
 #. Plugin URI of the plugin
 #: showfm.php
-msgid "https://github.com/Minim-Digital/showfm-wordpress"
+msgid "https://github.com/ShowDotFM/showfm-wordpress"
 msgstr ""
 
 #. Description of the plugin
@@ -301,103 +301,103 @@ msgstr ""
 msgid "Site key from show.fm (input hidden)"
 msgstr ""
 
-#: includes/class-connect.php:603
+#: includes/class-connect.php:570
 msgid "This site’s key was revoked at show.fm."
 msgstr ""
 
-#: includes/class-connect.php:605
+#: includes/class-connect.php:572
 msgid "show.fm had already stopped accepting this site’s key, so there was nothing left to revoke."
 msgstr ""
 
-#: includes/class-connect.php:607
+#: includes/class-connect.php:574
 msgid "show.fm didn’t confirm the key was revoked, so it may still work. Revoke it in show.fm under Connected sites."
 msgstr ""
 
-#: includes/class-connect.php:628
+#: includes/class-connect.php:595
 msgid "This site is disconnected, but another change took over before its clean-up finished. It finishes the next time an admin page loads, or run wp showfm disconnect again."
 msgstr ""
 
-#: includes/class-connect.php:629
+#: includes/class-connect.php:596
 msgid "This site is disconnected, but another change took over before its clean-up finished. It finishes the next time an admin page loads, or select Disconnect again."
 msgstr ""
 
-#: includes/class-connect.php:635
+#: includes/class-connect.php:602
 msgid "This site’s key was revoked at show.fm, but another change to the connection was in progress, so this site hasn’t finished disconnecting. Run wp showfm disconnect again to finish."
 msgstr ""
 
-#: includes/class-connect.php:636
+#: includes/class-connect.php:603
 msgid "This site’s key was revoked at show.fm, but another change to the connection was in progress, so this site hasn’t finished disconnecting. Select Disconnect again to finish."
 msgstr ""
 
-#: includes/class-connect.php:645
+#: includes/class-connect.php:612
 msgid "This site finished disconnecting."
 msgstr ""
 
-#: includes/class-connect.php:807
+#: includes/class-connect.php:774
 msgid "This connection request did not come from this browser session. Start again with Connect to show.fm."
 msgstr ""
 
-#: includes/class-connect.php:809
+#: includes/class-connect.php:776
 msgid "The connection request expired or was already used. Start again with Connect to show.fm."
 msgstr ""
 
-#: includes/class-connect.php:811
+#: includes/class-connect.php:778
 msgid "show.fm did not accept the connection. Codes last five minutes and work once. Start again with Connect to show.fm."
 msgstr ""
 
-#: includes/class-connect.php:813
+#: includes/class-connect.php:780
 msgid "That is not a show.fm site key. Copy the key from Connected sites in show.fm."
 msgstr ""
 
-#: includes/class-connect.php:815
+#: includes/class-connect.php:782
 msgid "show.fm did not accept that key. Site keys must be registered within 24 hours. Create a new one in show.fm under Connected sites."
 msgstr ""
 
-#: includes/class-connect.php:817
+#: includes/class-connect.php:784
 msgid "show.fm could not confirm that this site belongs to you. Check that the site is public, uses https and has the show.fm plugin active, then try again."
 msgstr ""
 
 #. translators: %d: number of seconds.
-#: includes/class-connect.php:821
+#: includes/class-connect.php:788
 #, php-format
 msgid "show.fm asked this site to wait. Try again in %d second."
 msgid_plural "show.fm asked this site to wait. Try again in %d seconds."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/class-connect.php:825
+#: includes/class-connect.php:792
 msgid "show.fm could not be reached. Try again in a few minutes."
 msgstr ""
 
-#: includes/class-connect.php:827
+#: includes/class-connect.php:794
 msgid "show.fm sent an answer this plugin does not understand. Update the plugin, then try again."
 msgstr ""
 
-#: includes/class-connect.php:829
+#: includes/class-connect.php:796
 msgid "The connection was cancelled."
 msgstr ""
 
-#: includes/class-connect.php:831
+#: includes/class-connect.php:798
 msgid "This site’s address must use https."
 msgstr ""
 
-#: includes/class-connect.php:833
+#: includes/class-connect.php:800
 msgid "The change took too long and another change took over part way through. Reload to see the connection as it is now."
 msgstr ""
 
-#: includes/class-connect.php:835
+#: includes/class-connect.php:802
 msgid "Another change to this site’s show.fm connection was in progress. Try again in a moment."
 msgstr ""
 
-#: includes/class-connect.php:837
+#: includes/class-connect.php:804
 msgid "The connection could not be saved. Your server needs the PHP sodium extension, or WordPress 6.6 or later. Then try again."
 msgstr ""
 
-#: includes/class-connect.php:839
+#: includes/class-connect.php:806
 msgid "Connected, but this site could not report in to show.fm yet. It tries again automatically."
 msgstr ""
 
-#: includes/class-connect.php:841
+#: includes/class-connect.php:808
 msgid "Something went wrong. Start again with Connect to show.fm."
 msgstr ""
 
@@ -423,6 +423,10 @@ msgstr ""
 #: includes/class-embed-settings.php:50
 #: build/admin.js:15
 msgid "Use my theme’s colours and fonts"
+msgstr ""
+
+#: includes/class-environment.php:83
+msgid "The show.fm environment needs an https api and app origin, a listen domain, and media and embed hosts. Using production."
 msgstr ""
 
 #: includes/class-health.php:78
@@ -874,7 +878,7 @@ msgid_plural "Your show.fm connection expires in %d days."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/class-oembed.php:238
+#: includes/class-oembed.php:244
 msgid "Listen on show.fm"
 msgstr ""
 
@@ -1044,15 +1048,15 @@ msgctxt "scheduled post date"
 msgid "j F"
 msgstr ""
 
-#: includes/class-sync-artwork.php:164
+#: includes/class-sync-artwork.php:163
 msgid "Artwork must use a public HTTPS address."
 msgstr ""
 
-#: includes/class-sync-artwork.php:176
+#: includes/class-sync-artwork.php:175
 msgid "A temporary artwork file could not be created."
 msgstr ""
 
-#: includes/class-sync-artwork.php:213
+#: includes/class-sync-artwork.php:212
 msgid "Artwork must be a JPEG, PNG, WebP or GIF image."
 msgstr ""
 
@@ -1064,7 +1068,7 @@ msgstr ""
 msgid "The post could not be moved to the bin."
 msgstr ""
 
-#: includes/class-sync.php:71
+#: includes/class-sync.php:77
 msgid "Every 15 minutes (show.fm)"
 msgstr ""
 

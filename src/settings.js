@@ -9,6 +9,9 @@ const DEFAULTS = {
 	connectUrl: '',
 	appUrl: 'https://my.show.fm',
 	api: 'https://api.show.fm',
+	// The environment's listen domains and media hosts (`Environment` on the server).
+	listenRoots: [ 'show.fm' ],
+	mediaHosts: [ 'm.cdn.media', 'media.podcasterplus.com' ],
 };
 
 /**

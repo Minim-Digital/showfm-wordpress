@@ -258,7 +258,7 @@ built these from the same patterns and recorded them for the design pass:
 ## Server contract and remaining gap
 
 I read the keyed API and connected-site architecture on app `origin/main`, then checked
-[app PR #747](https://github.com/Minim-Digital/podcaster-plus-app/pull/747) at
+[app PR #747](https://github.com/ShowDotFM/podcaster-plus-app/pull/747) at
 `08da1983625ae0683ed43ef0b58d7468daff2064`. Its keyed episode list and detail schemas expose
 `source.enclosure_sha256`, `source.guid_sha256` and public-only `rss_guid`. Source values
 are nullable lowercase SHA-256 hex strings; raw imported enclosure URLs and GUIDs are

@@ -8,6 +8,9 @@
  *
  * No shipped script may name show.fm's script CDN, so no path through the plugin can load
  * remote code (WordPress.org guideline 8). CDN_ALLOWED lists the files allowed to, and why.
+ *
+ * No shipped file of any kind may name a show.fm development domain: the plugin's built-in
+ * hosts are production only, and a development environment comes from the site's own code.
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -19,6 +22,10 @@ const CDN = 'embed.cdn.media';
 // (.distignore), and no other shipped script names it. The PHP oEmbed handler names the host
 // to recognise iframes, but PHP is not loaded by a browser.
 const CDN_ALLOWED = [];
+// show.fm's development domains, built from parts so this file doesn't name them itself.
+const DEV_HOSTS = [ 'showfm', 'podcasterplus' ].map(
+	( name ) => `${ name }.dev`
+);
 if ( ! zip ) {
 	process.stderr.write( 'Usage: node scripts/check-zip.mjs <zip>\n' );
 	process.exit( 2 );
@@ -74,6 +81,21 @@ for ( const file of files.filter(
 		problems.push( `${ file } names ${ CDN }: shipped scripts must not.` );
 	}
 }
+for ( const file of files ) {
+	// Every byte as one character, so a host in a binary or a non-UTF-8 file is still seen.
+	const content = execFileSync( 'unzip', [ '-p', zip, file ], {
+		maxBuffer: 64 * 1024 * 1024,
+	} )
+		.toString( 'latin1' )
+		.toLowerCase();
+	for ( const host of DEV_HOSTS ) {
+		if ( content.includes( host ) ) {
+			problems.push(
+				`${ file } names ${ host }: shipped files must name production hosts only.`
+			);
+		}
+	}
+}
 for ( const rule of rules ) {
 	if ( rule.used === 0 ) {
 		problems.push( `Missing from the zip: ${ rule.pattern }` );
@@ -91,5 +113,5 @@ if ( problems.length ) {
 	process.exit( 1 );
 }
 process.stdout.write(
-	`${ zip }: all ${ files.length } files match bin/release-files.txt, and no script names ${ CDN }.\n`
+	`${ zip }: all ${ files.length } files match bin/release-files.txt, no script names ${ CDN }, and no file names a development host.\n`
 );

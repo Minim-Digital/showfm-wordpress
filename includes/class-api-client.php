@@ -19,16 +19,6 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class Api_Client {
 
-	/** Production API. */
-	const DEFAULT_BASE_URL = 'https://api.show.fm';
-
-	/**
-	 * Hosts `SHOWFM_API_URL` may point at. The site key is only ever sent to these.
-	 *
-	 * @var string[]
-	 */
-	const ALLOWED_HOSTS = array( 'api.show.fm', 'api.showfm.dev' );
-
 	/** Request timeout in seconds. */
 	const TIMEOUT = 5;
 
@@ -64,41 +54,11 @@ final class Api_Client {
 	}
 
 	/**
-	 * The API base URL. `SHOWFM_API_URL` in wp-config.php can point it at staging
-	 * (`https://api.showfm.dev`). Anything other than https on an allowed host is ignored.
+	 * The API base URL: production, or the environment the site's own code selects with the
+	 * `showfm_environment` filter (see Environment). The site key is only ever sent here.
 	 */
 	public static function base_url(): string {
-		if ( ! defined( 'SHOWFM_API_URL' ) ) {
-			return self::DEFAULT_BASE_URL;
-		}
-		return self::sanitize_base_url( constant( 'SHOWFM_API_URL' ) );
-	}
-
-	/**
-	 * Returns the URL's origin if it is https on an allowed host with no port, credentials,
-	 * path, query or fragment, otherwise the production URL.
-	 *
-	 * @param mixed $url Candidate base URL.
-	 */
-	public static function sanitize_base_url( $url ): string {
-		if ( ! is_string( $url ) ) {
-			return self::DEFAULT_BASE_URL;
-		}
-
-		$parts = wp_parse_url( $url );
-		if (
-			! is_array( $parts )
-			|| ! isset( $parts['scheme'], $parts['host'] )
-			|| 'https' !== strtolower( $parts['scheme'] )
-			|| ! in_array( strtolower( $parts['host'] ), self::ALLOWED_HOSTS, true )
-			|| isset( $parts['port'] ) || isset( $parts['user'] ) || isset( $parts['pass'] )
-			|| isset( $parts['query'] ) || isset( $parts['fragment'] )
-			|| ( isset( $parts['path'] ) && '/' !== $parts['path'] )
-		) {
-			return self::DEFAULT_BASE_URL;
-		}
-
-		return 'https://' . strtolower( $parts['host'] );
+		return Environment::get()['api'];
 	}
 
 	/**

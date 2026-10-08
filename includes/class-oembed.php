@@ -13,28 +13,34 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /** Core handles fetching and caching the provider response in post meta. */
 final class Oembed {
-	/** Register host-form and legacy path-form listen pages, including staging. */
+	/**
+	 * Register host-form and legacy path-form listen pages on each listen domain (show.fm's,
+	 * and the environment's), answered by the environment's API.
+	 */
 	public static function register(): void {
 		$endpoint = Api_Client::base_url() . '/v1/oembed';
-		wp_oembed_add_provider( 'https://*.show.fm/*', $endpoint );
-		wp_oembed_add_provider( 'https://show.fm/*', $endpoint );
-		if ( 'https://api.showfm.dev' === Api_Client::base_url() ) {
-			wp_oembed_add_provider( 'https://*.showfm.dev/*', $endpoint );
-			wp_oembed_add_provider( 'https://showfm.dev/*', $endpoint );
-			wp_oembed_add_provider( '~^https://[a-z0-9]+(?:-[a-z0-9]+)*\.showfm\.dev/?(?:[?#].*)?\z~i', $endpoint, true );
+		foreach ( Environment::listen_domains() as $domain ) {
+			wp_oembed_add_provider( 'https://*.' . $domain . '/*', $endpoint );
+			wp_oembed_add_provider( 'https://' . $domain . '/*', $endpoint );
+			// A show homepage need not have a trailing slash.
+			wp_oembed_add_provider( '~^https://[a-z0-9]+(?:-[a-z0-9]+)*\.' . preg_quote( $domain, '~' ) . '/?(?:[?#].*)?\z~i', $endpoint, true );
 		}
-		// A show homepage need not have a trailing slash.
-		wp_oembed_add_provider( '~^https://[a-z0-9]+(?:-[a-z0-9]+)*\.show\.fm/?(?:[?#].*)?\z~i', $endpoint, true );
 	}
 
-	/** The show.fm script and iframe hosts. No markup naming them is ever passed through. */
-	const CDN_HOSTS = array( 'embed.cdn.media', 'embed.showfm.dev' );
-
 	/**
-	 * Either host on label boundaries in normalised markup: a subdomain or trailing dots
-	 * still match, `notembed.cdn.media` and `embed.cdn.media.evil.test` don't.
+	 * Any show.fm embed host (Environment::embed_hosts()) on label boundaries in normalised
+	 * markup: a subdomain or trailing dots still match, `notembed.cdn.media` and
+	 * `embed.cdn.media.evil.test` don't. No markup naming one is ever passed through.
 	 */
-	const CDN_PATTERN = '~(?<![a-z0-9-])embed\.(?:cdn\.media|showfm\.dev)\.*+(?![a-z0-9-])~';
+	private static function cdn_pattern(): string {
+		$hosts = array_map(
+			static function ( string $host ): string {
+				return preg_quote( $host, '~' );
+			},
+			Environment::embed_hosts()
+		);
+		return '~(?<![a-z0-9-])(?:' . implode( '|', $hosts ) . ')\.*+(?![a-z0-9-])~';
+	}
 
 	/** Code points browsers ignore in hostnames: UTS 46 "ignored", bidi and format controls. */
 	const IGNORED = '/[\x{00AD}\x{034F}\x{180B}-\x{180F}\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}-\x{206F}\x{FE00}-\x{FE0F}\x{FEFF}\x{1BCA0}-\x{1BCA3}\x{E0000}-\x{E0FFF}]/u';
@@ -90,7 +96,7 @@ final class Oembed {
 	 */
 	public static function names_show_fm( string $html, bool $intl = true ): bool {
 		$normalised = self::normalise( $html, $intl );
-		return null === $normalised || 0 !== preg_match( self::CDN_PATTERN, $normalised );
+		return null === $normalised || 0 !== preg_match( self::cdn_pattern(), $normalised );
 	}
 
 	/**
@@ -202,7 +208,7 @@ final class Oembed {
 			$src   = $tags->get_attribute( 'src' );
 			$clean = is_string( $src ) ? self::normalise( $src ) : null;
 			$parts = null !== $clean ? wp_parse_url( $clean ) : false;
-			if ( is_array( $parts ) && in_array( rtrim( (string) ( $parts['host'] ?? '' ), '.' ), self::CDN_HOSTS, true ) ) {
+			if ( is_array( $parts ) && in_array( rtrim( (string) ( $parts['host'] ?? '' ), '.' ), Environment::embed_hosts(), true ) ) {
 				$title = $tags->get_attribute( 'title' );
 				return array(
 					'parts' => $parts,

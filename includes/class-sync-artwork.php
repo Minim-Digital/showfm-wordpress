@@ -20,7 +20,6 @@ final class Sync_Artwork {
 	const MAX_PIXELS    = 16000000;
 	const MAX_ATTEMPTS  = 3;
 	const QUEUE         = 'showfm_artwork_queue';
-	const HOSTS         = array( 'm.cdn.media', 'm.showfm.dev', 'media.podcasterplus.com', 'media.podcasterplus.dev' );
 
 	/**
 	 * Optional artwork never prevents committing the episode row.
@@ -160,7 +159,7 @@ final class Sync_Artwork {
 	 */
 	public function import( string $url, int $post_id ) {
 		$parts = wp_parse_url( $url );
-		if ( ! is_array( $parts ) || 'https' !== ( $parts['scheme'] ?? '' ) || ! in_array( strtolower( $parts['host'] ?? '' ), self::HOSTS, true ) || isset( $parts['user'] ) || isset( $parts['pass'] ) || isset( $parts['port'] ) || isset( $parts['fragment'] ) ) {
+		if ( ! is_array( $parts ) || 'https' !== ( $parts['scheme'] ?? '' ) || ! in_array( strtolower( $parts['host'] ?? '' ), Environment::media_hosts(), true ) || isset( $parts['user'] ) || isset( $parts['pass'] ) || isset( $parts['port'] ) || isset( $parts['fragment'] ) ) {
 			return new \WP_Error( 'showfm_artwork_url', __( 'Artwork must use a public HTTPS address.', 'showfm' ) );
 		}
 		$guid     = 'urn:showfm:artwork:' . hash( 'sha256', $url );

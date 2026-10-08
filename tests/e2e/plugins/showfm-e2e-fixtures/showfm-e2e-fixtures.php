@@ -134,7 +134,7 @@ function showfm_e2e_responses(): array {
 add_filter(
 	'pre_http_request',
 	static function ( $pre, $args, $url ) {
-		foreach ( array( 'https://api.show.fm', 'https://api.showfm.dev' ) as $base ) {
+		foreach ( array_unique( array( 'https://api.show.fm', \ShowFM\Api_Client::base_url() ) ) as $base ) {
 			if ( 0 === strpos( $url, $base . '/' ) ) {
 				$path      = substr( $url, strlen( $base ) );
 				$responses = showfm_e2e_responses();
