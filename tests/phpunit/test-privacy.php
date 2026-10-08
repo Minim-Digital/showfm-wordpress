@@ -33,7 +33,7 @@ class Test_Privacy extends WP_UnitTestCase {
 		$entries = array_filter(
 			$content,
 			static function ( $entry ) {
-				return 'show.fm' === $entry['plugin_name'];
+				return 'show.fm Podcast Player' === $entry['plugin_name'];
 			}
 		);
 		$this->assertCount( 1, $entries );
@@ -61,10 +61,9 @@ class Test_Privacy extends WP_UnitTestCase {
 		showfm_use_test_environment();
 		$text = Privacy::text();
 		$this->assertSame( 4, substr_count( $text, 'from api.example.test' ) );
-		$this->assertStringContainsString( 'files come from m.example.test.', $text );
 		$this->assertStringNotContainsString( 'api.show.fm', $text );
-		$this->assertStringNotContainsString( 'm.cdn.media', $text );
-		$this->assertStringNotContainsString( 'podcasterplus', $text );
+		// Every media host the plugin accepts there: show.fm's and the environment's.
+		$this->assertStringContainsString( 'files come from ' . wp_sprintf_l( '%l', array( 'm.cdn.media', 'media.podcasterplus.com', 'm.example.test' ) ) . '.', $text );
 	}
 
 	public function test_browser_requests_match_the_readme_word_for_word(): void {

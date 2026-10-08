@@ -142,7 +142,7 @@ async function publish( editor, page ) {
 
 test.describe( 'show.fm blocks in the editor', () => {
 	test.beforeAll( async ( { requestUtils } ) => {
-		await requestUtils.activatePlugin( 'show-fm' );
+		await requestUtils.activatePlugin( 'show-fm-podcast-player' );
 		await requestUtils.activatePlugin( 'test-fixtures-for-show-fm' );
 		await setConnection( requestUtils, false );
 	} );
@@ -347,7 +347,7 @@ test.describe( 'show.fm blocks in the editor', () => {
 
 test.describe( 'show.fm post panel', () => {
 	test.beforeAll( async ( { requestUtils } ) => {
-		await requestUtils.activatePlugin( 'show-fm' );
+		await requestUtils.activatePlugin( 'show-fm-podcast-player' );
 		await requestUtils.activatePlugin( 'test-fixtures-for-show-fm' );
 		await setConnection( requestUtils, true );
 	} );

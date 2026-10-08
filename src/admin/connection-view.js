@@ -5,7 +5,7 @@
 import { __, _n, sprintf } from '@wordpress/i18n';
 
 /** States where the stored key no longer works and Reconnect is the main action. */
-const BROKEN = [ 'expired', 'refused', 'unreadable' ];
+const BROKEN = [ 'expired', 'refused', 'unreadable', 'other_environment' ];
 
 /**
  * Whether the site has a stored connection, working or not. The Publishing and Migrate
@@ -55,6 +55,7 @@ export function connectionStatus( view ) {
 		case 'refused':
 			return { label: __( 'Disconnected', 'showfm' ), tone: 'error' };
 		case 'unreadable':
+		case 'other_environment':
 			return {
 				label: __( 'Needs reconnecting', 'showfm' ),
 				tone: 'error',
@@ -106,6 +107,12 @@ export function keyRow( view ) {
 			return {
 				text: __( 'Key can’t be read', 'showfm' ),
 				note: __( 'This site’s security keys changed.', 'showfm' ),
+				error: true,
+			};
+		case 'other_environment':
+			return {
+				text: __( 'Key is for another show.fm environment', 'showfm' ),
+				note: __( 'Reconnect to get a key for this one.', 'showfm' ),
 				error: true,
 			};
 		default:
@@ -297,6 +304,17 @@ export function connectionNotice( view ) {
 					'showfm'
 				),
 				action: null,
+				dismissible: false,
+			};
+		case 'other_environment':
+			return {
+				status: 'error',
+				title: __( 'Reconnect to show.fm.', 'showfm' ),
+				text: __(
+					'This site was connected with a different show.fm environment, so its key isn’t used here. Blocks still play public episodes.',
+					'showfm'
+				),
+				action: reconnect,
 				dismissible: false,
 			};
 		case 'unreadable':

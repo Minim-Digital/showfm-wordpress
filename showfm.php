@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name:       show.fm
+ * Plugin Name:       show.fm Podcast Player
  * Plugin URI:        https://github.com/ShowDotFM/showfm-wordpress
  * Description:       Podcast player, episode lists and auto-posting for show.fm shows.
  * Version:           1.0.2

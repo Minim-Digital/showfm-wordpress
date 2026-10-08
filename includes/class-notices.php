@@ -136,11 +136,24 @@ final class Notices {
 	 * @return array<int,array{key:string,type:string,text:string,action:array{type:string,label:string,url:string}}>
 	 */
 	public function candidates(): array {
+		$notices = array();
+		// 1.0.2 replaced these constants with the showfm_environment filter.
+		if ( defined( 'SHOWFM_API_URL' ) || defined( 'SHOWFM_APP_URL' ) ) {
+			$notices[] = array(
+				'key'    => 'constants:1',
+				'type'   => 'warning',
+				'text'   => __( 'SHOWFM_API_URL and SHOWFM_APP_URL no longer choose the show.fm environment. To use another one, return it from the showfm_environment filter.', 'showfm' ),
+				'action' => array(
+					'type'  => 'link',
+					'label' => __( 'How to choose an environment', 'showfm' ),
+					'url'   => 'https://github.com/ShowDotFM/showfm-wordpress#another-showfm-environment',
+				),
+			);
+		}
 		if ( Connection::STATE_DISCONNECTED === $this->connection->state() || $this->connection->is_unreadable() ) {
-			return array();
+			return $notices;
 		}
 
-		$notices   = array();
 		$reconnect = array(
 			'type'  => 'reconnect',
 			'label' => __( 'Reconnect', 'showfm' ),
@@ -150,6 +163,15 @@ final class Notices {
 		$expired   = $expires > 0 && $expires <= time();
 
 		if ( ! $this->connection->is_connected() ) {
+			if ( $this->connection->issued_elsewhere() ) {
+				$notices[] = array(
+					'key'    => 'environment:' . substr( md5( Api_Client::base_url() ), 0, 12 ),
+					'type'   => 'error',
+					'text'   => __( 'This site was connected with a different show.fm environment, so its key isn’t used here. Reconnect to post new episodes again.', 'showfm' ),
+					'action' => $reconnect,
+				);
+				return $notices;
+			}
 			if ( ! $expired && Connection::refused_at() > 0 ) {
 				$notices[] = array(
 					'key'    => 'refused:' . Connection::refused_at(),

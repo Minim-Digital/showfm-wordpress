@@ -67,12 +67,12 @@ final class Environment {
 	 */
 	public static function get(): array {
 		/**
-		 * Filters the show.fm environment. Return null for production, or an array with
-		 * `api`, `app`, `listen`, `media` and `embed` (see the class comment).
+		 * Filters the show.fm environment (`showfm_environment`). Return null for production,
+		 * or an array with `api`, `app`, `listen`, `media` and `embed` (see the class comment).
 		 *
 		 * @param array|null $environment Null.
 		 */
-		$filtered = apply_filters( 'showfm_environment', null );
+		$filtered = apply_filters( self::FILTER, null ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.DynamicHooknameFound -- FILTER is showfm_environment.
 		if ( null === $filtered ) {
 			return self::PRODUCTION;
 		}
@@ -80,7 +80,7 @@ final class Environment {
 		if ( null === $environment ) {
 			if ( ! self::$warned ) {
 				self::$warned = true;
-				_doing_it_wrong( 'showfm_environment', esc_html__( 'The show.fm environment needs an https api and app origin, a listen domain, and media and embed hosts. Using production.', 'showfm' ), '1.0.2' );
+				_doing_it_wrong( esc_html( self::FILTER ), esc_html__( 'The show.fm environment needs an https api and app origin, a listen domain, and media and embed hosts. Using production.', 'showfm' ), '1.0.2' );
 			}
 			return self::PRODUCTION;
 		}
@@ -150,7 +150,7 @@ final class Environment {
 	 *
 	 * @param mixed $url Candidate.
 	 */
-	private static function origin( $url ): ?string {
+	public static function origin( $url ): ?string {
 		$parts = is_string( $url ) ? wp_parse_url( $url ) : false;
 		if (
 			! is_array( $parts )

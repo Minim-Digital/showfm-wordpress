@@ -185,7 +185,7 @@ Plan sections 5.2.2, 5.2.6 and 5.3.5 (show.fm issue #731). Every admin action ne
 
 1. **Connect** (`admin-post.php?action=showfm_connect`). The plugin makes a `state` (32
    random bytes, base64url) and a PKCE `code_verifier`, keeps both for 10 minutes in a
-   per-user transient, and redirects to `{SHOWFM_APP_URL}/connect/wordpress` with
+   per-user transient, and redirects to `{app}/connect/wordpress` (the environment's app) with
    `site_url` (`home_url()`), `rest_root` (`rest_url()`), `state`, `code_challenge` (S256),
    `return` (the settings page) and `partner` (if `SHOWFM_PARTNER` is set). No outbound HTTP.
 2. **Challenge.** show.fm fetches `GET /wp-json/showfm/v1/challenge?state=…`. The route is
@@ -360,7 +360,17 @@ up to ten hosts. Hosts are plain names: no wildcards or IP addresses. If anythin
 missing or invalid, the whole value is ignored, production is used and WordPress logs a
 "doing it wrong" notice. show.fm's production listen, media and embed hosts stay recognised
 alongside the environment's. The editor gets the listen domains and media hosts from
-`window.showfmEditor`.
+`window.showfmEditor`, and on another environment the player gets its media hosts from
+`window.showfmMediaHosts`, set before the player script and the click loader.
+
+Saved credentials record the API that issued the key. If the environment's API differs,
+the site shows "Reconnect" and the key is never sent: not from production to a test API,
+and not from a test API to production. Credentials saved before 1.0.2 count as issued by
+the API a `SHOWFM_API_URL` constant still names, else by production, so a test site can
+keep its old constant while it moves to the filter. While either old constant is defined,
+administrators see a dismissible notice pointing to the filter. The embed hosts of every
+environment a site has used are remembered (`showfm_embed_hosts_seen`), so oEmbed markup
+cached from one is still replaced after the site moves to another.
 
 1.0.2 removed the `SHOWFM_API_URL` and `SHOWFM_APP_URL` constants: the filter names a
 whole environment, so they had nothing left to select.

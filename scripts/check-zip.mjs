@@ -11,6 +11,9 @@
  *
  * No shipped file of any kind may name a show.fm development domain: the plugin's built-in
  * hosts are production only, and a development environment comes from the site's own code.
+ *
+ * The readme (above its changelog) must name the bundled `@showfm/embed` version, and only it,
+ * in its text and in the source link, so the version a reviewer follows is the one shipped.
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -95,6 +98,23 @@ for ( const file of files ) {
 			);
 		}
 	}
+}
+// The readme's bundled-package version, against the exact version package.json pins.
+const pinned = JSON.parse( readFileSync( 'package.json', 'utf8' ) )
+	.devDependencies[ '@showfm/embed' ];
+const readme = execFileSync( 'unzip', [ '-p', zip, 'showfm/readme.txt' ], {
+	encoding: 'utf8',
+} ).split( '== Changelog ==' )[ 0 ];
+const named = [
+	...readme.matchAll( /@showfm\/embed (\d+\.\d+\.\d+)/g ),
+	...readme.matchAll( /showfm-embed\/tree\/v(\d+\.\d+\.\d+)/g ),
+].map( ( match ) => match[ 1 ] );
+if ( named.length < 2 || named.some( ( version ) => version !== pinned ) ) {
+	problems.push(
+		`readme.txt must name the bundled @showfm/embed ${ pinned } in its text and source link (found: ${
+			named.join( ', ' ) || 'none'
+		}).`
+	);
 }
 for ( const rule of rules ) {
 	if ( rule.used === 0 ) {

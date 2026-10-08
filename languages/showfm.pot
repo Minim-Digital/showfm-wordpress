@@ -2,28 +2,22 @@
 # This file is distributed under the GPLv2 or later.
 msgid ""
 msgstr ""
-"Project-Id-Version: show.fm 1.0.2\n"
+"Project-Id-Version: show.fm Podcast Player 1.0.2\n"
 "Report-Msgid-Bugs-To: https://github.com/ShowDotFM/showfm-wordpress/issues\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-08T21:52:59+00:00\n"
+"POT-Creation-Date: 2026-10-08T22:20:05+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: showfm\n"
 
 #. Plugin Name of the plugin
-#. Author of the plugin
 #: showfm.php
-#: includes/class-admin.php:87
-#: includes/class-admin.php:88
-#: includes/class-admin.php:216
 #: includes/class-privacy.php:27
-#: build/admin.js:52
-#: build/index.js:20
-msgid "show.fm"
+msgid "show.fm Podcast Player"
 msgstr ""
 
 #. Plugin URI of the plugin
@@ -34,6 +28,16 @@ msgstr ""
 #. Description of the plugin
 #: showfm.php
 msgid "Podcast player, episode lists and auto-posting for show.fm shows."
+msgstr ""
+
+#. Author of the plugin
+#: showfm.php
+#: includes/class-admin.php:87
+#: includes/class-admin.php:88
+#: includes/class-admin.php:216
+#: build/admin.js:52
+#: build/index.js:20
+msgid "show.fm"
 msgstr ""
 
 #. Author URI of the plugin
@@ -57,24 +61,24 @@ msgstr ""
 msgid "That notice can’t be dismissed."
 msgstr ""
 
-#: includes/class-admin-status.php:245
+#: includes/class-admin-status.php:248
 msgid "The connection request expired. Try again."
 msgstr ""
 
-#: includes/class-admin-status.php:248
+#: includes/class-admin-status.php:251
 msgid "The connection request didn’t start in this browser. Try again."
 msgstr ""
 
-#: includes/class-admin-status.php:251
+#: includes/class-admin-status.php:254
 msgid "show.fm couldn’t be reached. Try again in a few minutes."
 msgstr ""
 
-#: includes/class-admin-status.php:284
+#: includes/class-admin-status.php:287
 msgid "just now"
 msgstr ""
 
 #. translators: %d: number of minutes.
-#: includes/class-admin-status.php:289
+#: includes/class-admin-status.php:292
 #, php-format
 msgid "%d minute ago"
 msgid_plural "%d minutes ago"
@@ -82,19 +86,19 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %d: number of hours.
-#: includes/class-admin-status.php:294
+#: includes/class-admin-status.php:297
 #, php-format
 msgid "%d hour ago"
 msgid_plural "%d hours ago"
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/class-admin-status.php:298
+#: includes/class-admin-status.php:301
 msgid "yesterday"
 msgstr ""
 
 #. translators: %d: number of days.
-#: includes/class-admin-status.php:301
+#: includes/class-admin-status.php:304
 #, php-format
 msgid "%d day ago"
 msgid_plural "%d days ago"
@@ -831,46 +835,58 @@ msgstr ""
 msgid "The active scan changed."
 msgstr ""
 
-#: includes/class-notices.php:146
+#: includes/class-notices.php:145
+msgid "SHOWFM_API_URL and SHOWFM_APP_URL no longer choose the show.fm environment. To use another one, return it from the showfm_environment filter."
+msgstr ""
+
+#: includes/class-notices.php:148
+msgid "How to choose an environment"
+msgstr ""
+
+#: includes/class-notices.php:159
 #: build/admin.js:10
 msgid "Reconnect"
 msgstr ""
 
-#: includes/class-notices.php:157
+#: includes/class-notices.php:170
+msgid "This site was connected with a different show.fm environment, so its key isn’t used here. Reconnect to post new episodes again."
+msgstr ""
+
+#: includes/class-notices.php:179
 msgid "show.fm disconnected this site, for example because the account password changed."
 msgstr ""
 
-#: includes/class-notices.php:169
+#: includes/class-notices.php:191
 msgid "Auto-posting is paused. The show’s plan doesn’t include connected sites, so new episodes aren’t posted here."
 msgstr ""
 
-#: includes/class-notices.php:172
+#: includes/class-notices.php:194
 #: build/admin.js:13
 msgid "Check your plan"
 msgstr ""
 
-#: includes/class-notices.php:181
+#: includes/class-notices.php:203
 msgid "New episodes aren’t being posted here because the chosen post type isn’t available."
 msgstr ""
 
-#: includes/class-notices.php:182
+#: includes/class-notices.php:204
 msgid "New episodes aren’t being posted here because the chosen author can’t publish posts."
 msgstr ""
 
-#: includes/class-notices.php:183
+#: includes/class-notices.php:205
 msgid "New episodes aren’t being posted here because show.fm sent changes the plugin couldn’t read. It keeps trying."
 msgstr ""
 
-#: includes/class-notices.php:191
+#: includes/class-notices.php:213
 msgid "See what to fix"
 msgstr ""
 
-#: includes/class-notices.php:195
+#: includes/class-notices.php:217
 msgid "Check the Publishing settings"
 msgstr ""
 
 #. translators: %d: number of days.
-#: includes/class-notices.php:207
+#: includes/class-notices.php:229
 #: build/admin.js:11
 #, php-format,js-format
 msgid "Your show.fm connection expires in %d day."
@@ -878,7 +894,7 @@ msgid_plural "Your show.fm connection expires in %d days."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/class-oembed.php:244
+#: includes/class-oembed.php:297
 msgid "Listen on show.fm"
 msgstr ""
 
@@ -1224,6 +1240,14 @@ msgstr ""
 msgid "This site’s security keys changed."
 msgstr ""
 
+#: build/admin.js:7
+msgid "Key is for another show.fm environment"
+msgstr ""
+
+#: build/admin.js:7
+msgid "Reconnect to get a key for this one."
+msgstr ""
+
 #. translators: %s: a date.
 #: build/admin.js:8
 #, js-format
@@ -1368,6 +1392,10 @@ msgstr ""
 
 #: build/admin.js:13
 msgid "Reconnect to show.fm."
+msgstr ""
+
+#: build/admin.js:13
+msgid "This site was connected with a different show.fm environment, so its key isn’t used here. Blocks still play public episodes."
 msgstr ""
 
 #: build/admin.js:13

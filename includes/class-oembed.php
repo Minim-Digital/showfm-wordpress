@@ -14,10 +14,22 @@ if ( ! defined( 'ABSPATH' ) ) {
 /** Core handles fetching and caching the provider response in post meta. */
 final class Oembed {
 	/**
+	 * Embed hosts of every other show.fm environment this site has used, so oEmbed markup
+	 * cached from one is still recognised, and never passed through raw, after the site
+	 * moves to another. Autoloaded, and read from the autoloaded options, so matching
+	 * markup never queries the database, even when the option doesn't exist.
+	 */
+	const SEEN_OPTION = 'showfm_embed_hosts_seen';
+
+	/** At most this many remembered hosts. */
+	const MAX_SEEN = 20;
+
+	/**
 	 * Register host-form and legacy path-form listen pages on each listen domain (show.fm's,
 	 * and the environment's), answered by the environment's API.
 	 */
 	public static function register(): void {
+		self::remember_embed_hosts();
 		$endpoint = Api_Client::base_url() . '/v1/oembed';
 		foreach ( Environment::listen_domains() as $domain ) {
 			wp_oembed_add_provider( 'https://*.' . $domain . '/*', $endpoint );
@@ -28,7 +40,48 @@ final class Oembed {
 	}
 
 	/**
-	 * Any show.fm embed host (Environment::embed_hosts()) on label boundaries in normalised
+	 * Adds the environment's embed hosts to the remembered ones. Nothing on production.
+	 */
+	private static function remember_embed_hosts(): void {
+		if ( Environment::is_production() ) {
+			return;
+		}
+		$seen = self::seen();
+		$new  = array_diff( Environment::get()['embed'], $seen );
+		if ( $new ) {
+			update_option( self::SEEN_OPTION, array_slice( array_values( array_merge( $seen, $new ) ), -self::MAX_SEEN ), true );
+		}
+	}
+
+	/**
+	 * The remembered embed hosts, valid ones only.
+	 *
+	 * @return string[]
+	 */
+	private static function seen(): array {
+		$options = wp_load_alloptions();
+		return array_values(
+			array_filter(
+				(array) maybe_unserialize( $options[ self::SEEN_OPTION ] ?? array() ),
+				static function ( $host ): bool {
+					return is_string( $host ) && 1 === preg_match( Environment::HOST, $host );
+				}
+			)
+		);
+	}
+
+	/**
+	 * Every embed host that marks markup as show.fm's: show.fm's, the environment's, and
+	 * those of environments this site used before.
+	 *
+	 * @return string[]
+	 */
+	public static function cdn_hosts(): array {
+		return array_values( array_unique( array_merge( Environment::embed_hosts(), self::seen() ) ) );
+	}
+
+	/**
+	 * Any show.fm embed host (`cdn_hosts()`) on label boundaries in normalised
 	 * markup: a subdomain or trailing dots still match, `notembed.cdn.media` and
 	 * `embed.cdn.media.evil.test` don't. No markup naming one is ever passed through.
 	 */
@@ -37,7 +90,7 @@ final class Oembed {
 			static function ( string $host ): string {
 				return preg_quote( $host, '~' );
 			},
-			Environment::embed_hosts()
+			self::cdn_hosts()
 		);
 		return '~(?<![a-z0-9-])(?:' . implode( '|', $hosts ) . ')\.*+(?![a-z0-9-])~';
 	}
@@ -208,7 +261,7 @@ final class Oembed {
 			$src   = $tags->get_attribute( 'src' );
 			$clean = is_string( $src ) ? self::normalise( $src ) : null;
 			$parts = null !== $clean ? wp_parse_url( $clean ) : false;
-			if ( is_array( $parts ) && in_array( rtrim( (string) ( $parts['host'] ?? '' ), '.' ), Environment::embed_hosts(), true ) ) {
+			if ( is_array( $parts ) && in_array( rtrim( (string) ( $parts['host'] ?? '' ), '.' ), self::cdn_hosts(), true ) ) {
 				$title = $tags->get_attribute( 'title' );
 				return array(
 					'parts' => $parts,

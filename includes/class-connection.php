@@ -147,6 +147,8 @@ final class Connection {
 				'ping_secret' => $ping_secret,
 				'site_id'     => $site_id,
 				'expires_at'  => $expires_at,
+				// The API that issued the key: it is only ever sent back there.
+				'api'         => Api_Client::base_url(),
 			)
 		);
 		if ( false === $plain ) {
@@ -382,7 +384,20 @@ final class Connection {
 		if ( $credentials['expires_at'] > 0 && $credentials['expires_at'] <= time() ) {
 			return self::STATE_RECONNECT_NEEDED;
 		}
+		// A key is only ever sent to the API that issued it.
+		if ( Api_Client::base_url() !== $credentials['api'] ) {
+			return self::STATE_RECONNECT_NEEDED;
+		}
 		return self::STATE_CONNECTED;
+	}
+
+	/**
+	 * Whether readable credentials were issued by another show.fm environment's API than
+	 * the one in use, so the key is kept but never sent.
+	 */
+	public function issued_elsewhere(): bool {
+		$credentials = $this->credentials();
+		return null !== $credentials && Api_Client::base_url() !== $credentials['api'];
 	}
 
 	/**
@@ -789,7 +804,7 @@ final class Connection {
 	/**
 	 * Decrypts the stored credentials.
 	 *
-	 * @return array{key:string,ping_secret:string,site_id:string,expires_at:int}|null Null when missing or unreadable.
+	 * @return array{key:string,ping_secret:string,site_id:string,expires_at:int,api:string}|null Null when missing or unreadable.
 	 */
 	private function credentials(): ?array {
 		$stored = $this->stored();
@@ -834,7 +849,18 @@ final class Connection {
 			'ping_secret' => $data['ping_secret'],
 			'site_id'     => $data['site_id'],
 			'expires_at'  => $data['expires_at'],
+			'api'         => is_string( $data['api'] ?? null ) ? $data['api'] : self::legacy_issuer(),
 		);
+	}
+
+	/**
+	 * The API that issued credentials saved before 1.0.2, which didn't record it: the one a
+	 * `SHOWFM_API_URL` constant selected then, otherwise production. A site that keeps the
+	 * old constant while it moves to the `showfm_environment` filter stays connected.
+	 */
+	private static function legacy_issuer(): string {
+		$constant = defined( 'SHOWFM_API_URL' ) ? Environment::origin( constant( 'SHOWFM_API_URL' ) ) : null;
+		return $constant ?? Environment::PRODUCTION['api'];
 	}
 
 	/**

@@ -51,41 +51,42 @@ is merged and `main` is green:
 
 1. Sign in and open <https://wordpress.org/plugins/developers/add/>.
 2. Upload `showfm-1.0.2.zip`.
-3. **Check the slug.** WordPress.org builds the slug from the plugin name, and "show.fm"
-   becomes `show-fm`. I want `showfm`, which matches the text domain, the GitHub repo and
-   the npm scope. If the form shows `show-fm`, I ask for `showfm` in the reviewer notes, and
-   again in a reply to the confirmation email straight away. The team can change a slug
-   only before approval.
+3. **Check the slug.** WordPress.org builds the slug from the Plugin Name, so the form shows
+   `show-fm-podcast-player` (`sanitize_title( 'show.fm Podcast Player' )`). I want `showfm`,
+   the plugin's text domain, which translate.wordpress.org needs to match the slug. I ask
+   for `showfm` in the reviewer notes, and again in a reply to the confirmation email
+   straight away. The team can change a slug only before approval.
 4. Paste the reviewer notes below.
 
 ### Reviewer notes
 
-> show.fm is a podcast hosting service run by show.fm Ltd, which I represent. This plugin is
-> our official WordPress plugin, and we own the show.fm name.
+> show.fm is a podcast hosting service run by show.fm Ltd., which I represent. This plugin
+> is our official WordPress plugin, and we own the show.fm name.
 >
-> **Slug:** please use `showfm` rather than `show-fm`. It matches the text domain, our
-> GitHub repository (ShowDotFM/showfm-wordpress) and our npm package (@showfm/embed).
+> Slug: please use `showfm` rather than the generated `show-fm-podcast-player`. `showfm`
+> is the plugin's text domain, which translate.wordpress.org needs to match the slug, and it
+> also matches our GitHub repository (ShowDotFM/showfm-wordpress) and our npm package
+> (@showfm/embed).
 >
-> **What it does:** blocks, a shortcode and oEmbed for public show.fm podcasts, with no
-> account needed. Connecting a show.fm account adds posting new episodes as WordPress posts,
-> and a tool that swaps embeds from other podcast hosts for show.fm blocks.
+> What it does: blocks, a shortcode and oEmbed for public show.fm podcasts, with no account
+> needed. Connecting a show.fm account adds posting new episodes as WordPress posts, and a
+> tool that swaps embeds from other podcast hosts for show.fm blocks.
 >
-> **External services:** every request, what it sends and when, is listed in the readme's
-> External services section. The plugin sends nothing until a show is added to a page or the
-> site is connected. There is no telemetry.
+> External services: the readme's External services section lists every request, what it
+> sends, and when. The plugin sends nothing until you add a show to a page or connect the
+> site. There is no telemetry.
 >
-> **Bundled code:** `assets/showfm-embed/` is an unmodified copy of our MIT-licensed
-> @showfm/embed package (source: github.com/ShowDotFM/showfm-embed). A test checks it
+> Bundled code: `assets/showfm-embed/` is an unmodified copy of our MIT-licensed
+> `@showfm/embed` package (source: github.com/ShowDotFM/showfm-embed). A test checks it
 > byte for byte against the npm release. `build/` is compiled from `src/` in
-> github.com/ShowDotFM/showfm-wordpress with @wordpress/scripts. Nothing loads from a CDN.
+> github.com/ShowDotFM/showfm-wordpress with `@wordpress/scripts`. Nothing loads from a
+> CDN.
 >
-> **Credit:** "Powered by show.fm" is off unless the site owner turns it on in
-> Settings > show.fm > Display.
+> Credit: "Powered by show.fm" is off unless the site owner turns it on in
+> `Settings > show.fm > Display`.
 >
-> **Testing:** the blocks work with any public show.fm show. Type a show's address, such as
-> [a public show address], into a Player block.
-
-I replace the placeholder with a public show the reviewers can use before I paste it.
+> Testing: the blocks work with any public show.fm show. Type a show's address, such as
+> <https://the.show.fm/>, into a Player block.
 
 ## After approval
 

@@ -1,4 +1,4 @@
-=== show.fm ===
+=== show.fm Podcast Player ===
 Contributors: danmaby
 Tags: podcast, podcasting, audio, player, episodes
 Requires at least: 6.6
@@ -41,7 +41,7 @@ The Migrate tab finds players from Buzzsprout, Libsyn, Captivate, Transistor, Sp
 
 **Source code**
 
-The plugin's source and build instructions are on GitHub at [ShowDotFM/showfm-wordpress](https://github.com/ShowDotFM/showfm-wordpress). The block editor scripts in `build/` are compiled from `src/` there with @wordpress/scripts. The player scripts in `assets/showfm-embed/` are copied unchanged from the MIT-licensed [@showfm/embed 1.6.1](https://github.com/ShowDotFM/showfm-embed/tree/v1.6.1) package, and a test checks every file byte for byte. With "Load players only after a visitor clicks" on, the plugin loads the package's self-hosting click loader (`click-loader-local.js`) instead of the player script. It names no host: it loads only the bundled `v1.js` the plugin gives it, after a visitor presses a block, and without that it does nothing. The package's CDN click loader is not in the plugin, and a release check fails if any script in the plugin names embed.cdn.media.
+The plugin's source and build instructions are on GitHub at [ShowDotFM/showfm-wordpress](https://github.com/ShowDotFM/showfm-wordpress). The block editor scripts in `build/` are compiled from `src/` there with @wordpress/scripts. The player scripts in `assets/showfm-embed/` are copied unchanged from the MIT-licensed [@showfm/embed 1.6.2](https://github.com/ShowDotFM/showfm-embed/tree/v1.6.2) package, and a test checks every file byte for byte. With "Load players only after a visitor clicks" on, the plugin loads the package's self-hosting click loader (`click-loader-local.js`) instead of the player script. It names no host: it loads only the bundled `v1.js` the plugin gives it, after a visitor presses a block, and without that it does nothing. The package's CDN click loader is not in the plugin, and a release check fails if any script in the plugin names embed.cdn.media.
 
 == External services ==
 
@@ -173,6 +173,7 @@ The plugin's settings, cache, scheduled events and its own post meta. Your posts
 = 1.0.2 =
 * The plugin's built-in hosts are show.fm's production services only. A site's own code can select another show.fm environment for testing with the `showfm_environment` filter, which replaces the `SHOWFM_API_URL` and `SHOWFM_APP_URL` constants. The block editor gets the same hosts from the site.
 * Bundles @showfm/embed 1.6.2, which names only production hosts.
+* A connection is tied to the show.fm API that issued its key. If the site's environment changes, the plugin asks to reconnect and never sends the old key to the new one.
 
 = 1.0.1 =
 * Posts created by Publish to WordPress save the episode's title, listen page and audio in their blocks, as the editor does, so their first view has a readable fallback. The plugin also fills its cache for the episode during the sync and clears the post's cache whenever that changes, so page caches don't keep an empty first render.

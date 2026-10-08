@@ -44,9 +44,9 @@ sanitises the result with `wp_kses_post()` and preserves those escaped entities.
 
 The site options are `showfm_show_credit` (boolean, false) and `showfm_json_ld`
 (boolean, true). Both are registered with sanitisation but have no admin screen.
-A post author cannot enable credit without the site option. `SHOWFM_API_URL`
-selects the API for both PHP and browser requests; per-post origins cannot send
-visitors to a different API. Theme primary colour and body font map to
+A post author cannot enable credit without the site option. The environment (see
+`Environment` and the `showfm_environment` filter) selects the API for both PHP and
+browser requests; per-post origins cannot send visitors to a different API. Theme primary colour and body font map to
 `--showfm-accent` and `--showfm-font`; block overrides are inline on the element.
 Colour, typography and spacing supports also map to the corresponding
 `--showfm-*` variables, with normal WordPress wrapper styles retained.

@@ -6,12 +6,17 @@
  */
 
 use ShowFM\Admin;
+use ShowFM\Admin_Status;
 use ShowFM\Api_Client;
+use ShowFM\Assets;
 use ShowFM\Attributes;
 use ShowFM\Connect;
+use ShowFM\Connection;
 use ShowFM\Editor_Api;
 use ShowFM\Environment;
+use ShowFM\Notices;
 use ShowFM\Oembed;
+use ShowFM\Plugin;
 
 /** Every show.fm host comes from Environment, and only the site's own code changes it. */
 class Test_Environment extends WP_UnitTestCase {
@@ -159,5 +164,172 @@ class Test_Environment extends WP_UnitTestCase {
 		$this->assertTrue( Oembed::names_show_fm( '<iframe src="https://embed.example.test/ep/x"></iframe>' ) );
 		$this->assertTrue( Oembed::names_show_fm( '<iframe src="https://embed.cdn.media/ep/x"></iframe>' ) );
 		$this->assertFalse( Oembed::names_show_fm( '<iframe src="https://notembed.example.test/ep/x"></iframe>' ) );
+	}
+
+	const KEY = 'showfm_live_abcdefghijklmnopqrstuvwxWXYZ';
+
+	public function tear_down(): void {
+		Plugin::connect()->disconnect();
+		delete_option( Oembed::SEEN_OPTION );
+		parent::tear_down();
+	}
+
+	/**
+	 * Stores credentials as 1.0.1 saved them, without the issuing API.
+	 */
+	private function save_legacy_credentials(): void {
+		$key = new ReflectionMethod( Connection::class, 'encryption_key' );
+		$key->setAccessible( true );
+		$nonce = random_bytes( SODIUM_CRYPTO_SECRETBOX_NONCEBYTES );
+		$plain = wp_json_encode(
+			array(
+				'key'         => self::KEY,
+				'ping_secret' => str_repeat( 'a', 64 ),
+				'site_id'     => 'site-42',
+				'expires_at'  => 0,
+			)
+		);
+		update_option(
+			Connection::OPTION,
+			array(
+				'v' => 1,
+				'n' => base64_encode( $nonce ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- As Connection stores it.
+				'c' => base64_encode( sodium_crypto_secretbox( (string) $plain, $nonce, $key->invoke( null ) ) ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- As Connection stores it.
+				'i' => wp_generate_uuid4(),
+			),
+			false
+		);
+	}
+
+	public function test_a_key_is_never_sent_to_another_environments_api(): void {
+		$http = new ShowFM_Http_Mock();
+		try {
+			$this->assertTrue( Plugin::connection()->save( self::KEY, str_repeat( 'a', 64 ), 'site-42', 0 ) );
+			$this->assertTrue( Plugin::connection()->is_connected() );
+
+			// Production's key, with a test environment selected: kept, never sent.
+			showfm_use_test_environment();
+			$connection = new Connection();
+			$this->assertSame( Connection::STATE_RECONNECT_NEEDED, $connection->state() );
+			$this->assertTrue( $connection->issued_elsewhere() );
+			$this->assertNull( $connection->key() );
+			$this->assertSame( 'other_environment', ( new Admin_Status( $connection ) )->view( get_current_user_id() )['state'] );
+			$this->assertSame( 'environment', strtok( ( new Notices( $connection ) )->candidates()[0]['key'], ':' ) );
+			( new Api_Client( $connection ) )->get_keyed( '/v1/me' );
+			$this->assertSame( 0, $http->count() );
+
+			// Reconnecting there gives a key for that API, which production never gets.
+			$this->assertTrue( $connection->save( self::KEY, str_repeat( 'a', 64 ), 'site-43', 0 ) );
+			$this->assertTrue( ( new Connection() )->is_connected() );
+			remove_filter( 'showfm_environment', 'showfm_test_environment' );
+			$connection = new Connection();
+			$this->assertFalse( $connection->is_connected() );
+			$this->assertTrue( $connection->issued_elsewhere() );
+			( new Api_Client( $connection ) )->get_keyed( '/v1/me' );
+			$this->assertSame( 0, $http->count() );
+		} finally {
+			$http->detach();
+		}
+	}
+
+	public function test_credentials_from_before_1_0_2_belong_to_production_without_the_old_constant(): void {
+		$this->save_legacy_credentials();
+		$this->assertTrue( ( new Connection() )->is_connected() );
+		$this->assertSame( self::KEY, ( new Connection() )->key() );
+
+		showfm_use_test_environment();
+		$this->assertFalse( ( new Connection() )->is_connected() );
+	}
+
+	/**
+	 * The old constant cannot be undefined, so this runs in its own process.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_credentials_from_a_1_0_1_test_site_never_reach_production(): void {
+		define( 'SHOWFM_API_URL', 'https://api.example.test' );
+		$http = new ShowFM_Http_Mock();
+		try {
+			$this->save_legacy_credentials();
+
+			// Production: the key the old constant's API issued is kept, never sent.
+			$connection = new Connection();
+			$this->assertTrue( $connection->issued_elsewhere() );
+			$this->assertNull( $connection->key() );
+			( new Api_Client( $connection ) )->get_keyed( '/v1/me' );
+			$this->assertSame( 0, $http->count() );
+
+			// The filter selects that API again: connected, with no reconnect.
+			showfm_use_test_environment();
+			$this->assertTrue( ( new Connection() )->is_connected() );
+
+			// The old constant gets a dismissible notice pointing to the filter.
+			$this->assertSame( 'constants:1', ( new Notices( new Connection() ) )->candidates()[0]['key'] );
+		} finally {
+			$http->detach();
+		}
+	}
+
+	public function test_no_notice_without_the_old_constants(): void {
+		$this->assertSame( array(), ( new Notices( new Connection() ) )->candidates() );
+	}
+
+	public function test_the_player_gets_the_environments_media_hosts_before_it_runs(): void {
+		$before = static function ( string $handle ): string {
+			wp_deregister_script( Assets::HANDLE );
+			wp_deregister_script( Assets::CLICK_HANDLE );
+			Assets::register();
+			return implode( "\n", array_filter( (array) wp_scripts()->get_data( $handle, 'before' ) ) );
+		};
+		foreach ( array( Assets::HANDLE, Assets::CLICK_HANDLE ) as $handle ) {
+			$this->assertStringNotContainsString( 'showfmMediaHosts', $before( $handle ), 'Production: built in.' );
+		}
+
+		add_filter(
+			'showfm_environment',
+			static function (): array {
+				$environment          = showfm_test_environment();
+				$environment['media'] = array( 'm.example.test', 'media.example.test' );
+				return $environment;
+			}
+		);
+		foreach ( array( Assets::HANDLE, Assets::CLICK_HANDLE ) as $handle ) {
+			$script = $before( $handle );
+			$this->assertStringContainsString( 'window.showfmMediaHosts = ["m.example.test","media.example.test"];', $script, $handle );
+			// Before the click loader's own source, so v1.js sees it whenever it loads.
+			if ( Assets::CLICK_HANDLE === $handle ) {
+				$this->assertLessThan( strpos( $script, 'showfmEmbedSrc' ), strpos( $script, 'showfmMediaHosts' ) );
+			}
+		}
+		$tag = get_echo( array( wp_scripts(), 'do_item' ), array( Assets::HANDLE ) );
+		$this->assertLessThan( strpos( $tag, 'v1.js' ), strpos( $tag, 'showfmMediaHosts' ) );
+
+		remove_all_filters( 'showfm_environment' );
+		wp_deregister_script( Assets::HANDLE );
+		wp_deregister_script( Assets::CLICK_HANDLE );
+		Assets::register();
+	}
+
+	public function test_markup_from_an_environment_used_before_is_never_passed_through(): void {
+		showfm_use_test_environment();
+		Oembed::register();
+		$this->assertSame( array( 'embed.example.test' ), get_option( Oembed::SEEN_OPTION ) );
+
+		// Back on production, markup cached from the test environment is still show.fm's.
+		remove_filter( 'showfm_environment', 'showfm_test_environment' );
+		$iframe = '<iframe src="https://embed.example.test/ep/2f1c9a1e-0000-4000-8000-000000000001" title="Episode"></iframe>';
+		$this->assertTrue( Oembed::names_show_fm( $iframe ) );
+		$html = Oembed::output( $iframe, 'https://my-show.example.test/e/x' );
+		$this->assertStringNotContainsString( 'embed.example.test', $html );
+		$this->assertStringNotContainsString( '<iframe', $html );
+
+		// Only valid host names are read back.
+		update_option( Oembed::SEEN_OPTION, array( 'embed.example.test', '*.evil.test', 42 ) );
+		$this->assertSame( array( 'embed.cdn.media', 'embed.example.test' ), Oembed::cdn_hosts() );
+		foreach ( array( 'https://*.example.test/*', 'https://example.test/*', '~^https://[a-z0-9]+(?:-[a-z0-9]+)*\.example\.test/?(?:[?#].*)?\z~i' ) as $format ) {
+			wp_oembed_remove_provider( $format );
+		}
+		Oembed::register();
 	}
 }

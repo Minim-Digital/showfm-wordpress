@@ -13,4 +13,4 @@ mkdir -p "$(dirname "$out")"
 npx wp-env run cli --env-cwd=wp-content/plugins/showfm wp i18n make-pot . "$out" \
 	--slug=showfm --domain=showfm \
 	--exclude=node_modules,vendor,tests,dist,src,artifacts,assets/showfm-embed,scripts,bin,.playwright-mcp,.wordpress-org \
-	--headers="{\"Report-Msgid-Bugs-To\":\"https://github.com/ShowDotFM/showfm-wordpress/issues\",\"Project-Id-Version\":\"show.fm $version\"}"
+	--headers="{\"Report-Msgid-Bugs-To\":\"https://github.com/ShowDotFM/showfm-wordpress/issues\",\"Project-Id-Version\":\"show.fm Podcast Player $version\"}"

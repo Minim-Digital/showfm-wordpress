@@ -25,15 +25,33 @@ final class Assets {
 
 	/** Register in the front end and enqueue_block_assets editor iframe lifecycle. */
 	public static function register(): void {
-		wp_register_script( self::HANDLE, self::script_url(), array(), self::VERSION, true );
+		if ( ! wp_script_is( self::HANDLE, 'registered' ) ) {
+			wp_register_script( self::HANDLE, self::script_url(), array(), self::VERSION, true );
+			self::add_media_hosts( self::HANDLE );
+		}
 		if ( ! wp_script_is( self::CLICK_HANDLE, 'registered' ) ) {
 			wp_register_script( self::CLICK_HANDLE, plugins_url( 'assets/showfm-embed/click-loader-local.js', SHOWFM_FILE ), array(), self::VERSION, true );
+			self::add_media_hosts( self::CLICK_HANDLE );
 			// The loader's first source. Script optimisers that combine or delay scripts can
 			// drop data-src, or run the loader outside its own tag, but they keep inline
 			// scripts and run them in order.
 			wp_add_inline_script( self::CLICK_HANDLE, 'window.showfmEmbedSrc = ' . wp_json_encode( self::versioned_script_url() ) . ';', 'before' );
 		}
 		wp_register_style( self::HANDLE, plugins_url( 'assets/blocks.css', SHOWFM_FILE ), array(), SHOWFM_VERSION );
+	}
+
+	/**
+	 * On another show.fm environment, tells the player its media hosts, before it (or the
+	 * click loader that adds it) runs. The package has only production's built in, and
+	 * offers transcripts and downloads only for audio on a known media host.
+	 *
+	 * @param string $handle Script handle.
+	 */
+	private static function add_media_hosts( string $handle ): void {
+		if ( Environment::is_production() ) {
+			return;
+		}
+		wp_add_inline_script( $handle, 'window.showfmMediaHosts = ' . wp_json_encode( Environment::get()['media'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES ) . ';', 'before' );
 	}
 
 	/** The bundled v1.js. */

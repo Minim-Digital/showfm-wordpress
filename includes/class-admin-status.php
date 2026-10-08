@@ -60,6 +60,9 @@ final class Admin_Status {
 		if ( $connection->is_unreadable() ) {
 			return 'unreadable';
 		}
+		if ( $connection->issued_elsewhere() ) {
+			return 'other_environment';
+		}
 		$expires = (int) $connection->expires_at();
 		if ( $expires > 0 && $expires <= time() ) {
 			return 'expired';

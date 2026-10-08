@@ -227,6 +227,8 @@ class Test_Api_Client extends WP_UnitTestCase {
 
 	public function test_the_key_goes_only_to_the_environments_api(): void {
 		showfm_use_test_environment();
+		// A key the example API issued (the set-up key is production's, and stays there).
+		$this->assertTrue( $this->connection->save( self::KEY, 'ping-secret-value-0001', 'site-123', 0 ) );
 		$this->http->respond( 200, '{"data":{}}' );
 
 		$this->client->get_keyed( '/v1/me' );

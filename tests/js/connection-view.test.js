@@ -23,6 +23,7 @@ describe( 'connection view', () => {
 			'expired',
 			'refused',
 			'unreadable',
+			'other_environment',
 		] ) {
 			expect( hasConnection( view( { state } ) ) ).toBe( true );
 		}
@@ -32,7 +33,12 @@ describe( 'connection view', () => {
 	it( 'makes Reconnect primary only when the key no longer works', () => {
 		expect( needsReconnect( view() ) ).toBe( false );
 		expect( needsReconnect( view( { state: 'expiring' } ) ) ).toBe( false );
-		for ( const state of [ 'expired', 'refused', 'unreadable' ] ) {
+		for ( const state of [
+			'expired',
+			'refused',
+			'unreadable',
+			'other_environment',
+		] ) {
 			expect( needsReconnect( view( { state } ) ) ).toBe( true );
 		}
 	} );
@@ -44,6 +50,7 @@ describe( 'connection view', () => {
 		[ 'expired', {}, 'Expired', 'error' ],
 		[ 'refused', {}, 'Disconnected', 'error' ],
 		[ 'unreadable', {}, 'Needs reconnecting', 'error' ],
+		[ 'other_environment', {}, 'Needs reconnecting', 'error' ],
 		[ 'paused', {}, 'Auto-posting paused', 'warning' ],
 		[ 'scheduled', {}, 'Scheduled checks', 'info' ],
 	] )( 'shows the %s status', ( state, extra, label, tone ) => {
@@ -81,6 +88,11 @@ describe( 'connection view', () => {
 		expect( keyRow( view( { state: 'unreadable' } ) ).text ).toBe(
 			'Key can’t be read'
 		);
+		expect( keyRow( view( { state: 'other_environment' } ) ) ).toEqual( {
+			text: 'Key is for another show.fm environment',
+			note: 'Reconnect to get a key for this one.',
+			error: true,
+		} );
 		expect(
 			keyRow(
 				view( { key: { masked: '', expiresOn: '', refusedOn: '' } } )
@@ -170,6 +182,14 @@ describe( 'connection view', () => {
 			'error',
 			'Reconnect to show.fm.',
 			'This site’s security keys changed, so the saved connection can’t be used any more.',
+			'reconnect',
+		],
+		[
+			'other_environment',
+			{},
+			'error',
+			'Reconnect to show.fm.',
+			expect.stringContaining( 'a different show.fm environment' ),
 			'reconnect',
 		],
 	] )(

@@ -24,7 +24,7 @@ final class Privacy {
 		if ( ! function_exists( 'wp_add_privacy_policy_content' ) ) {
 			return;
 		}
-		wp_add_privacy_policy_content( __( 'show.fm', 'showfm' ), wp_kses_post( wpautop( self::text(), false ) ) );
+		wp_add_privacy_policy_content( __( 'show.fm Podcast Player', 'showfm' ), wp_kses_post( wpautop( self::text(), false ) ) );
 	}
 
 	/**
@@ -36,7 +36,7 @@ final class Privacy {
 		$api         = (string) wp_parse_url( $environment['api'], PHP_URL_HOST );
 		$media       = Environment::is_production()
 			? __( 'm.cdn.media, or media.podcasterplus.com for some older episodes', 'showfm' )
-			: wp_sprintf_l( '%l', $environment['media'] );
+			: wp_sprintf_l( '%l', Environment::media_hosts() );
 		$paragraphs  = array(
 			__( 'This site uses the show.fm plugin to show podcast episodes. show.fm is a podcast hosting service run by show.fm Ltd.', 'showfm' ),
 			sprintf(
