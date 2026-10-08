@@ -249,7 +249,6 @@ class Test_Environment extends WP_UnitTestCase {
 	}
 
 	public function test_the_issuer_of_credentials_from_before_1_0_2_is_saved_once(): void {
-		delete_option( Connection::ISSUER_PINNED_OPTION );
 		$this->save_legacy_credentials();
 		$this->assertNull( $this->saved_issuer() );
 		$state = ( new Connection() )->snapshot()['id'];
@@ -257,9 +256,35 @@ class Test_Environment extends WP_UnitTestCase {
 		Connection::pin_issuer();
 
 		$this->assertSame( 'https://api.show.fm', $this->saved_issuer() );
-		$this->assertSame( '1', (string) get_option( Connection::ISSUER_PINNED_OPTION ) );
+		$this->assertSame( $state, get_option( Connection::ISSUER_PINNED_OPTION ) );
 		$this->assertSame( $state, ( new Connection() )->snapshot()['id'], 'The same state.' );
 		$this->assertSame( self::KEY, ( new Connection() )->key() );
+
+		// A downgrade to 1.0.1 and a reconnect there: a new state, pinned again.
+		$this->save_legacy_credentials();
+		$this->assertNull( $this->saved_issuer() );
+		Connection::pin_issuer();
+		$this->assertSame( 'https://api.show.fm', $this->saved_issuer() );
+	}
+
+	public function test_after_the_first_check_a_request_does_no_lock_work(): void {
+		$this->save_legacy_credentials();
+		// Unreadable now, as after the salts changed: nothing to pin, and no retrying.
+		$stored      = get_option( Connection::OPTION );
+		$stored['c'] = base64_encode( 'not the ciphertext' ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- As Connection stores it.
+		update_option( Connection::OPTION, $stored, false );
+		Connection::pin_issuer();
+		$this->assertSame( $stored['i'], get_option( Connection::ISSUER_PINNED_OPTION ) );
+
+		$queries = array();
+		$record  = static function ( string $query ) use ( &$queries ): string {
+			$queries[] = $query;
+			return $query;
+		};
+		add_filter( 'query', $record );
+		Connection::pin_issuer();
+		remove_filter( 'query', $record );
+		$this->assertSame( array(), $queries, 'No lock, no reads, no writes.' );
 	}
 
 	/**
@@ -269,7 +294,6 @@ class Test_Environment extends WP_UnitTestCase {
 	 * @preserveGlobalState disabled
 	 */
 	public function test_a_constant_defined_after_the_issuer_is_saved_changes_nothing(): void {
-		delete_option( Connection::ISSUER_PINNED_OPTION );
 		$this->save_legacy_credentials();
 		Connection::pin_issuer();
 
@@ -298,21 +322,21 @@ class Test_Environment extends WP_UnitTestCase {
 	 */
 	public function test_credentials_from_a_1_0_1_test_site_never_reach_production(): void {
 		define( 'SHOWFM_API_URL', 'https://api.example.test' );
-		delete_option( Connection::ISSUER_PINNED_OPTION );
 		$http = new ShowFM_Http_Mock();
 		try {
 			$this->save_legacy_credentials();
 
-			// Production: the constant names an API no filter selects, so who issued the key
-			// isn't known yet. It is kept, never sent, and nothing is saved.
+			// The first request pins the API the constant names, whatever the environment.
+			Connection::pin_issuer();
+			$this->assertSame( 'https://api.example.test', $this->saved_issuer() );
+
+			// On production that key is another environment's: kept, never sent. Removing
+			// the constant, as the notice asks, changes nothing: the issuer is saved.
 			$connection = new Connection();
 			$this->assertTrue( $connection->issued_elsewhere() );
 			$this->assertNull( $connection->key() );
 			( new Api_Client( $connection ) )->get_keyed( '/v1/me' );
 			$this->assertSame( 0, $http->count() );
-			Connection::pin_issuer();
-			$this->assertNull( $this->saved_issuer() );
-			$this->assertFalse( get_option( Connection::ISSUER_PINNED_OPTION ) );
 
 			// The Reconnect error comes before the warning about the old constant.
 			$keys = wp_list_pluck( ( new Notices( $connection ) )->candidates(), 'key' );
@@ -322,18 +346,11 @@ class Test_Environment extends WP_UnitTestCase {
 			// WP-CLI says why.
 			WP_CLI::$output = array();
 			( new ShowFM\Cli( new Connect( $connection, new Api_Client( $connection ) ), $connection ) )->status();
-			$this->assertContains( 'State: reconnect needed (connected to a different show.fm environment; reconnect)', array_column( WP_CLI::$output, 1 ) );
+			$this->assertContains( 'State: reconnect needed (connected to a different show.fm environment)', array_column( WP_CLI::$output, 1 ) );
 
-			// The filter selects that API: connected, with no reconnect, and now saved.
+			// The filter selects that API: connected, with no reconnect.
 			showfm_use_test_environment();
 			$this->assertTrue( ( new Connection() )->is_connected() );
-			Connection::pin_issuer();
-			$this->assertSame( 'https://api.example.test', $this->saved_issuer() );
-			remove_filter( 'showfm_environment', 'showfm_test_environment' );
-			$this->assertTrue( ( new Connection() )->issued_elsewhere() );
-			showfm_use_test_environment();
-
-			// Connected, only the dismissible notice about the old constant is left.
 			$this->assertSame( array( 'constants:1' ), wp_list_pluck( ( new Notices( new Connection() ) )->candidates(), 'key' ) );
 		} finally {
 			$http->detach();

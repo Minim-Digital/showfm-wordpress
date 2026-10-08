@@ -365,12 +365,12 @@ alongside the environment's. The editor gets the listen domains and media hosts 
 
 Saved credentials record the API that issued the key. If the environment's API differs,
 the site shows "Reconnect" and the key is never sent: not from production to a test API,
-and not from a test API to production. Credentials saved before 1.0.2 count as issued by production, unless a `SHOWFM_API_URL`
-constant names the API the filter selects now. A constant naming any other API leaves the
-issuer unknown, and the key is not sent anywhere until the filter selects it or the
-constant goes. The first time the issuer is known it is saved (`Connection::pin_issuer()`
-on `init`), so a constant defined later changes nothing. Disconnect can't revoke a key
-another environment issued, and says it may still work. While either old constant is defined,
+and not from a test API to production. Credentials saved before 1.0.2 are pinned at the
+first request after the upgrade (`Connection::pin_issuer()`, first on `init`): to the API
+a valid `SHOWFM_API_URL` constant names, otherwise production. That is never worked out
+again, so removing or adding the constant later changes nothing, and a pinned test API the
+environment doesn't select is another environment's. Disconnect can't revoke a key another
+environment issued, and says it may still work. While either old constant is defined,
 administrators see a dismissible notice pointing to the filter. The embed hosts of every
 environment a site has used are remembered (`showfm_embed_hosts_seen`), so oEmbed markup
 cached from one is still replaced after the site moves to another.

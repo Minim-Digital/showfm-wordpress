@@ -156,7 +156,7 @@ final class Cli {
 		);
 
 		if ( $this->connection->issued_elsewhere() ) {
-			$labels[ Connection::STATE_RECONNECT_NEEDED ] = __( 'reconnect needed (connected to a different show.fm environment; reconnect)', 'showfm' );
+			$labels[ Connection::STATE_RECONNECT_NEEDED ] = __( 'reconnect needed (connected to a different show.fm environment)', 'showfm' );
 		}
 
 		/* translators: %s: connection state. */

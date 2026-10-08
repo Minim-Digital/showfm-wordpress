@@ -78,8 +78,9 @@ final class Connection {
 	const LEGACY_GENERATION_OPTION = 'showfm_connection_generation';
 
 	/**
-	 * Set once credentials from before 1.0.2 have their issuing API saved, or there were none
-	 * (autoloaded, so the check costs no query).
+	 * The state id `pin_issuer()` last checked (autoloaded). Matching the stored state id
+	 * means there is nothing to do, so later requests skip it without taking the lock. A new
+	 * state, such as a reconnect made by 1.0.1 after a downgrade, is checked again.
 	 */
 	const ISSUER_PINNED_OPTION = 'showfm_connection_issuer_pinned';
 
@@ -877,70 +878,60 @@ final class Connection {
 			'ping_secret' => $data['ping_secret'],
 			'site_id'     => $data['site_id'],
 			'expires_at'  => $data['expires_at'],
-			'api'         => is_string( $data['api'] ?? null ) ? $data['api'] : self::legacy_issuer()[0],
+			'api'         => is_string( $data['api'] ?? null ) ? $data['api'] : self::legacy_issuer(),
 		);
 	}
 
 	/**
-	 * The API that issued credentials saved before 1.0.2, which didn't record it, and whether
-	 * that is known. 1.0.1 honoured `SHOWFM_API_URL` for production's API and one test API,
-	 * and used production for anything else:
-	 *
-	 * - no constant, an invalid one, or production's API: production, known;
-	 * - the API the site's `showfm_environment` filter selects now: that API, known;
-	 * - any other https origin: not known. The key counts as that origin's, so it is never
-	 *   sent anywhere, until the filter selects that API or the constant goes.
-	 *
-	 * `pin_issuer()` saves a known answer once, so a constant defined later changes nothing.
-	 *
-	 * @return array{0:string,1:bool} The origin, and whether it is known.
+	 * The API that issued credentials saved before 1.0.2, which didn't record it: the one a
+	 * valid `SHOWFM_API_URL` constant names, otherwise production. `pin_issuer()` saves it at
+	 * the first request after the upgrade, so it is worked out once and never again. A test
+	 * API that the environment doesn't select is then simply another environment's, and its
+	 * key is never sent anywhere else.
 	 */
-	private static function legacy_issuer(): array {
-		$production = Environment::PRODUCTION['api'];
-		$constant   = defined( 'SHOWFM_API_URL' ) ? Environment::origin( constant( 'SHOWFM_API_URL' ) ) : null;
-		if ( null === $constant || $production === $constant ) {
-			return array( $production, true );
-		}
-		return array( $constant, Api_Client::base_url() === $constant );
+	private static function legacy_issuer(): string {
+		$constant = defined( 'SHOWFM_API_URL' ) ? Environment::origin( constant( 'SHOWFM_API_URL' ) ) : null;
+		return $constant ?? Environment::PRODUCTION['api'];
 	}
 
 	/**
-	 * Saves the issuing API into credentials saved before 1.0.2, once it is known, so the
-	 * rule in `legacy_issuer()` applies once and no more. Runs early on `init`. When it is
-	 * done, or there is nothing to pin, an autoloaded flag makes later requests skip it with
-	 * no query.
+	 * Saves the issuing API into credentials saved before 1.0.2. Runs first on `init`. It
+	 * reads the stored option, which `Sync::schedule()` reads on every request anyway, and
+	 * takes the lock only when credentials without an issuer are actually stored. Nothing
+	 * stored, unreadable credentials or credentials with an issuer need nothing, and the
+	 * state id is recorded so that later requests skip it.
 	 */
 	public static function pin_issuer(): void {
-		if ( get_option( self::ISSUER_PINNED_OPTION ) || ! self::legacy_issuer()[1] ) {
+		$current = new self();
+		$id      = self::id_of( $current->stored() );
+		if ( get_option( self::ISSUER_PINNED_OPTION ) === $id ) {
 			return;
 		}
-		try {
-			$done = self::mutate(
-				static function ( Connection $fresh ): bool {
-					$stored = $fresh->stored();
-					if ( ! self::stores_credentials( $stored ) ) {
-						return true;
+		$data = $current->decrypted();
+		if ( null !== $data && ! is_string( $data['api'] ?? null ) ) {
+			try {
+				$done = self::mutate(
+					static function ( Connection $fresh ) use ( $id ): bool {
+						$stored = $fresh->stored();
+						$data   = $fresh->decrypted();
+						if ( self::id_of( $stored ) !== $id || null === $data || is_string( $data['api'] ?? null ) ) {
+							// Changed meanwhile: the next request checks the new state.
+							return false;
+						}
+						$data['api'] = self::legacy_issuer();
+						$sealed      = self::seal( $data );
+						return null !== $sealed && self::write( self::OPTION, $sealed + (array) $stored );
 					}
-					$data = $fresh->decrypted();
-					if ( null === $data ) {
-						// Unreadable for now (the salts changed): try again later.
-						return false;
-					}
-					if ( is_string( $data['api'] ?? null ) ) {
-						return true;
-					}
-					$data['api'] = self::legacy_issuer()[0];
-					$sealed      = self::seal( $data );
-					return null !== $sealed && self::write( self::OPTION, $sealed + (array) $stored );
-				}
-			);
-		} catch ( Connection_Busy $e ) {
-			// Busy, or the lock lost part way (Connection_Lost extends it): next request.
-			return;
+				);
+			} catch ( Connection_Busy $e ) {
+				// Busy, or the lock lost part way (Connection_Lost extends it): next request.
+				return;
+			}
+			if ( true !== $done ) {
+				return;
+			}
 		}
-		if ( true === $done ) {
-			update_option( self::ISSUER_PINNED_OPTION, 1, true );
-		}
+		update_option( self::ISSUER_PINNED_OPTION, $id, true );
 	}
 
 	/**
