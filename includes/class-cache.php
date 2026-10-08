@@ -287,7 +287,7 @@ final class Cache {
 			$ref  = (int) array_shift( $patterns );
 			$refs = self::scan(
 				true,
-				'"ref":' . $ref,
+				(string) $ref,
 				static function ( string $content ) use ( $ref ): bool {
 					return self::references( $content, $ref );
 				},
@@ -320,11 +320,12 @@ final class Cache {
 
 	/**
 	 * Reads the published posts that match a prefilter a page at a time, in ID order, and
-	 * keeps the ones the check confirms. The prefilter is a show.fm block or shortcode, or a
-	 * synced pattern block, with the value anywhere in the content.
+	 * keeps the ones the check confirms. The prefilter is a show.fm block or shortcode with the
+	 * value anywhere in the content, or a block comment with a "ref" key followed somewhere by
+	 * the value, so JSON whitespace like {"ref" : 12} still passes.
 	 *
 	 * @param bool                   $patterns Whether to look for synced pattern blocks.
-	 * @param string                 $value    Text the content must contain.
+	 * @param string                 $value    The ID or slug, or for patterns the pattern's ID.
 	 * @param callable(string): bool $confirm  Confirms a post from its content.
 	 * @param int                    $want     Stops once this many are confirmed.
 	 * @param int                    $budget   How many candidates may still be read, reduced by each one read.
@@ -332,7 +333,7 @@ final class Cache {
 	 */
 	private static function scan( bool $patterns, string $value, callable $confirm, int $want, int &$budget ): array {
 		global $wpdb;
-		$like  = '%' . $wpdb->esc_like( $value ) . '%';
+		$like  = '%' . ( $patterns ? $wpdb->esc_like( '"ref"' ) . '%' : '' ) . $wpdb->esc_like( $value ) . '%';
 		$found = array();
 		$after = 0;
 		while ( $budget > 0 && $want > 0 ) {
@@ -343,7 +344,7 @@ final class Cache {
 					$wpdb->prepare(
 						"SELECT ID, post_type, post_content FROM {$wpdb->posts} WHERE post_status IN ('publish','future','private') AND ID > %d AND post_content LIKE %s AND post_content LIKE %s ORDER BY ID LIMIT %d",
 						$after,
-						'%' . $wpdb->esc_like( '<!-- wp:block ' ) . '%',
+						'%' . $wpdb->esc_like( 'wp:block' ) . '%',
 						$like,
 						$page
 					)

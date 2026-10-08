@@ -305,6 +305,7 @@ class Test_Cache extends WP_UnitTestCase {
 	}
 
 	public function test_a_synced_pattern_purges_the_posts_that_show_it(): void {
+		global $wpdb;
 		$uuid    = '2f1c9a1e-0000-4000-8000-000000000003';
 		$pattern = self::factory()->post->create(
 			array(
@@ -319,17 +320,53 @@ class Test_Cache extends WP_UnitTestCase {
 			)
 		);
 		$shows   = self::factory()->post->create( array( 'post_content' => '<!-- wp:block {"ref":' . $pattern . '} /-->' ) );
-		$nested  = self::factory()->post->create( array( 'post_content' => '<!-- wp:group --><div class="wp-block-group"><!-- wp:block {"ref":' . $outer . '} /--></div><!-- /wp:group -->' ) );
-		$longer  = self::factory()->post->create( array( 'post_content' => '<!-- wp:block {"ref":' . $pattern . '1} /-->' ) );
-		$text    = self::factory()->post->create( array( 'post_content' => '<!-- wp:block {"ref":1} /--><!-- wp:paragraph --><p>"ref":' . $pattern . '</p><!-- /wp:paragraph -->' ) );
+		// Written straight to the table: saving through kses would reserialise the block JSON.
+		$spaced = array();
+		foreach ( array( '<!-- wp:block {"ref": ' . $pattern . '} /-->', '<!-- wp:block {"ref" :' . $pattern . '} /-->', "<!-- wp:block {\n\t\"ref\":\n\t" . $pattern . "\n} /-->" ) as $content ) {
+			$id = self::factory()->post->create();
+			$wpdb->update( $wpdb->posts, array( 'post_content' => $content ), array( 'ID' => $id ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Test setup.
+			$spaced[] = $id;
+		}
+		$nested = self::factory()->post->create( array( 'post_content' => '<!-- wp:group --><div class="wp-block-group"><!-- wp:block {"ref":' . $outer . '} /--></div><!-- /wp:group -->' ) );
+		$longer = self::factory()->post->create( array( 'post_content' => '<!-- wp:block {"ref":' . $pattern . '1} /-->' ) );
+		$text   = self::factory()->post->create( array( 'post_content' => '<!-- wp:block {"ref":1} /--><!-- wp:paragraph --><p>"ref":' . $pattern . '</p><!-- /wp:paragraph -->' ) );
 
 		$cleaned  = Cache::purge_posts( '/v1/episodes/' . $uuid );
-		$expected = array( $pattern, $outer, $shows, $nested );
+		$expected = array_merge( array( $pattern, $outer, $shows, $nested ), $spaced );
 		sort( $cleaned );
 		sort( $expected );
 		$this->assertSame( $expected, $cleaned );
 		$this->assertNotContains( $longer, $cleaned );
 		$this->assertNotContains( $text, $cleaned );
+	}
+
+	public function test_patterns_that_reference_each_other_are_purged_once(): void {
+		$uuid   = '2f1c9a1e-0000-4000-8000-000000000004';
+		$first  = self::factory()->post->create(
+			array(
+				'post_type'    => 'wp_block',
+				'post_content' => '<!-- wp:showfm/player {"episode":"' . $uuid . '"} /-->',
+			)
+		);
+		$second = self::factory()->post->create(
+			array(
+				'post_type'    => 'wp_block',
+				'post_content' => '<!-- wp:block {"ref":' . $first . '} /-->',
+			)
+		);
+		wp_update_post(
+			array(
+				'ID'           => $first,
+				'post_content' => '<!-- wp:showfm/player {"episode":"' . $uuid . '"} /--><!-- wp:block {"ref":' . $second . '} /-->',
+			)
+		);
+		$post = self::factory()->post->create( array( 'post_content' => '<!-- wp:block {"ref":' . $second . '} /-->' ) );
+
+		$cleaned  = Cache::purge_posts( '/v1/episodes/' . $uuid );
+		$expected = array( $first, $second, $post );
+		sort( $cleaned );
+		sort( $expected );
+		$this->assertSame( $expected, $cleaned );
 	}
 
 	public function test_a_short_slug_purges_only_posts_that_name_it(): void {

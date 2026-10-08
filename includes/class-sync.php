@@ -290,6 +290,10 @@ final class Sync {
 	 * pull runs, only if the stored credentials are still for the site it started with: a
 	 * connection to another site, made meanwhile, starts with no history, and a late write
 	 * from the old run would show the old site's. Reads the stored credentials fresh.
+	 *
+	 * A connection change between this check and the write (microseconds, in one request) is
+	 * accepted: the data is display-only and the new site's next sync overwrites it, and
+	 * holding the connection lock around every health write would cost more than it protects.
 	 */
 	public static function owns_health(): bool {
 		$blog = get_current_blog_id();
