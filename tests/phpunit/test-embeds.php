@@ -393,6 +393,49 @@ class Test_Embeds extends WP_UnitTestCase {
 		}
 	}
 
+	public function test_player_mini_player_and_its_corner_are_rendered_and_validated(): void {
+		$block = WP_Block_Type_Registry::get_instance()->get_registered( 'showfm/player' );
+		$this->assertArrayHasKey( 'mini-player', $block->attributes );
+		$this->assertArrayHasKey( 'mini-player-position', $block->attributes );
+
+		$player = function ( array $attrs ): string {
+			return $this->block(
+				'player',
+				array_merge(
+					array(
+						'episode'  => self::ID,
+						'snapshot' => $this->snapshot(),
+					),
+					$attrs
+				)
+			);
+		};
+		$html   = $player( array() );
+		$this->assertStringNotContainsString( 'mini-player', $html );
+
+		$html = $player(
+			array(
+				'mini-player'          => 'on',
+				'mini-player-position' => 'left',
+			)
+		);
+		$this->assertStringContainsString( 'mini-player="on"', $html );
+		$this->assertStringContainsString( 'mini-player-position="left"', $html );
+
+		$html = $player(
+			array(
+				'mini-player'          => 'sometimes',
+				'mini-player-position' => 'top" onclick="x',
+			)
+		);
+		$this->assertStringNotContainsString( 'mini-player', $html );
+		$this->assertStringNotContainsString( 'onclick', $html );
+
+		$html = do_shortcode( '[showfm episode="' . self::ID . '" mini-player="on" mini-player-position="right"]' );
+		$this->assertStringContainsString( 'mini-player="on"', $html );
+		$this->assertStringContainsString( 'mini-player-position="right"', $html );
+	}
+
 	public function test_display_settings_are_registered_for_rest_with_their_defaults(): void {
 		$settings = get_registered_settings();
 		$expected = array(

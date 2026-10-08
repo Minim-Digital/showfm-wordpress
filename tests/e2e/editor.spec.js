@@ -269,7 +269,7 @@ test.describe( 'show.fm blocks in the editor', () => {
 		} );
 		await inspector.getByRole( 'tab', { name: 'Block' } ).click();
 		await inspector.getByRole( 'radio', { name: 'Large' } ).click();
-		await inspector.getByLabel( 'Mini-player' ).uncheck();
+		await inspector.getByLabel( 'Mini-player', { exact: true } ).uncheck();
 		await expect(
 			inspector.getByText( 'Visitors can only play and pause.' ).first()
 		).toBeVisible();

@@ -50,6 +50,37 @@ export function Segmented( { label, value, options, onChange, help } ) {
 }
 
 /**
+ * Which bottom corner the collapsed mini-player sits in. The element's default is the right,
+ * which stores nothing.
+ *
+ * @param {Object}                       props
+ * @param {Object}                       props.attributes    Block attributes.
+ * @param {(attributes: Object) => void} props.setAttributes Setter.
+ */
+export function MiniPlayerCorner( { attributes, setAttributes } ) {
+	return (
+		<Segmented
+			label={ __( 'Mini-player corner', 'showfm' ) }
+			value={ attributes[ 'mini-player-position' ] || 'right' }
+			onChange={ ( position ) =>
+				setAttributes( {
+					'mini-player-position':
+						position === 'left' ? 'left' : undefined,
+				} )
+			}
+			help={ __(
+				'Where the mini-player sits when a visitor collapses it.',
+				'showfm'
+			) }
+			options={ [
+				{ value: 'left', label: __( 'Left', 'showfm' ) },
+				{ value: 'right', label: __( 'Right', 'showfm' ) },
+			] }
+		/>
+	);
+}
+
+/**
  * Hex colours from the palettes, the theme's first. The elements take hex only.
  *
  * @param {...Array} palettes Palettes.

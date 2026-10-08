@@ -11,7 +11,7 @@ import {
 import { useSelect } from '@wordpress/data';
 import { __, sprintf } from '@wordpress/i18n';
 import ShowfmBlockEdit from '../components/block-edit';
-import { Segmented } from '../components/controls';
+import { MiniPlayerCorner, Segmented } from '../components/controls';
 import { seasonsOf } from '../components/episode-picker';
 import EpisodeSummary from '../components/episode-summary';
 import { defaultLevel } from '../components/heading-level';
@@ -194,6 +194,12 @@ export function EpisodesInspector( {
 						} )
 					}
 				/>
+				{ attributes[ 'mini-player' ] === 'on' && (
+					<MiniPlayerCorner
+						attributes={ attributes }
+						setAttributes={ setAttributes }
+					/>
+				) }
 			</PanelBody>
 		</>
 	);

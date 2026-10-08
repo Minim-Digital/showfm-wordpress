@@ -17,6 +17,8 @@ export const ELEMENT_ATTRIBUTES = {
 		'wave',
 		'heading-level',
 		'transcript',
+		'mini-player',
+		'mini-player-position',
 	],
 	episodes: [
 		'id',
@@ -30,6 +32,7 @@ export const ELEMENT_ATTRIBUTES = {
 		'hide',
 		'descriptions',
 		'mini-player',
+		'mini-player-position',
 		'heading-level',
 	],
 	play: [
@@ -40,6 +43,7 @@ export const ELEMENT_ATTRIBUTES = {
 		'variant',
 		'size',
 		'mini-player',
+		'mini-player-position',
 	],
 	transcript: [ 'episode', 'for', 'height', 'theme', 'accent' ],
 };

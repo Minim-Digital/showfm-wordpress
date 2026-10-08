@@ -326,6 +326,8 @@ test.describe( 'WordPress.org screenshots', () => {
 		const inspector = await openBlockSettings( editor, page );
 		await inspector.getByLabel( 'Transcript' ).check();
 		await expect( player ).toHaveAttribute( 'transcript', /on|open/ );
+		await inspector.getByLabel( 'Mini-player', { exact: true } ).check();
+		await expect( player ).toHaveAttribute( 'mini-player', 'on' );
 		await expect(
 			player.locator( 'css=[part="play"]' ).first()
 		).toBeVisible();

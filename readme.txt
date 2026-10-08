@@ -16,7 +16,7 @@ show.fm hosts podcasts. This plugin brings a show.fm show into WordPress.
 
 **Blocks for any public show, with no account**
 
-* **Player:** one episode, or always the latest, in standard or compact size, with a waveform and an optional transcript.
+* **Player:** one episode, or always the latest, in standard or compact size, with a waveform, an optional transcript, and an optional mini-player that keeps it playing at the bottom of the page when the visitor scrolls away.
 * **Episode list:** a show's episodes as cards or a minimal list, filtered by season, with or without trailers and bonus episodes. The playing episode has a Transcript button when its transcript is on show.fm.
 * **Play button:** a button or a link in a sentence that plays an episode in a mini-player along the bottom of the page.
 * **Transcript:** a follow-along transcript that highlights the words as they are spoken.
@@ -160,7 +160,7 @@ The plugin's settings, cache, scheduled events and its own post meta. Your posts
 
 == Screenshots ==
 
-1. The Player block in the editor, with its size, theme, waveform and transcript settings.
+1. The Player block in the editor, with its theme, accent colour, waveform, transcript and mini-player settings.
 2. The Episode list block in Card style, with season, trailer and bonus episode filters.
 3. Connect your site to show.fm to post new episodes automatically.
 4. Choose how new episodes are posted, and see what was synced recently.
@@ -176,6 +176,7 @@ The plugin's settings, cache, scheduled events and its own post meta. Your posts
 * Connect a site to show.fm in the browser or with WP-CLI. The site key is stored encrypted.
 * Publish to WordPress: new episodes become posts that follow the episode when it is rescheduled, unpublished or deleted, and keep any edits made in WordPress.
 * Embed migration from eight podcast hosts, with a dry run, episode picks and revisions to undo.
+* The Player, Episode list and Play button can open a mini-player, with a choice of corner. The Player's is off by default and takes over when a visitor scrolls past it while it plays.
 * Bundles @showfm/embed 1.6.0. Every element carries `platform="wordpress"`, so with the credit setting off, no show displays "Powered by show.fm".
 
 == Upgrade Notice ==
