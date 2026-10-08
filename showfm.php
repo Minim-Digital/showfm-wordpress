@@ -3,7 +3,7 @@
  * Plugin Name:       show.fm
  * Plugin URI:        https://github.com/Minim-Digital/showfm-wordpress
  * Description:       Podcast player, episode lists and auto-posting for show.fm shows.
- * Version:           1.0.0
+ * Version:           1.0.1
  * Requires at least: 6.6
  * Requires PHP:      7.4
  * Author:            show.fm
@@ -31,7 +31,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'SHOWFM_VERSION', '1.0.0' );
+define( 'SHOWFM_VERSION', '1.0.1' );
 define( 'SHOWFM_FILE', __FILE__ );
 define( 'SHOWFM_DIR', __DIR__ );
 

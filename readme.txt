@@ -4,7 +4,7 @@ Tags: podcast, podcasting, audio, player, episodes
 Requires at least: 6.6
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.0.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -51,7 +51,7 @@ This plugin connects to show.fm, a podcast hosting service run by show.fm Ltd. I
 
 Gives the titles, descriptions, artwork, audio links and transcript links of public shows and episodes.
 
-* When: WP-Cron refreshes a show or episode you added to a page when its cached copy is missing or more than 15 minutes old. Pages read only the cache and never wait for a request. While the site is connected and featured images are on, the sync also reads each new episode's public details (/v1/episodes/{id}) once, to find its artwork. In the block editor, the site looks up a show when someone who can edit posts enters its address or opens a show.fm block. WordPress asks /v1/oembed about a pasted show.fm link once, and keeps the answer in post meta.
+* When: WP-Cron refreshes a show or episode you added to a page when its cached copy is missing or more than 15 minutes old. Pages read only the cache and never wait for a request. While the site is connected, the sync also fetches each newly published episode's public details (/v1/episodes/{id}) in the background, so the post's first view already has them. With featured images on, that same answer gives the artwork. In the block editor, the site looks up a show when someone who can edit posts enters its address or opens a show.fm block. WordPress asks /v1/oembed about a pasted show.fm link once, and keeps the answer in post meta.
 * On a connected site, opening Settings > show.fm may schedule a WP-Cron refresh of each connected show's public details (/v1/podcasts/{id}), for the artwork shown there. The screen itself makes no request.
 * In visitors' browsers: see "What visitors' browsers request" below.
 * What is sent: the show or episode identifier, and your site's address in the User-Agent header. show.fm sees your server's IP address. From a browser, show.fm sees the visitor's IP address and browser details, as with any web request. No visitor data is sent from your server.
@@ -172,6 +172,13 @@ The plugin's settings, cache, scheduled events and its own post meta. Your posts
 
 == Changelog ==
 
+= 1.0.1 =
+* Posts created by Publish to WordPress save the episode's title, listen page and audio in their blocks, as the editor does, so their first view has a readable fallback. The plugin also fills its cache for the episode during the sync and clears the post's cache whenever that changes, so page caches don't keep an empty first render.
+* The Connection tab shows each show's address from show.fm, including on staging.
+* `wp showfm cache flush` reports the new cache version when the site uses a persistent object cache.
+* With "Load players only after a visitor clicks" on, a Transcript block for an episode without a transcript shows nothing instead of a "Load transcript" box, and a Transcript block with its own height reserves that height before it loads.
+* "Include the transcript" (Settings > show.fm > Publishing) starts the way the connection was approved: on with "Include transcripts in posts", off without it.
+
 = 1.0.0 =
 * First public release.
 * Player, Episode list, Play button and Transcript blocks, the `[showfm]` shortcode and show.fm oEmbed, rendered on the server from a local cache with no request on page view.
@@ -186,6 +193,9 @@ The plugin's settings, cache, scheduled events and its own post meta. Your posts
 * Bundles @showfm/embed 1.6.1. Every element carries `platform="wordpress"`, so with the credit setting off, no show displays "Powered by show.fm".
 
 == Upgrade Notice ==
+
+= 1.0.1 =
+Fixes empty first renders of synced posts behind page caches, and smaller display and WP-CLI issues.
 
 = 1.0.0 =
 First public release.
