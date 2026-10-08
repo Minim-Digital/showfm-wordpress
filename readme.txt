@@ -172,6 +172,7 @@ The plugin's settings, cache, scheduled events and its own post meta. Your posts
 
 = 1.0.2 =
 * The plugin's built-in hosts are show.fm's production services only. A site's own code can select another show.fm environment for testing with the `showfm_environment` filter, which replaces the `SHOWFM_API_URL` and `SHOWFM_APP_URL` constants. The block editor gets the same hosts from the site.
+* Bundles @showfm/embed 1.6.2, which names only production hosts.
 
 = 1.0.1 =
 * Posts created by Publish to WordPress save the episode's title, listen page and audio in their blocks, as the editor does, so their first view has a readable fallback. The plugin also fills its cache for the episode during the sync and clears the post's cache whenever that changes, so page caches don't keep an empty first render.

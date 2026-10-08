@@ -244,7 +244,7 @@ class Test_Embeds extends WP_UnitTestCase {
 		);
 		$this->assertTrue( wp_script_is( Assets::HANDLE, 'enqueued' ) );
 		$script = wp_scripts()->registered[ Assets::HANDLE ];
-		$this->assertSame( '1.6.1', $script->ver );
+		$this->assertSame( '1.6.2', $script->ver );
 		$this->assertStringEndsWith( '/assets/showfm-embed/v1.js', $script->src );
 		$this->assertNotContains( 'module', $script->extra );
 		$this->block( 'play', array( 'episode' => self::ID ) );
@@ -266,7 +266,7 @@ class Test_Embeds extends WP_UnitTestCase {
 		$this->assertTrue( wp_script_is( Assets::CLICK_HANDLE, 'enqueued' ) );
 		$this->assertFalse( wp_script_is( Assets::HANDLE, 'enqueued' ) );
 		$this->assertStringEndsWith( '/assets/showfm-embed/click-loader-local.js', wp_scripts()->registered[ Assets::CLICK_HANDLE ]->src );
-		$v1 = plugins_url( 'assets/showfm-embed/v1.js', SHOWFM_FILE ) . '?ver=1.6.1';
+		$v1 = plugins_url( 'assets/showfm-embed/v1.js', SHOWFM_FILE ) . '?ver=1.6.2';
 		$this->assertSame( $v1, Assets::versioned_script_url() );
 
 		// Registering again adds no second global.
@@ -284,7 +284,7 @@ class Test_Embeds extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'window.showfmEmbedSrc = ' . wp_json_encode( $v1 ) . ';', $tag );
 		$this->assertTrue( $processor->next_tag( array( 'tag_name' => 'script' ) ) );
 		$this->assertSame( Assets::CLICK_HANDLE . '-js', $processor->get_attribute( 'id' ) );
-		$this->assertStringEndsWith( '/assets/showfm-embed/click-loader-local.js?ver=1.6.1', (string) $processor->get_attribute( 'src' ) );
+		$this->assertStringEndsWith( '/assets/showfm-embed/click-loader-local.js?ver=1.6.2', (string) $processor->get_attribute( 'src' ) );
 		$this->assertSame( $v1, $processor->get_attribute( 'data-src' ) );
 		$this->assertFalse( $processor->next_tag( array( 'tag_name' => 'script' ) ) );
 		$this->assertStringNotContainsString( 'embed.cdn.media', $tag );

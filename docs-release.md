@@ -155,7 +155,7 @@ release I add both usernames to the readme's `Contributors:` line, after mine.
 
 ## The bundled package and WordPress.org
 
-- The plugin bundles @showfm/embed 1.6.1 and checks every file against the npm release.
+- The plugin bundles @showfm/embed 1.6.2 and checks every file against the npm release.
 - Every element carries `platform="wordpress"`, so with `credit="off"` (the default) no
   show displays "Powered by show.fm" (guideline 10).
 - Load on click uses the package's self-hosting `click-loader-local.js`. It names no host,
